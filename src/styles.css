@@ -233,94 +233,6 @@ body {
   background: #302e2b;
 }
 
-/* ── Top Bar ── */
-.top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  background: #262421;
-  min-height: 44px;
-}
-
-.player-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.player-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.dot-w {
-  background: #fff;
-  border: 1px solid #ccc;
-}
-.dot-b {
-  background: #000;
-  border: 1px solid #555;
-}
-
-.player-score {
-  font-size: 20px;
-  font-weight: 700;
-  color: #ddd;
-  min-width: 24px;
-  text-align: center;
-}
-
-.player-label {
-  font-size: 11px;
-  color: #999;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.turn-ind {
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 3px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
-.turn-ind.active {
-  background: #629924;
-  color: #fff;
-  animation: tp 1.5s ease infinite;
-}
-
-.turn-ind.waiting {
-  background: #444;
-  color: #888;
-}
-
-@keyframes tp {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
-}
-
-.vs {
-  color: #666;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.game-count {
-  font-size: 10px;
-  color: #777;
-  text-align: center;
-  line-height: 1.3;
-}
-
 /* ── Board ── */
 .board-wrap {
   flex: 1;
@@ -358,55 +270,19 @@ canvas {
   min-height: 48px;
 }
 
-.toggle-group {
-  display: flex;
-  background: #1a1816;
-  border-radius: 4px;
-  overflow: hidden;
-  border: 1px solid #3a3835;
-}
-
-.toggle-btn {
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #999;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s;
-  letter-spacing: 0.5px;
-}
-
-.toggle-btn.active {
-  background: #629924;
-  color: #fff;
-}
-
-.toggle-btn:not(.active):hover {
-  background: #333;
-}
-
 .pass-btn {
-  padding: 8px 14px;
-  font-size: 11px;
+  padding: 10px 24px;
+  font-size: 14px;
   font-weight: 600;
-  color: #999;
+  color: #ccc;
   background: #1a1816;
   border: 1px solid #3a3835;
   border-radius: 4px;
   cursor: pointer;
-  margin-left: 8px;
   letter-spacing: 0.5px;
 }
 
 .pass-btn:hover {
   background: #333;
-  color: #bbb;
-}
-
-.hint-text {
-  font-size: 11px;
-  color: #666;
-  margin-left: 8px;
+  color: #fff;
 }
