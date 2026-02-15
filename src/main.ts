@@ -5,20 +5,8 @@ import type { ConnectionStatus } from './net/types'
 import { BoardRenderer } from './render/board'
 import { OverlayRenderer } from './render/overlay'
 import { MatchState } from './state/match'
-import type {
-  MatchResult,
-  NetMessage,
-  PlayerNumber,
-  ViewMode,
-} from './state/types'
+import type { MatchResult, NetMessage, PlayerNumber } from './state/types'
 import { showGameOver } from './ui/game-over'
-import {
-  setHint,
-  updateActiveCount,
-  updatePlayerLabels,
-  updateScores,
-  updateTurnIndicators,
-} from './ui/hud'
 import { shareRoomCode, updateCreateLobby, updateJoinLobby } from './ui/lobby'
 import { showScreen } from './ui/screens'
 
@@ -65,42 +53,22 @@ function render(): void {
 
 function onBoardClick(e: MouseEvent): void {
   const coord = boardRenderer.pixelToCoord(e.clientX, e.clientY)
-  if (coord) {
-    match.handleClick(coord)
-    updateHintForSelection()
-  }
+  if (coord) match.handleClick(coord)
 }
 
 function onBoardTouch(e: TouchEvent): void {
   e.preventDefault()
   const t = e.touches[0]
   const coord = boardRenderer.pixelToCoord(t.clientX, t.clientY)
-  if (coord) {
-    match.handleClick(coord)
-    updateHintForSelection()
-  }
-}
-
-function updateHintForSelection(): void {
-  if (match.selectedSquare) {
-    const { col, row } = match.selectedSquare
-    setHint(`${String.fromCharCode(97 + col)}${row + 1} →`)
-  } else {
-    setHint('')
-  }
+  if (coord) match.handleClick(coord)
 }
 
 // ── State ──
 
 const match = new MatchState({
-  onStateChange: () => {
-    render()
-    updateScores(match.scores)
-    updateTurnIndicators(match.currentPlayer, match.mode, match.localPlayer)
-    updateActiveCount(match.activeCount())
-  },
-  onResolving: (msg: string) => setHint(msg),
-  onResolved: () => setHint(''),
+  onStateChange: () => render(),
+  onResolving: () => {},
+  onResolved: () => {},
   onGameOver: (result: MatchResult) => showGameOver(result),
   onSendMessage: (msg: NetMessage) => connection.send(msg),
 })
@@ -117,26 +85,19 @@ const connection = new PeerConnection({
   },
   onPeerJoin: () => {
     if (connection.isHost) {
-      // Host starts the game when guest connects
       const firstPlayer: PlayerNumber = Math.random() < 0.5 ? 1 : 2
       match.start('online-host', 1, firstPlayer)
       connection.send({ type: 'init', firstPlayer })
       showScreen('game')
       initCanvas()
-      updatePlayerLabels(match.mode, match.localPlayer)
       render()
     }
   },
-  onPeerLeave: () => {
-    if (!match.matchOver) {
-      setHint('Opponent disconnected')
-    }
-  },
+  onPeerLeave: () => {},
   onMessage: (data: unknown) => {
     const msg = data as NetMessage
 
     if (msg.type === 'init') {
-      // Guest receives init — start game
       match.start(
         'online-guest',
         msg.firstPlayer === 1 ? 2 : 1,
@@ -144,7 +105,6 @@ const connection = new PeerConnection({
       )
       showScreen('game')
       initCanvas()
-      updatePlayerLabels(match.mode, match.localPlayer)
       render()
       return
     }
@@ -156,12 +116,10 @@ const connection = new PeerConnection({
 // ── UI Event Binding ──
 
 function bindEvents(): void {
-  // Start screen buttons
   document.getElementById('btn-pass-play')?.addEventListener('click', () => {
     match.start('pass-and-play', 1)
     showScreen('game')
     initCanvas()
-    updatePlayerLabels(match.mode, match.localPlayer)
     render()
   })
 
@@ -177,7 +135,6 @@ function bindEvents(): void {
     input?.focus()
   })
 
-  // Create lobby
   document.getElementById('share-btn')?.addEventListener('click', () => {
     shareRoomCode(connection.code)
   })
@@ -187,7 +144,6 @@ function bindEvents(): void {
     showScreen('start')
   })
 
-  // Join lobby
   document.getElementById('join-btn')?.addEventListener('click', () => {
     const input = document.getElementById('code-input') as HTMLInputElement
     const code = input.value.trim()
@@ -207,26 +163,10 @@ function bindEvents(): void {
     showScreen('start')
   })
 
-  // Game controls
   document.getElementById('pass-btn')?.addEventListener('click', () => {
     match.pass()
   })
 
-  // View mode toggles
-  document.querySelectorAll('.toggle-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const mode = (btn as HTMLElement).dataset.v as ViewMode
-      match.viewMode = mode
-      document
-        .querySelectorAll('.toggle-btn')
-        .forEach((b) =>
-          b.classList.toggle('active', (b as HTMLElement).dataset.v === mode),
-        )
-      render()
-    })
-  })
-
-  // Game over
   document.getElementById('new-match-btn')?.addEventListener('click', () => {
     connection.disconnect()
     location.reload()
