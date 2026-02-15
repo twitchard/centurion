@@ -1,0 +1,412 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+  background: #302e2b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+/* ── Start Screen ── */
+#screen-start {
+  position: fixed;
+  inset: 0;
+  background: #302e2b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  gap: 16px;
+}
+
+#screen-start h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #bababa;
+  letter-spacing: 2px;
+}
+
+#screen-start p {
+  font-size: 13px;
+  color: #7a7a7a;
+  margin-bottom: 12px;
+}
+
+.start-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 220px;
+}
+
+.btn {
+  padding: 12px 36px;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s;
+}
+
+.btn-primary {
+  background: #629924;
+}
+.btn-primary:hover {
+  background: #74b02a;
+}
+.btn-secondary {
+  background: #555;
+}
+.btn-secondary:hover {
+  background: #666;
+}
+.btn-outline {
+  background: transparent;
+  border: 2px solid #555;
+  color: #aaa;
+}
+.btn-outline:hover {
+  border-color: #777;
+  color: #ccc;
+}
+
+/* ── Lobby Screens ── */
+#screen-lobby-create,
+#screen-lobby-join {
+  position: fixed;
+  inset: 0;
+  background: #302e2b;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  gap: 16px;
+}
+
+.lobby-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #bababa;
+}
+
+.room-code {
+  font-size: 48px;
+  font-weight: 700;
+  color: #629924;
+  letter-spacing: 8px;
+  font-family: "Courier New", monospace;
+  padding: 12px 24px;
+  background: #1a1816;
+  border-radius: 8px;
+  border: 2px solid #3a3835;
+}
+
+.lobby-status {
+  font-size: 13px;
+  color: #888;
+  min-height: 20px;
+}
+
+.lobby-status.waiting {
+  color: #d4a94a;
+}
+.lobby-status.connected {
+  color: #629924;
+}
+.lobby-status.error {
+  color: #e06c75;
+}
+
+.share-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.code-input {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 6px;
+  font-family: "Courier New", monospace;
+  padding: 10px 16px;
+  background: #1a1816;
+  border-radius: 8px;
+  border: 2px solid #3a3835;
+  text-align: center;
+  width: 220px;
+  outline: none;
+}
+
+.code-input:focus {
+  border-color: #629924;
+}
+
+.code-input::placeholder {
+  color: #555;
+  letter-spacing: 4px;
+  font-size: 20px;
+}
+
+.lobby-back {
+  font-size: 13px;
+  color: #666;
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-top: 8px;
+  text-decoration: underline;
+}
+
+.lobby-back:hover {
+  color: #999;
+}
+
+/* ── Dot spinner ── */
+.spinner {
+  display: inline-block;
+  animation: pulse 1.5s ease infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ── Game Over ── */
+#screen-game-over {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  gap: 16px;
+}
+
+#goTitle {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+#goSub {
+  font-size: 14px;
+  color: #999;
+}
+
+#screen-game-over button {
+  padding: 10px 32px;
+  background: #629924;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── Main Layout ── */
+#app {
+  display: none;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: #302e2b;
+}
+
+/* ── Top Bar ── */
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #262421;
+  min-height: 44px;
+}
+
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot-w {
+  background: #fff;
+  border: 1px solid #ccc;
+}
+.dot-b {
+  background: #000;
+  border: 1px solid #555;
+}
+
+.player-score {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ddd;
+  min-width: 24px;
+  text-align: center;
+}
+
+.player-label {
+  font-size: 11px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.turn-ind {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.turn-ind.active {
+  background: #629924;
+  color: #fff;
+  animation: tp 1.5s ease infinite;
+}
+
+.turn-ind.waiting {
+  background: #444;
+  color: #888;
+}
+
+@keyframes tp {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.vs {
+  color: #666;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.game-count {
+  font-size: 10px;
+  color: #777;
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* ── Board ── */
+.board-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.board-outer {
+  position: relative;
+}
+canvas {
+  display: block;
+}
+#ov {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+#bc {
+  cursor: pointer;
+}
+
+/* ── Bottom Controls ── */
+.bottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: #262421;
+  min-height: 48px;
+}
+
+.toggle-group {
+  display: flex;
+  background: #1a1816;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #3a3835;
+}
+
+.toggle-btn {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #999;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.5px;
+}
+
+.toggle-btn.active {
+  background: #629924;
+  color: #fff;
+}
+
+.toggle-btn:not(.active):hover {
+  background: #333;
+}
+
+.pass-btn {
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  background: #1a1816;
+  border: 1px solid #3a3835;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 8px;
+  letter-spacing: 0.5px;
+}
+
+.pass-btn:hover {
+  background: #333;
+  color: #bbb;
+}
+
+.hint-text {
+  font-size: 11px;
+  color: #666;
+  margin-left: 8px;
+}
