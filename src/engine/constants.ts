@@ -1,5 +1,14 @@
 import { BISHOP, KING, KNIGHT, QUEEN, ROOK } from './types'
 
+/** Total number of concurrent chess games in a match */
+export const NUM_GAMES = 100
+
+/** Search depth for engine fallback moves */
+export const ENGINE_DEPTH = 3
+
+/** Delay in ms between resolution steps (yields to renderer) */
+export const RESOLVE_DELAY_MS = 16
+
 /** Material values by piece type index */
 export const PIECE_VALUES = [0, 100, 320, 330, 500, 900, 20000]
 

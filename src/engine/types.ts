@@ -17,13 +17,17 @@ export interface Move {
   to: Square
   castle?: 'K' | 'Q'
   isEp?: boolean
-  /** Saved state for undo */
-  _captured?: number
-  _castling?: number
-  _ep?: number
-  _halfmove?: number
-  _promoted?: boolean
-  _epCapture?: number
+}
+
+/** State saved by makeMove, required to undoMove */
+export interface UndoInfo {
+  move: Move
+  captured: number
+  castling: number
+  ep: number
+  halfmove: number
+  promoted: boolean
+  epCapture: number
 }
 
 /** Game result: 0 = ongoing, 1 = white wins, -1 = black wins, 2 = draw */
