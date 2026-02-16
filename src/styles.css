@@ -27,6 +27,7 @@ p {
   display: none;
   width: 100%;
   height: 100dvh;
+  min-height: 100dvh;
 }
 
 .screen-menu {
@@ -130,6 +131,7 @@ p {
   grid-template-columns: minmax(300px, 38%) minmax(300px, 1fr);
   gap: 10px;
   padding: 10px;
+  overflow: hidden;
 }
 
 .panel {
@@ -144,6 +146,7 @@ p {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: auto;
 }
 
 .controls-panel label {
@@ -224,6 +227,7 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
 }
 
 .chat-log {
@@ -312,9 +316,72 @@ canvas {
   .feature-layout,
   .chat-layout {
     grid-template-columns: 1fr;
+    overflow: auto;
   }
 
   .feature-header {
     grid-template-columns: 90px 1fr 90px;
+  }
+}
+
+@media (max-width: 720px) {
+  body {
+    overflow: auto;
+  }
+
+  .screen {
+    height: auto;
+    min-height: 100dvh;
+  }
+
+  .screen-menu {
+    justify-content: flex-start;
+    padding: 1.25rem 0.85rem max(0.85rem, env(safe-area-inset-bottom));
+    gap: 0.85rem;
+  }
+
+  .screen-menu h1 {
+    font-size: clamp(1.7rem, 8vw, 2.15rem);
+  }
+
+  .menu-buttons {
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .feature-header {
+    grid-template-columns: auto 1fr auto;
+    gap: 0.5rem;
+    padding: 0.65rem 0.65rem;
+  }
+
+  .feature-header h2 {
+    font-size: 0.95rem;
+    text-align: left;
+  }
+
+  .feature-layout,
+  .chat-layout {
+    padding: 0.5rem;
+    gap: 0.5rem;
+    flex: 1 1 auto;
+  }
+
+  .panel {
+    padding: 0.75rem;
+  }
+
+  .board-panel {
+    min-height: 220px;
+  }
+
+  textarea {
+    min-height: 96px;
+  }
+
+  .join-row,
+  .chat-compose {
+    grid-template-columns: 1fr;
+    display: grid;
   }
 }
