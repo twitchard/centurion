@@ -3,9 +3,9 @@ import type { AppState } from './model'
 import { updateApp } from './update'
 
 describe('updateApp', () => {
-  it('enters superposition lab from menu', () => {
+  it('enters superposition lab from labs-menu', () => {
     const [state, commands] = updateApp(
-      { tag: 'menu' },
+      { tag: 'labs-menu' },
       { tag: 'open-superposition-lab' },
     )
     expect(state.tag).toBe('superposition-lab')
@@ -23,8 +23,8 @@ describe('updateApp', () => {
         nextLineId: 0,
       },
     }
-    const [state, commands] = updateApp(chatState, { tag: 'back-to-menu' })
-    expect(state.tag).toBe('menu')
+    const [state, commands] = updateApp(chatState, { tag: 'back-to-labs-menu' })
+    expect(state.tag).toBe('labs-menu')
     expect(commands).toEqual([
       { tag: 'chat-lab', cmd: { tag: 'transport-disconnect' } },
     ])
@@ -32,7 +32,7 @@ describe('updateApp', () => {
 
   it('issues mount command when entering centurion match', () => {
     const [state, commands] = updateApp(
-      { tag: 'menu' },
+      { tag: 'labs-menu' },
       { tag: 'open-centurion-match' },
     )
     expect(state.tag).toBe('centurion-match')
@@ -43,13 +43,13 @@ describe('updateApp', () => {
 
   it('ignores chat messages outside chat lab state', () => {
     const [state, commands] = updateApp(
-      { tag: 'menu' },
+      { tag: 'labs-menu' },
       {
         tag: 'chat-lab-msg',
         msg: { tag: 'create-room-requested' },
       },
     )
-    expect(state.tag).toBe('menu')
+    expect(state.tag).toBe('labs-menu')
     expect(commands).toEqual([])
   })
 })

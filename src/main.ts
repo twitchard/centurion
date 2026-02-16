@@ -59,7 +59,7 @@ function canvas(id: string): HTMLCanvasElement {
   return node
 }
 
-const screenMenu = element('screen-menu')
+const screenLabsMenu = element('screen-labs-menu')
 const screenSuperposition = element('screen-superposition-lab')
 const screenChat = element('screen-chat-lab')
 const screenCenturion = element('screen-centurion-match')
@@ -95,10 +95,17 @@ function dispatch(msg: AppMsg): void {
   }
 }
 
+function navigate(path: string, pushState = true): void {
+  if (pushState) {
+    window.history.pushState({}, '', path)
+  }
+  dispatch({ tag: 'navigate', path })
+}
+
 const centurionController = new CenturionMatchController({
   root: screenCenturion,
   onRequestExit: () => {
-    dispatch({ tag: 'back-to-menu' })
+    navigate('/labs')
   },
 })
 
@@ -170,7 +177,7 @@ function runCommand(command: AppCmd): void {
 }
 
 function setScreenVisibility(screen: AppState['tag']): void {
-  screenMenu.style.display = screen === 'menu' ? 'flex' : 'none'
+  screenLabsMenu.style.display = screen === 'labs-menu' ? 'flex' : 'none'
   screenSuperposition.style.display =
     screen === 'superposition-lab' ? 'flex' : 'none'
   screenChat.style.display = screen === 'chat-lab' ? 'flex' : 'none'
@@ -317,18 +324,21 @@ function render(): void {
 }
 
 function bindEvents(): void {
-  button('menu-open-superposition').addEventListener('click', () => {
+  button('labs-menu-open-superposition').addEventListener('click', () => {
     dispatch({ tag: 'open-superposition-lab' })
   })
-  button('menu-open-chat').addEventListener('click', () => {
+  button('labs-menu-open-chat').addEventListener('click', () => {
     dispatch({ tag: 'open-chat-lab' })
   })
-  button('menu-open-centurion').addEventListener('click', () => {
+  button('labs-menu-open-centurion').addEventListener('click', () => {
     dispatch({ tag: 'open-centurion-match' })
+  })
+  button('labs-menu-back-btn').addEventListener('click', () => {
+    navigate('/')
   })
 
   button('superposition-back-btn').addEventListener('click', () => {
-    dispatch({ tag: 'back-to-menu' })
+    navigate('/labs')
   })
   button('superposition-reset-btn').addEventListener('click', () => {
     dispatch({
@@ -356,7 +366,7 @@ function bindEvents(): void {
   })
 
   button('chat-back-btn').addEventListener('click', () => {
-    dispatch({ tag: 'back-to-menu' })
+    navigate('/labs')
   })
   chatCreateRoomButton.addEventListener('click', () => {
     dispatch({
@@ -409,6 +419,10 @@ function bindEvents(): void {
       tag: 'chat-lab-msg',
       msg: { tag: 'send-draft-requested' },
     })
+  })
+
+  window.addEventListener('popstate', () => {
+    navigate(window.location.pathname, false)
   })
 
   window.addEventListener('resize', () => {
