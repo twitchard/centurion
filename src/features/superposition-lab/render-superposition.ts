@@ -4,32 +4,31 @@ import type {
   PieceStack,
   SuperpositionRenderModel,
 } from '../../core/superposition/types'
-import { drawPiece } from '../../engine/pieces'
-import { pipPositions } from '../../render/pips'
+import { pipPositions } from './pips'
 
 const BOARD_DARK = '#2d2a26'
 const BOARD_LIGHT = '#38342f'
 const GRID_LINE = 'rgba(255, 255, 255, 0.05)'
 const LABEL_COLOR = '#a8a8a8'
 
-interface PieceStyle {
-  readonly typeIndex: number
+interface PieceGlyphStyle {
+  readonly glyph: string
   readonly isWhite: boolean
 }
 
-const PIECE_STYLES: Record<FenPieceSymbol, PieceStyle> = {
-  P: { typeIndex: 1, isWhite: true },
-  N: { typeIndex: 2, isWhite: true },
-  B: { typeIndex: 3, isWhite: true },
-  R: { typeIndex: 4, isWhite: true },
-  Q: { typeIndex: 5, isWhite: true },
-  K: { typeIndex: 6, isWhite: true },
-  p: { typeIndex: 1, isWhite: false },
-  n: { typeIndex: 2, isWhite: false },
-  b: { typeIndex: 3, isWhite: false },
-  r: { typeIndex: 4, isWhite: false },
-  q: { typeIndex: 5, isWhite: false },
-  k: { typeIndex: 6, isWhite: false },
+const PIECE_GLYPHS: Record<FenPieceSymbol, PieceGlyphStyle> = {
+  P: { glyph: '♙', isWhite: true },
+  N: { glyph: '♘', isWhite: true },
+  B: { glyph: '♗', isWhite: true },
+  R: { glyph: '♖', isWhite: true },
+  Q: { glyph: '♕', isWhite: true },
+  K: { glyph: '♔', isWhite: true },
+  p: { glyph: '♟', isWhite: false },
+  n: { glyph: '♞', isWhite: false },
+  b: { glyph: '♝', isWhite: false },
+  r: { glyph: '♜', isWhite: false },
+  q: { glyph: '♛', isWhite: false },
+  k: { glyph: '♚', isWhite: false },
 }
 
 export class SuperpositionRenderer {
@@ -147,7 +146,7 @@ export class SuperpositionRenderer {
         continue
       }
 
-      const style = PIECE_STYLES[stack.piece]
+      const style = PIECE_GLYPHS[stack.piece]
       const groupSize = stacks.length
       const pieceScale =
         groupSize <= 1
@@ -165,7 +164,7 @@ export class SuperpositionRenderer {
 
       ctx.save()
       ctx.globalAlpha = opacity
-      drawPiece(ctx, style.typeIndex, pieceX, pieceY, pieceSize, style.isWhite)
+      this.drawPieceGlyph(style, pieceX, pieceY, pieceSize)
       ctx.restore()
 
       if (stack.count > 1 && groupSize <= 5) {
@@ -198,6 +197,26 @@ export class SuperpositionRenderer {
     ctx.textBaseline = 'middle'
     ctx.fillText(count > 99 ? '99+' : `${count}`, badgeX, badgeY)
     ctx.restore()
+  }
+
+  private drawPieceGlyph(
+    style: PieceGlyphStyle,
+    pieceX: number,
+    pieceY: number,
+    pieceSize: number,
+  ): void {
+    const ctx = this.context
+    const centerX = pieceX + pieceSize / 2
+    const centerY = pieceY + pieceSize / 2
+
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.font = `700 ${Math.max(12, pieceSize * 0.9)}px "Noto Sans Symbols", "Segoe UI Symbol", sans-serif`
+    ctx.fillStyle = style.isWhite ? '#f7f7f7' : '#111111'
+    ctx.strokeStyle = style.isWhite ? '#202020' : '#d0d0d0'
+    ctx.lineWidth = Math.max(1, pieceSize * 0.06)
+    ctx.strokeText(style.glyph, centerX, centerY + pieceSize * 0.02)
+    ctx.fillText(style.glyph, centerX, centerY + pieceSize * 0.02)
   }
 
   private drawArrows(arrows: readonly ArrowSegment[]): void {

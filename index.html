@@ -76,53 +76,16 @@
     <header class="feature-header">
       <button class="text-btn" id="centurion-back-btn">← Menu</button>
       <h2>Centurion Match</h2>
-      <span></span>
+      <span id="centurion-phase-badge" class="phase-badge"></span>
     </header>
-
-    <div class="centurion-view" id="centurion-view-start">
-      <p>Full integrated match mode</p>
-      <div class="menu-buttons">
-        <button class="btn btn-primary" id="centurion-btn-pass-play">Pass &amp; Play</button>
-        <button class="btn btn-secondary" id="centurion-btn-create-room">Create Room</button>
-        <button class="btn btn-outline" id="centurion-btn-join-room">Join Room</button>
+    <div class="centurion-shell panel">
+      <p id="centurion-status-copy"></p>
+      <div id="centurion-controls" class="centurion-controls">
+        <button class="btn btn-primary" id="centurion-to-active-btn">Set active</button>
+        <button class="btn btn-secondary" id="centurion-to-resolving-btn">Set resolving</button>
+        <button class="btn btn-outline" id="centurion-to-complete-btn">Set complete</button>
+        <button class="btn btn-outline" id="centurion-reset-btn">Reset</button>
       </div>
-    </div>
-
-    <div class="centurion-view" id="centurion-view-lobby-create">
-      <div class="centurion-lobby-title">Room Created</div>
-      <div class="room-code" id="centurion-room-code-display">------</div>
-      <button class="btn btn-primary" id="centurion-share-btn">Share Code</button>
-      <div class="centurion-lobby-status" id="centurion-create-status">Waiting for opponent...</div>
-      <button class="text-btn" id="centurion-create-back">← Back</button>
-    </div>
-
-    <div class="centurion-view" id="centurion-view-lobby-join">
-      <div class="centurion-lobby-title">Join Room</div>
-      <input class="code-input" id="centurion-code-input" type="text" inputmode="numeric"
-             maxlength="6" placeholder="000000" autocomplete="off">
-      <button class="btn btn-primary" id="centurion-join-btn">Join</button>
-      <div class="centurion-lobby-status" id="centurion-join-status"></div>
-      <button class="text-btn" id="centurion-join-back">← Back</button>
-    </div>
-
-    <div class="centurion-view" id="centurion-view-game">
-      <div class="centurion-game-wrap">
-        <div class="centurion-board-wrap" id="centurion-board-wrap">
-          <div class="board-outer">
-            <canvas id="centurion-board-canvas"></canvas>
-            <canvas id="centurion-overlay-canvas"></canvas>
-          </div>
-        </div>
-        <div class="centurion-bottom">
-          <button class="btn btn-outline" id="centurion-pass-btn">Pass</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="centurion-game-over">
-      <div id="centurion-go-title"></div>
-      <div id="centurion-go-sub"></div>
-      <button class="btn btn-primary" id="centurion-new-match-btn">New Match</button>
     </div>
   </section>
 

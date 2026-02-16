@@ -1,9 +1,9 @@
 export interface CenturionMatchModel {
-  readonly lifecycle: 'inactive' | 'active'
+  readonly lifecycle: 'idle' | 'active' | 'resolving' | 'complete'
 }
 
 export function initCenturionMatchModel(): CenturionMatchModel {
-  return { lifecycle: 'inactive' }
+  return { lifecycle: 'idle' }
 }
 
 export type CenturionMatchCmd =
