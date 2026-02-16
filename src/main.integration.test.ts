@@ -176,7 +176,7 @@ class FakeElement {
     }
     const event: FakeEvent = {
       target: this,
-      key,
+      ...(key !== undefined && { key }),
       preventDefault: () => {
         return
       },
@@ -452,10 +452,10 @@ describe('main app wiring', () => {
       'screen-centurion-match',
     ) as FakeHTMLElement
 
-    expect(menu.style.display).toBe('flex')
-    expect(superposition.style.display).toBe('none')
-    expect(chat.style.display).toBe('none')
-    expect(centurion.style.display).toBe('none')
+    expect(menu.style['display']).toBe('flex')
+    expect(superposition.style['display']).toBe('none')
+    expect(chat.style['display']).toBe('none')
+    expect(centurion.style['display']).toBe('none')
 
     const openSuperposition = documentRef.getElementById(
       'menu-open-superposition',
@@ -469,8 +469,8 @@ describe('main app wiring', () => {
       'superposition-arrow-input',
     ) as FakeTextAreaElement
 
-    expect(menu.style.display).toBe('none')
-    expect(superposition.style.display).toBe('flex')
+    expect(menu.style['display']).toBe('none')
+    expect(superposition.style['display']).toBe('flex')
     expect(fenInput.value).toBe(DEFAULT_SUPERPOSITION_FEN_INPUT)
     expect(arrowInput.value).toBe(DEFAULT_SUPERPOSITION_ARROW_INPUT)
 
@@ -478,8 +478,8 @@ describe('main app wiring', () => {
       'superposition-back-btn',
     ) as FakeButtonElement
     backFromSuperposition.click()
-    expect(menu.style.display).toBe('flex')
-    expect(superposition.style.display).toBe('none')
+    expect(menu.style['display']).toBe('flex')
+    expect(superposition.style['display']).toBe('none')
 
     const openCenturion = documentRef.getElementById(
       'menu-open-centurion',
@@ -489,7 +489,7 @@ describe('main app wiring', () => {
     const phaseBadge = documentRef.getElementById(
       'centurion-phase-badge',
     ) as FakeHTMLElement
-    expect(centurion.style.display).toBe('flex')
+    expect(centurion.style['display']).toBe('flex')
     expect(phaseBadge.textContent).toBe('IDLE')
   })
 })
