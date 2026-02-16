@@ -3,7 +3,12 @@ import type { ConnectionStatus } from '../../net/types'
 import { BoardRenderer } from '../../render/board'
 import { OverlayRenderer } from '../../render/overlay'
 import { MatchState } from '../../state/match'
-import type { MatchResult, NetMessage, PlayerNumber } from '../../state/types'
+import type {
+  MatchResult,
+  NetMessage,
+  PlayerNumber,
+  ResolvedMove,
+} from '../../state/types'
 
 type CenturionView = 'start' | 'lobby-create' | 'lobby-join' | 'game'
 
@@ -24,7 +29,7 @@ function decodeResolvedMoves(value: unknown): NetMessage | null {
   if (!Array.isArray(value)) {
     return null
   }
-  const moves: NetMessage & { type: 'resolved' }['moves'] = []
+  const moves: ResolvedMove[] = []
   for (const entry of value) {
     if (!isObjectRecord(entry)) {
       return null
@@ -83,7 +88,8 @@ function decodeNetMessage(payload: unknown): NetMessage | null {
   }
 
   if (type === 'resolved') {
-    return decodeResolvedMoves(payload.moves)
+    const resolvedPayload = payload as { type: 'resolved'; moves: unknown }
+    return decodeResolvedMoves(resolvedPayload.moves)
   }
 
   return null
@@ -114,7 +120,8 @@ export class CenturionMatchController {
     })
 
     this.connection = new PeerConnection({
-      onStatusChange: (status: ConnectionStatus) => this.onConnectionStatus(status),
+      onStatusChange: (status: ConnectionStatus) =>
+        this.onConnectionStatus(status),
       onPeerJoin: () => this.onPeerJoin(),
       onPeerLeave: () => this.onPeerLeave(),
       onMessage: (payload: unknown) => this.onMessage(payload),
@@ -301,7 +308,11 @@ export class CenturionMatchController {
 
   private resize(): void {
     const boardWrap = this.element('centurion-board-wrap')
-    const available = Math.min(boardWrap.clientWidth, boardWrap.clientHeight, 640)
+    const available = Math.min(
+      boardWrap.clientWidth,
+      boardWrap.clientHeight,
+      640,
+    )
     this.boardRenderer?.resize(available)
     this.overlayRenderer?.resize(available)
   }

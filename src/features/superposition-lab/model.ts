@@ -22,9 +22,11 @@ export const DEFAULT_SUPERPOSITION_FEN_INPUT = [
   'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/3P4/PPP2PPP/RNBQKBNR w KQkq - 2 3',
 ].join('\n')
 
-export const DEFAULT_SUPERPOSITION_ARROW_INPUT = ['e2->e4', 'd2->d4', 'g1->f3'].join(
-  '\n',
-)
+export const DEFAULT_SUPERPOSITION_ARROW_INPUT = [
+  'e2->e4',
+  'd2->d4',
+  'g1->f3',
+].join('\n')
 
 function deriveRenderModel(
   fenParse: ParseResult<readonly FenBoardPosition[]>,

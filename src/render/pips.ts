@@ -71,7 +71,12 @@ const LAYOUTS: Record<number, [number, number][]> = {
 /** Get pip positions for n items within a unit square */
 export function pipPositions(n: number): PipPosition[] {
   if (n <= 0) return []
-  if (n <= 9) return LAYOUTS[n].map(([x, y]) => ({ x, y }))
+  if (n <= 9) {
+    const layout = LAYOUTS[n]
+    if (layout !== undefined) {
+      return layout.map(([x, y]) => ({ x, y }))
+    }
+  }
 
   // Grid layout for larger counts
   const cols = Math.ceil(Math.sqrt(n))

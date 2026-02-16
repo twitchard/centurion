@@ -1,22 +1,29 @@
-import type { UpdateResult } from '../core/update'
+import { type UpdateResult, assertNever } from '../core/update'
+import {
+  type CenturionMatchCmd,
+  initCenturionMatchModel,
+} from '../features/centurion-match/types'
 import { initChatLabModel } from '../features/chat-lab/model'
 import { updateChatLab } from '../features/chat-lab/update'
-import {
-  initCenturionMatchModel,
-  type CenturionMatchCmd,
-} from '../features/centurion-match/types'
 import { initSuperpositionLabModel } from '../features/superposition-lab/model'
 import { updateSuperpositionLab } from '../features/superposition-lab/update'
 import type { AppCmd, AppMsg, AppState } from './model'
 
-function mapChatCmds(commands: readonly ReturnType<typeof updateChatLab>[1][number][]): AppCmd[] {
+function mapChatCmds(
+  commands: readonly ReturnType<typeof updateChatLab>[1][number][],
+): AppCmd[] {
   return commands.map((cmd) => ({ tag: 'chat-lab', cmd }))
 }
 
 function mapSuperpositionCmds(
   commands: readonly ReturnType<typeof updateSuperpositionLab>[1][number][],
 ): AppCmd[] {
-  return commands.map((cmd) => ({ tag: 'superposition-lab', cmd }))
+  if (commands.length > 0) {
+    throw new Error(
+      'Superposition lab does not emit commands in this revision.',
+    )
+  }
+  return []
 }
 
 function cleanupCommandsFor(state: AppState): readonly AppCmd[] {
@@ -46,7 +53,10 @@ export function updateApp(
       ]
 
     case 'open-chat-lab':
-      return [{ tag: 'chat-lab', model: initChatLabModel() }, cleanupCommandsFor(state)]
+      return [
+        { tag: 'chat-lab', model: initChatLabModel() },
+        cleanupCommandsFor(state),
+      ]
 
     case 'open-centurion-match': {
       const nextState: AppState = {
@@ -71,7 +81,10 @@ export function updateApp(
         return [state, []]
       }
       const [nextModel, commands] = updateSuperpositionLab(state.model, msg.msg)
-      return [{ tag: 'superposition-lab', model: nextModel }, mapSuperpositionCmds(commands)]
+      return [
+        { tag: 'superposition-lab', model: nextModel },
+        mapSuperpositionCmds(commands),
+      ]
     }
 
     case 'chat-lab-msg': {
@@ -82,9 +95,7 @@ export function updateApp(
       return [{ tag: 'chat-lab', model: nextModel }, mapChatCmds(commands)]
     }
 
-    default: {
-      const exhaustive: never = msg
-      return [state, []]
-    }
+    default:
+      return assertNever(msg)
   }
 }

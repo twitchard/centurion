@@ -1,18 +1,18 @@
-import { invalid, type ParseResult, valid } from '../parsing/types'
+import { type ParseResult, invalid, valid } from '../parsing/types'
 import type { ArrowCoordinate, ArrowSegment } from './types'
 
 const ARROW_DELIMITER = /[\n,;|]+/
 const ARROW_PATTERN = /^([a-h][1-8])\s*(?:->|-)\s*([a-h][1-8])$/i
 
 function parseSquare(square: string): ArrowCoordinate {
-  const fileToken = square[0]
-  const rankToken = square[1]
-  const col = fileToken.charCodeAt(0) - 97
-  const row = Number.parseInt(rankToken, 10) - 1
+  const col = square.charCodeAt(0) - 97
+  const row = Number.parseInt(square.slice(1), 10) - 1
   return { col, row }
 }
 
-export function parseArrowList(input: string): ParseResult<readonly ArrowSegment[]> {
+export function parseArrowList(
+  input: string,
+): ParseResult<readonly ArrowSegment[]> {
   const trimmed = input.trim()
   if (trimmed.length === 0) {
     return valid([])

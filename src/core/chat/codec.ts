@@ -8,7 +8,9 @@ export function encodeChatWireMessage(message: ChatWireMessage): unknown {
   return message
 }
 
-export function decodeChatWireMessage(payload: unknown): ChatWireMessage | null {
+export function decodeChatWireMessage(
+  payload: unknown,
+): ChatWireMessage | null {
   if (typeof payload !== 'object' || payload === null) {
     return null
   }

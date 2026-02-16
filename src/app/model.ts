@@ -1,14 +1,14 @@
-import type { ChatLabCmd, ChatLabMsg } from '../features/chat-lab/update'
 import type {
   CenturionMatchCmd,
   CenturionMatchModel,
 } from '../features/centurion-match/types'
+import type { ChatLabModel } from '../features/chat-lab/model'
+import type { ChatLabCmd, ChatLabMsg } from '../features/chat-lab/update'
+import type { SuperpositionLabModel } from '../features/superposition-lab/model'
 import type {
   SuperpositionLabCmd,
   SuperpositionLabMsg,
 } from '../features/superposition-lab/update'
-import type { ChatLabModel } from '../features/chat-lab/model'
-import type { SuperpositionLabModel } from '../features/superposition-lab/model'
 
 export type AppState =
   | { readonly tag: 'menu' }

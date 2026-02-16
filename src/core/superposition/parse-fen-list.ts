@@ -1,4 +1,4 @@
-import { invalid, type ParseResult, valid } from '../parsing/types'
+import { type ParseResult, invalid, valid } from '../parsing/types'
 import type { FenBoardPosition, FenPieceSymbol, PiecePlacement } from './types'
 
 const FEN_DELIMITER = /[\n;|]+/
@@ -57,7 +57,9 @@ function parseBoardToken(boardToken: string): ParseResult<FenBoardPosition> {
         })
         file += 1
       } else {
-        return invalid([`rank ${fenRankIndex + 1} contains invalid token "${token}"`])
+        return invalid([
+          `rank ${fenRankIndex + 1} contains invalid token "${token}"`,
+        ])
       }
 
       if (file > 8) {
@@ -66,14 +68,18 @@ function parseBoardToken(boardToken: string): ParseResult<FenBoardPosition> {
     }
 
     if (file !== 8) {
-      return invalid([`rank ${fenRankIndex + 1} has ${file} files instead of 8`])
+      return invalid([
+        `rank ${fenRankIndex + 1} has ${file} files instead of 8`,
+      ])
     }
   }
 
   return valid({ pieces })
 }
 
-export function parseFenList(input: string): ParseResult<readonly FenBoardPosition[]> {
+export function parseFenList(
+  input: string,
+): ParseResult<readonly FenBoardPosition[]> {
   const entries = splitFenInput(input)
   if (entries.length === 0) {
     return invalid(['enter at least one FEN string'])

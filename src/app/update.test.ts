@@ -4,7 +4,10 @@ import { updateApp } from './update'
 
 describe('updateApp', () => {
   it('enters superposition lab from menu', () => {
-    const [state, commands] = updateApp({ tag: 'menu' }, { tag: 'open-superposition-lab' })
+    const [state, commands] = updateApp(
+      { tag: 'menu' },
+      { tag: 'open-superposition-lab' },
+    )
     expect(state.tag).toBe('superposition-lab')
     expect(commands).toEqual([])
   })
@@ -28,9 +31,14 @@ describe('updateApp', () => {
   })
 
   it('issues mount command when entering centurion match', () => {
-    const [state, commands] = updateApp({ tag: 'menu' }, { tag: 'open-centurion-match' })
+    const [state, commands] = updateApp(
+      { tag: 'menu' },
+      { tag: 'open-centurion-match' },
+    )
     expect(state.tag).toBe('centurion-match')
-    expect(commands).toEqual([{ tag: 'centurion-match', cmd: { tag: 'mount' } }])
+    expect(commands).toEqual([
+      { tag: 'centurion-match', cmd: { tag: 'mount' } },
+    ])
   })
 
   it('ignores chat messages outside chat lab state', () => {

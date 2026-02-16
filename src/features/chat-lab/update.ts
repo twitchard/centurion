@@ -1,9 +1,9 @@
 import {
+  type ChatWireMessage,
   decodeChatWireMessage,
   encodeChatWireMessage,
-  type ChatWireMessage,
 } from '../../core/chat/codec'
-import type { UpdateResult } from '../../core/update'
+import { type UpdateResult, assertNever } from '../../core/update'
 import type { TransportStatus } from '../../ports/transport'
 import type {
   ChatConnectionState,
@@ -81,17 +81,20 @@ function updateConnectionFromTransport(
     case 'connected':
       return { tag: 'connected', code, role }
     case 'error': {
-      const knownCode = code.length > 0 ? code : connection.tag === 'waiting' ? connection.code : null
+      const knownCode =
+        code.length > 0
+          ? code
+          : connection.tag === 'waiting'
+            ? connection.code
+            : null
       return {
         tag: 'error',
         code: knownCode,
         message: 'Transport error while connecting.',
       }
     }
-    default: {
-      const exhaustive: never = status
-      return connection
-    }
+    default:
+      return assertNever(status)
   }
 }
 
@@ -163,12 +166,7 @@ export function updateChatLab(
         text,
         sentAt,
       }
-      const nextModel = appendLine(
-        { ...model, draft: '' },
-        'me',
-        text,
-        sentAt,
-      )
+      const nextModel = appendLine({ ...model, draft: '' }, 'me', text, sentAt)
       return [
         nextModel,
         [{ tag: 'transport-send', payload: encodeChatWireMessage(wire) }],
@@ -238,10 +236,8 @@ export function updateChatLab(
             break
           case 'connecting':
             break
-          default: {
-            const exhaustive: never = nextConnection
-            return [model, []]
-          }
+          default:
+            return assertNever(nextConnection)
         }
       }
 
@@ -276,9 +272,7 @@ export function updateChatLab(
       return [appendLine(model, 'peer', wire.text, wire.sentAt), []]
     }
 
-    default: {
-      const exhaustive: never = msg
-      return [model, []]
-    }
+    default:
+      return assertNever(msg)
   }
 }

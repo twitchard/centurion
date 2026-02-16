@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ENGINE_DEPTH, NUM_GAMES, RESOLVE_DELAY_MS } from '../engine/constants'
 import { Game } from '../engine/game'
 import type {

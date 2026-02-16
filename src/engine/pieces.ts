@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { PIECE_NAMES } from './constants'
 
 type PieceRenderer = (

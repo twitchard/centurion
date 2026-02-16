@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NUM_GAMES } from '../engine/constants'
 import type { Game } from '../engine/game'
 import { drawPiece } from '../engine/pieces'

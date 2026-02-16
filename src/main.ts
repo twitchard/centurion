@@ -1,13 +1,23 @@
 import './styles.css'
 
-import type { ParseResult } from './core/parsing/types'
 import { TrysteroTransportAdapter } from './adapters/trystero-transport'
-import { initAppState, type AppCmd, type AppMsg, type AppState } from './app/model'
+import {
+  type AppCmd,
+  type AppMsg,
+  type AppState,
+  initAppState,
+} from './app/model'
 import { updateApp } from './app/update'
+import type { ParseResult } from './core/parsing/types'
+import { assertNever } from './core/update'
 import { CenturionMatchController } from './features/centurion-match/controller'
-import type { ChatConnectionState, ChatLabModel, ChatLine } from './features/chat-lab/model'
-import { SuperpositionRenderer } from './features/superposition-lab/render-superposition'
+import type {
+  ChatConnectionState,
+  ChatLabModel,
+  ChatLine,
+} from './features/chat-lab/model'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
+import { SuperpositionRenderer } from './features/superposition-lab/render-superposition'
 
 function element(id: string): HTMLElement {
   const node = document.getElementById(id)
@@ -140,10 +150,9 @@ function runCommand(command: AppCmd): void {
         case 'transport-send':
           chatTransport.send(command.cmd.payload)
           return
-        default: {
-          const exhaustive: never = command.cmd
+        default:
+          assertNever(command.cmd)
           return
-        }
       }
     case 'centurion-match':
       if (command.cmd.tag === 'mount') {
@@ -154,16 +163,16 @@ function runCommand(command: AppCmd): void {
       return
     case 'superposition-lab':
       return
-    default: {
-      const exhaustive: never = command
+    default:
+      assertNever(command)
       return
-    }
   }
 }
 
 function setScreenVisibility(screen: AppState['tag']): void {
   screenMenu.style.display = screen === 'menu' ? 'flex' : 'none'
-  screenSuperposition.style.display = screen === 'superposition-lab' ? 'flex' : 'none'
+  screenSuperposition.style.display =
+    screen === 'superposition-lab' ? 'flex' : 'none'
   screenChat.style.display = screen === 'chat-lab' ? 'flex' : 'none'
   screenCenturion.style.display = screen === 'centurion-match' ? 'flex' : 'none'
 }
@@ -238,10 +247,8 @@ function chatConnectionSummary(connection: ChatConnectionState): string {
       return `Connected (${connection.role}) in room ${connection.code}`
     case 'error':
       return connection.message
-    default: {
-      const exhaustive: never = connection
-      return 'Unknown'
-    }
+    default:
+      return assertNever(connection)
   }
 }
 

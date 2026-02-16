@@ -99,7 +99,11 @@ export class SuperpositionRenderer {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'bottom'
     for (let col = 0; col < 8; col++) {
-      ctx.fillText(String.fromCharCode(97 + col), col * square + square - 5, 8 * square - 3)
+      ctx.fillText(
+        String.fromCharCode(97 + col),
+        col * square + square - 5,
+        8 * square - 3,
+      )
     }
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'

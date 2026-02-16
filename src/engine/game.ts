@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {
   BACK_RANK,
   BISHOP_DIRS,

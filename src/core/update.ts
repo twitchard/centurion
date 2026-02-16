@@ -15,3 +15,7 @@ export function withCmd<Model, Cmd>(
 ): UpdateResult<Model, Cmd> {
   return [model, [cmd]]
 }
+
+export function assertNever(value: never): never {
+  throw new Error(`Unexpected variant: ${JSON.stringify(value)}`)
+}

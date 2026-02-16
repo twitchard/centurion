@@ -30,7 +30,8 @@ export function buildSuperpositionRenderModel(
 
   for (const position of positions) {
     for (const placement of position.pieces) {
-      const pieceMap = bySquare.get(placement.square) ?? new Map<FenPieceSymbol, number>()
+      const pieceMap =
+        bySquare.get(placement.square) ?? new Map<FenPieceSymbol, number>()
       bySquare.set(placement.square, pieceMap)
       pieceMap.set(placement.piece, (pieceMap.get(placement.piece) ?? 0) + 1)
     }
@@ -42,7 +43,9 @@ export function buildSuperpositionRenderModel(
     for (const [piece, count] of pieceMap.entries()) {
       stacks.push({ piece, count })
     }
-    stacks.sort((left, right) => PIECE_ORDER[right.piece] - PIECE_ORDER[left.piece])
+    stacks.sort(
+      (left, right) => PIECE_ORDER[right.piece] - PIECE_ORDER[left.piece],
+    )
     layers.push({ square, stacks })
   }
   layers.sort((left, right) => left.square - right.square)

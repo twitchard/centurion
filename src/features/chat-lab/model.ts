@@ -4,8 +4,16 @@ export type ChatConnectionState =
   | { readonly tag: 'disconnected' }
   | { readonly tag: 'connecting'; readonly role: ChatRole }
   | { readonly tag: 'waiting'; readonly code: string }
-  | { readonly tag: 'connected'; readonly code: string; readonly role: ChatRole }
-  | { readonly tag: 'error'; readonly code: string | null; readonly message: string }
+  | {
+      readonly tag: 'connected'
+      readonly code: string
+      readonly role: ChatRole
+    }
+  | {
+      readonly tag: 'error'
+      readonly code: string | null
+      readonly message: string
+    }
 
 export type ChatLineAuthor = 'system' | 'me' | 'peer'
 

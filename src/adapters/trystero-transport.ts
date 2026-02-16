@@ -16,7 +16,6 @@ export class TrysteroTransportAdapter implements TransportPort {
   private sendFn: Sender | null = null
   private callbacks: TransportCallbacks = NOOP_TRANSPORT_CALLBACKS
   private currentStatus: TransportStatus = 'disconnected'
-  private peerConnected = false
   private readonly appId: string
 
   code = ''
@@ -59,7 +58,6 @@ export class TrysteroTransportAdapter implements TransportPort {
     this.room?.leave()
     this.room = null
     this.sendFn = null
-    this.peerConnected = false
     this.currentStatus = 'disconnected'
     this.code = ''
     this.isHost = false
@@ -88,13 +86,11 @@ export class TrysteroTransportAdapter implements TransportPort {
     })
 
     this.room.onPeerJoin(() => {
-      this.peerConnected = true
       this.setStatus('connected')
       this.callbacks.onPeerJoin()
     })
 
     this.room.onPeerLeave(() => {
-      this.peerConnected = false
       this.setStatus(this.isHost ? 'waiting' : 'disconnected')
       this.callbacks.onPeerLeave()
     })

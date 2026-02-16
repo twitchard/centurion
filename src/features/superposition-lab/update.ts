@@ -1,9 +1,9 @@
-import type { UpdateResult } from '../../core/update'
+import { type UpdateResult, assertNever } from '../../core/update'
 import {
-  buildSuperpositionLabModel,
   DEFAULT_SUPERPOSITION_ARROW_INPUT,
   DEFAULT_SUPERPOSITION_FEN_INPUT,
   type SuperpositionLabModel,
+  buildSuperpositionLabModel,
 } from './model'
 
 export type SuperpositionLabMsg =
@@ -30,9 +30,7 @@ export function updateSuperpositionLab(
         ),
         [],
       ]
-    default: {
-      const exhaustive: never = msg
-      return [model, []]
-    }
+    default:
+      return assertNever(msg)
   }
 }
