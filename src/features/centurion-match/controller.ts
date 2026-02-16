@@ -8,13 +8,13 @@ interface CenturionControllerOptions {
 function phaseCopy(phase: CenturionPhase): string {
   switch (phase) {
     case 'idle':
-      return 'Legacy Centurion runtime has been removed. The mode is now a clean state-machine shell.'
+      return 'Centurion Match is in preview while full gameplay is being rebuilt.'
     case 'active':
-      return 'Phase: active. Pure transition model is ready for the rebuilt match domain.'
+      return 'Match in progress.'
     case 'resolving':
-      return 'Phase: resolving. Side effects should be interpreted through ports only.'
+      return 'Resolving this turn...'
     case 'complete':
-      return 'Phase: complete. Match flow can now be rebuilt without legacy coupling.'
+      return 'Match complete.'
     default: {
       const exhaustive: never = phase
       throw new Error(`Unknown centurion phase: ${String(exhaustive)}`)
