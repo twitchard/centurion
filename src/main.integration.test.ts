@@ -245,50 +245,182 @@ function setupDom(): TestDom {
   const documentRef = new FakeDocument()
   const windowRef = new FakeWindow()
 
-  registerById(documentRef, 'screen-menu', (id, owner) => new FakeHTMLElement(id, owner))
-  registerById(documentRef, 'screen-superposition-lab', (id, owner) => new FakeHTMLElement(id, owner))
-  registerById(documentRef, 'screen-chat-lab', (id, owner) => new FakeHTMLElement(id, owner))
-  registerById(documentRef, 'screen-centurion-match', (id, owner) => new FakeHTMLElement(id, owner))
+  registerById(
+    documentRef,
+    'screen-menu',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'screen-superposition-lab',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'screen-chat-lab',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'screen-centurion-match',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
 
-  registerById(documentRef, 'menu-open-superposition', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'menu-open-chat', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'menu-open-centurion', (id, owner) => new FakeButtonElement(id, owner))
+  registerById(
+    documentRef,
+    'menu-open-superposition',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'menu-open-chat',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'menu-open-centurion',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
 
-  registerById(documentRef, 'superposition-back-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'superposition-reset-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'superposition-fen-input', (id, owner) => new FakeTextAreaElement(id, owner))
-  registerById(documentRef, 'superposition-arrow-input', (id, owner) => new FakeTextAreaElement(id, owner))
-  registerById(documentRef, 'superposition-fen-diagnostics', (id, owner) => new FakeHTMLElement(id, owner))
-  registerById(documentRef, 'superposition-arrow-diagnostics', (id, owner) => new FakeHTMLElement(id, owner))
+  registerById(
+    documentRef,
+    'superposition-back-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'superposition-reset-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'superposition-fen-input',
+    (id, owner) => new FakeTextAreaElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'superposition-arrow-input',
+    (id, owner) => new FakeTextAreaElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'superposition-fen-diagnostics',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'superposition-arrow-diagnostics',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
 
-  const boardPanel = registerById(documentRef, 'superposition-board-panel', (id, owner) => {
-    const panel = new FakeHTMLElement(id, owner)
-    panel.clientWidth = 400
-    panel.clientHeight = 400
-    return panel
-  })
+  const boardPanel = registerById(
+    documentRef,
+    'superposition-board-panel',
+    (id, owner) => {
+      const panel = new FakeHTMLElement(id, owner)
+      panel.clientWidth = 400
+      panel.clientHeight = 400
+      return panel
+    },
+  )
   void boardPanel
-  registerById(documentRef, 'superposition-canvas', (id, owner) => new FakeCanvasElement(id, owner))
+  registerById(
+    documentRef,
+    'superposition-canvas',
+    (id, owner) => new FakeCanvasElement(id, owner),
+  )
 
-  registerById(documentRef, 'chat-back-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'chat-create-room-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'chat-join-room-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'chat-disconnect-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'chat-send-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'chat-join-code-input', (id, owner) => new FakeInputElement(id, owner))
-  registerById(documentRef, 'chat-draft-input', (id, owner) => new FakeInputElement(id, owner))
-  registerById(documentRef, 'chat-room-code', (id, owner) => new FakeHTMLElement(id, owner))
-  registerById(documentRef, 'chat-status', (id, owner) => new FakeHTMLElement(id, owner))
-  registerById(documentRef, 'chat-log', (id, owner) => new FakeHTMLElement(id, owner))
+  registerById(
+    documentRef,
+    'chat-back-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'chat-create-room-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'chat-join-room-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'chat-disconnect-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'chat-send-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'chat-join-code-input',
+    (id, owner) => new FakeInputElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'chat-draft-input',
+    (id, owner) => new FakeInputElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'chat-room-code',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'chat-status',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'chat-log',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
 
-  registerById(documentRef, 'centurion-back-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'centurion-phase-badge', (id, owner) => new FakeHTMLElement(id, owner))
-  registerById(documentRef, 'centurion-status-copy', (id, owner) => new FakeHTMLElement(id, owner))
-  registerById(documentRef, 'centurion-controls', (id, owner) => new FakeHTMLElement(id, owner))
-  registerById(documentRef, 'centurion-to-active-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'centurion-to-resolving-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'centurion-to-complete-btn', (id, owner) => new FakeButtonElement(id, owner))
-  registerById(documentRef, 'centurion-reset-btn', (id, owner) => new FakeButtonElement(id, owner))
+  registerById(
+    documentRef,
+    'centurion-back-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'centurion-phase-badge',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'centurion-status-copy',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'centurion-controls',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'centurion-to-active-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'centurion-to-resolving-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'centurion-to-complete-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'centurion-reset-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
 
   vi.stubGlobal('document', documentRef as unknown as Document)
   vi.stubGlobal('window', windowRef as unknown as Window)
@@ -313,7 +445,9 @@ describe('main app wiring', () => {
     const superposition = documentRef.getElementById(
       'screen-superposition-lab',
     ) as FakeHTMLElement
-    const chat = documentRef.getElementById('screen-chat-lab') as FakeHTMLElement
+    const chat = documentRef.getElementById(
+      'screen-chat-lab',
+    ) as FakeHTMLElement
     const centurion = documentRef.getElementById(
       'screen-centurion-match',
     ) as FakeHTMLElement
