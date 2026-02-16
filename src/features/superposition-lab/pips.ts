@@ -3,7 +3,6 @@ export interface PipPosition {
   y: number
 }
 
-/** Predefined layouts for 1-9 items (like dice pips) */
 const LAYOUTS: Record<number, [number, number][]> = {
   1: [[0.5, 0.5]],
   2: [
@@ -68,19 +67,24 @@ const LAYOUTS: Record<number, [number, number][]> = {
   ],
 }
 
-/** Get pip positions for n items within a unit square */
 export function pipPositions(n: number): PipPosition[] {
-  if (n <= 0) return []
-  if (n <= 9) return LAYOUTS[n].map(([x, y]) => ({ x, y }))
+  if (n <= 0) {
+    return []
+  }
+  if (n <= 9) {
+    const layout = LAYOUTS[n]
+    if (layout !== undefined) {
+      return layout.map(([x, y]) => ({ x, y }))
+    }
+  }
 
-  // Grid layout for larger counts
   const cols = Math.ceil(Math.sqrt(n))
   const rows = Math.ceil(n / cols)
-  const pts: PipPosition[] = []
+  const points: PipPosition[] = []
   for (let i = 0; i < n; i++) {
-    const r = Math.floor(i / cols)
-    const c = i % cols
-    pts.push({ x: (c + 0.5) / cols, y: (r + 0.5) / rows })
+    const row = Math.floor(i / cols)
+    const col = i % cols
+    points.push({ x: (col + 0.5) / cols, y: (row + 0.5) / rows })
   }
-  return pts
+  return points
 }

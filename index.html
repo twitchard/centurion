@@ -2,65 +2,92 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Centurion Chess</title>
 </head>
 <body>
-
-  <!-- Start Screen -->
-  <div id="screen-start">
+  <section id="screen-menu" class="screen screen-menu">
     <h1>Centurion Chess</h1>
-    <p>100 simultaneous games &middot; place arrows &middot; shape the superposition</p>
-    <div class="start-buttons">
-      <button class="btn btn-primary" id="btn-pass-play">Pass &amp; Play</button>
-      <button class="btn btn-secondary" id="btn-create-room">Create Room</button>
-      <button class="btn btn-outline" id="btn-join-room">Join Room</button>
+    <p class="subtitle">Choose your mode</p>
+    <div class="menu-buttons">
+      <button class="btn btn-primary" id="menu-open-superposition">Superposition Board Lab</button>
+      <button class="btn btn-secondary" id="menu-open-chat">P2P Chat Lab</button>
+      <button class="btn btn-outline" id="menu-open-centurion">Centurion Match</button>
     </div>
-  </div>
+  </section>
 
-  <!-- Create Room Lobby -->
-  <div id="screen-lobby-create">
-    <div class="lobby-title">Room Created</div>
-    <div class="room-code" id="room-code-display">------</div>
-    <div class="share-btn-row">
-      <button class="btn btn-primary" id="share-btn">Share Code</button>
-    </div>
-    <div class="lobby-status" id="create-status">
-      <span class="spinner">Waiting for opponent...</span>
-    </div>
-    <button class="lobby-back" id="create-back">← Back</button>
-  </div>
+  <section id="screen-superposition-lab" class="screen screen-feature">
+    <header class="feature-header">
+      <button class="text-btn" id="superposition-back-btn">← Menu</button>
+      <h2>Superposition Board Lab</h2>
+      <button class="text-btn" id="superposition-reset-btn">Reset fixtures</button>
+    </header>
+    <div class="feature-layout">
+      <div class="panel controls-panel">
+        <label for="superposition-fen-input">FEN positions (delimiter: newline or semicolon)</label>
+        <textarea id="superposition-fen-input" spellcheck="false"></textarea>
+        <ul id="superposition-fen-diagnostics" class="diagnostics"></ul>
 
-  <!-- Join Room Lobby -->
-  <div id="screen-lobby-join">
-    <div class="lobby-title">Join Room</div>
-    <input class="code-input" id="code-input" type="text" inputmode="numeric"
-           maxlength="6" placeholder="000000" autocomplete="off">
-    <button class="btn btn-primary" id="join-btn">Join</button>
-    <div class="lobby-status" id="join-status"></div>
-    <button class="lobby-back" id="join-back">← Back</button>
-  </div>
+        <label for="superposition-arrow-input">Arrow coordinates (e.g. e2->e4)</label>
+        <textarea id="superposition-arrow-input" spellcheck="false"></textarea>
+        <ul id="superposition-arrow-diagnostics" class="diagnostics"></ul>
+      </div>
 
-  <!-- Game Screen -->
-  <div id="app">
-    <div class="board-wrap">
-      <div class="board-outer" id="boardOuter">
-        <canvas id="bc"></canvas>
-        <canvas id="ov"></canvas>
+      <div class="panel board-panel" id="superposition-board-panel">
+        <canvas id="superposition-canvas"></canvas>
       </div>
     </div>
+  </section>
 
-    <div class="bottom">
-      <button class="pass-btn" id="pass-btn">Pass</button>
+  <section id="screen-chat-lab" class="screen screen-feature">
+    <header class="feature-header">
+      <button class="text-btn" id="chat-back-btn">← Menu</button>
+      <h2>P2P Chat Lab</h2>
+      <span></span>
+    </header>
+    <div class="feature-layout chat-layout">
+      <div class="panel controls-panel">
+        <div class="chat-meta">
+          <div><strong>Room:</strong> <span id="chat-room-code">------</span></div>
+          <div id="chat-status">Disconnected</div>
+        </div>
+
+        <div class="chat-controls">
+          <button class="btn btn-secondary" id="chat-create-room-btn">Create Room</button>
+          <div class="join-row">
+            <input id="chat-join-code-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000">
+            <button class="btn btn-outline" id="chat-join-room-btn">Join</button>
+          </div>
+          <button class="btn btn-outline" id="chat-disconnect-btn">Disconnect</button>
+        </div>
+      </div>
+
+      <div class="panel chat-panel">
+        <ul id="chat-log" class="chat-log"></ul>
+        <div class="chat-compose">
+          <input id="chat-draft-input" type="text" placeholder="Type a message...">
+          <button class="btn btn-primary" id="chat-send-btn">Send</button>
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <!-- Game Over Overlay -->
-  <div id="screen-game-over">
-    <div id="goTitle"></div>
-    <div id="goSub"></div>
-    <button id="new-match-btn">New Match</button>
-  </div>
+  <section id="screen-centurion-match" class="screen screen-feature">
+    <header class="feature-header">
+      <button class="text-btn" id="centurion-back-btn">← Menu</button>
+      <h2>Centurion Match</h2>
+      <span id="centurion-phase-badge" class="phase-badge"></span>
+    </header>
+    <div class="centurion-shell panel">
+      <p id="centurion-status-copy"></p>
+      <div id="centurion-controls" class="centurion-controls">
+        <button class="btn btn-primary" id="centurion-to-active-btn">Start Match</button>
+        <button class="btn btn-secondary" id="centurion-to-resolving-btn">Resolve Turn</button>
+        <button class="btn btn-outline" id="centurion-to-complete-btn">Finish Match</button>
+        <button class="btn btn-outline" id="centurion-reset-btn">New Match</button>
+      </div>
+    </div>
+  </section>
 
   <script type="module" src="/src/main.ts"></script>
 </body>
