@@ -566,8 +566,8 @@ describe('Game - make/undo move consistency', () => {
     const halfmoveBefore = g.halfmove
 
     const move = g.legalMoves()[0]
-    g.makeMove(move)
-    g.undoMove(move)
+    const undo = g.makeMove(move)
+    g.undoMove(undo)
 
     expect(Array.from(g.board)).toEqual(Array.from(boardBefore))
     expect(g.turn).toBe(turnBefore)
@@ -582,22 +582,20 @@ describe('Game - make/undo move consistency', () => {
 
     // Play a few moves and undo them all
     const moves = g.legalMoves().slice(0, 5)
-    const played: typeof moves = []
+    const undos: import('./types').UndoInfo[] = []
 
     for (const m of moves) {
-      g.makeMove(m)
-      played.push(m)
+      undos.push(g.makeMove(m))
       // Make a response move
       const response = g.legalMoves()[0]
       if (response) {
-        g.makeMove(response)
-        played.push(response)
+        undos.push(g.makeMove(response))
       }
     }
 
     // Undo all in reverse
-    for (let i = played.length - 1; i >= 0; i--) {
-      g.undoMove(played[i])
+    for (let i = undos.length - 1; i >= 0; i--) {
+      g.undoMove(undos[i])
     }
 
     expect(Array.from(g.board)).toEqual(Array.from(boardBefore))
@@ -617,12 +615,12 @@ describe('Game - make/undo move consistency', () => {
 
     const boardBefore = Int8Array.from(g.board)
     const ep = g.legalMoves().find((m) => m.isEp)!
-    g.makeMove(ep)
+    const undoEp = g.makeMove(ep)
 
     // After ep, d5 pawn should be gone
     expect(g.board[sq(3, 4)]).toBe(0)
 
-    g.undoMove(ep)
+    g.undoMove(undoEp)
 
     // Should be fully restored
     expect(Array.from(g.board)).toEqual(Array.from(boardBefore))
@@ -639,12 +637,12 @@ describe('Game - make/undo move consistency', () => {
 
     const boardBefore = Int8Array.from(g.board)
     const castle = g.legalMoves().find((m) => m.castle === 'K')!
-    g.makeMove(castle)
+    const undoCastle = g.makeMove(castle)
 
     expect(g.board[sq(6, 0)]).toBe(KING)
     expect(g.board[sq(5, 0)]).toBe(ROOK)
 
-    g.undoMove(castle)
+    g.undoMove(undoCastle)
 
     expect(Array.from(g.board)).toEqual(Array.from(boardBefore))
     expect(g.castling).toBe(0b1000)
@@ -663,11 +661,11 @@ describe('Game - make/undo move consistency', () => {
     const promote = g
       .legalMoves()
       .find((m) => m.from === sq(0, 6) && m.to === sq(0, 7))!
-    g.makeMove(promote)
+    const undoPromote = g.makeMove(promote)
 
     expect(g.board[sq(0, 7)]).toBe(QUEEN)
 
-    g.undoMove(promote)
+    g.undoMove(undoPromote)
 
     expect(Array.from(g.board)).toEqual(Array.from(boardBefore))
   })

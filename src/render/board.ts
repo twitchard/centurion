@@ -1,3 +1,4 @@
+import { NUM_GAMES } from '../engine/constants'
 import type { Game } from '../engine/game'
 import { drawPiece } from '../engine/pieces'
 import type { BoardCoord, PlayerNumber, ViewMode } from '../state/types'
@@ -7,8 +8,6 @@ const LIGHT = '#f0d9b5'
 const DARK = '#b58863'
 const SEL_LIGHT = '#e8e066'
 const SEL_DARK = '#baca44'
-
-const NUM_GAMES = 100
 
 interface PieceEntry {
   isWhite: boolean

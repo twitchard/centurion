@@ -1,3 +1,4 @@
+import { ENGINE_DEPTH, NUM_GAMES, RESOLVE_DELAY_MS } from '../engine/constants'
 import { Game } from '../engine/game'
 import type {
   Arrow,
@@ -9,8 +10,6 @@ import type {
   ResolvedMove,
   ViewMode,
 } from './types'
-
-const NUM_GAMES = 100
 
 /** Convert visual coords to board square, accounting for board flip */
 function fromVisual(col: number, row: number, flip: boolean): number {
@@ -30,7 +29,7 @@ function arrowToMove(
 }
 
 function delay(): Promise<void> {
-  return new Promise((r) => setTimeout(r, 16))
+  return new Promise((r) => setTimeout(r, RESOLVE_DELAY_MS))
 }
 
 export class MatchState {
@@ -115,20 +114,32 @@ export class MatchState {
     )
   }
 
-  /** Place an arrow and trigger resolution */
-  private placeArrow(fc: number, fr: number, tc: number, tr: number): void {
-    // Stack or add arrow
-    let stacked = false
+  /** Update scores for any newly finished games */
+  private updateScores(): void {
+    for (let gi = 0; gi < NUM_GAMES; gi++) {
+      const g = this.games[gi]
+      if (g.result && !g.scored) {
+        g.scored = true
+        if (g.result === 1) this.scores[gi < 50 ? 0 : 1]++
+        else if (g.result === -1) this.scores[gi < 50 ? 1 : 0]++
+      }
+    }
+  }
+
+  /** Add or stack an arrow */
+  private addArrow(fc: number, fr: number, tc: number, tr: number): void {
     for (const a of this.arrows) {
       if (a.fc === fc && a.fr === fr && a.tc === tc && a.tr === tr) {
         a.stack++
-        stacked = true
-        break
+        return
       }
     }
-    if (!stacked) {
-      this.arrows.push({ fc, fr, tc, tr, player: this.currentPlayer, stack: 1 })
-    }
+    this.arrows.push({ fc, fr, tc, tr, player: this.currentPlayer, stack: 1 })
+  }
+
+  /** Place an arrow and trigger resolution */
+  private placeArrow(fc: number, fr: number, tc: number, tr: number): void {
+    this.addArrow(fc, fr, tc, tr)
     this.selectedSquare = null
     this.callbacks.onStateChange()
 
@@ -160,17 +171,7 @@ export class MatchState {
 
   /** Receive an arrow from a remote peer (host receives this) */
   receiveArrow(fc: number, fr: number, tc: number, tr: number): void {
-    let stacked = false
-    for (const a of this.arrows) {
-      if (a.fc === fc && a.fr === fr && a.tc === tc && a.tr === tr) {
-        a.stack++
-        stacked = true
-        break
-      }
-    }
-    if (!stacked) {
-      this.arrows.push({ fc, fr, tc, tr, player: this.currentPlayer, stack: 1 })
-    }
+    this.addArrow(fc, fr, tc, tr)
     this.callbacks.onStateChange()
 
     // Host resolves after receiving guest's arrow
@@ -234,7 +235,7 @@ export class MatchState {
 
     for (let gi = 0; gi < NUM_GAMES; gi++) {
       if (this.games[gi].result || advanced.has(gi)) continue
-      const best = this.games[gi].bestMove(3)
+      const best = this.games[gi].bestMove(ENGINE_DEPTH)
       if (best) {
         this.games[gi].makeMove(best)
         this.games[gi].checkEnd()
@@ -244,15 +245,7 @@ export class MatchState {
       }
     }
 
-    // Update scores
-    for (let gi = 0; gi < NUM_GAMES; gi++) {
-      const g = this.games[gi]
-      if (g.result && !g.scored) {
-        g.scored = true
-        if (g.result === 1) this.scores[gi < 50 ? 0 : 1]++
-        else if (g.result === -1) this.scores[gi < 50 ? 1 : 0]++
-      }
-    }
+    this.updateScores()
 
     this.ply++
     this.currentPlayer = this.currentPlayer === 1 ? 2 : 1
@@ -281,15 +274,7 @@ export class MatchState {
       }
     }
 
-    // Update scores
-    for (let gi = 0; gi < NUM_GAMES; gi++) {
-      const g = this.games[gi]
-      if (g.result && !g.scored) {
-        g.scored = true
-        if (g.result === 1) this.scores[gi < 50 ? 0 : 1]++
-        else if (g.result === -1) this.scores[gi < 50 ? 1 : 0]++
-      }
-    }
+    this.updateScores()
 
     this.ply++
     this.currentPlayer = this.currentPlayer === 1 ? 2 : 1

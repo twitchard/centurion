@@ -21,6 +21,7 @@ import {
   QUEEN,
   ROOK,
   type Square,
+  type UndoInfo,
 } from './types'
 
 function file(sq: Square): number {
@@ -284,30 +285,35 @@ export class Game {
     return moves
   }
 
-  makeMove(m: Move): void {
+  makeMove(m: Move): UndoInfo {
     const c = this.turn
-    m._captured = this.board[m.to]
-    m._castling = this.castling
-    m._ep = this.ep
-    m._halfmove = this.halfmove
+    const undo: UndoInfo = {
+      move: m,
+      captured: this.board[m.to],
+      castling: this.castling,
+      ep: this.ep,
+      halfmove: this.halfmove,
+      promoted: false,
+      epCapture: 0,
+    }
 
     const type = Math.abs(this.board[m.from])
     this.board[m.to] = this.board[m.from]
     this.board[m.from] = 0
 
     this.halfmove++
-    if (type === PAWN || m._captured) this.halfmove = 0
+    if (type === PAWN || undo.captured) this.halfmove = 0
 
     // Promotion (always queen)
     if (type === PAWN && (rank(m.to) === 0 || rank(m.to) === 7)) {
       this.board[m.to] = c * QUEEN
-      m._promoted = true
+      undo.promoted = true
     }
 
     // En passant capture
     if (m.isEp) {
       const epSq = sq(file(m.to), rank(m.from))
-      m._epCapture = this.board[epSq]
+      undo.epCapture = this.board[epSq]
       this.board[epSq] = 0
     }
 
@@ -348,20 +354,22 @@ export class Game {
     this.turn = -c as Color
     this.ply++
     this.posHistory.push(this.posKey())
+    return undo
   }
 
-  undoMove(m: Move): void {
+  undoMove(info: UndoInfo): void {
     this.posHistory.pop()
     this.ply--
     this.turn = -this.turn as Color
     const c = this.turn
+    const m = info.move
 
-    if (m._promoted) this.board[m.to] = c * PAWN
+    if (info.promoted) this.board[m.to] = c * PAWN
     this.board[m.from] = this.board[m.to]
-    this.board[m.to] = m._captured!
+    this.board[m.to] = info.captured
 
     if (m.isEp) {
-      this.board[sq(file(m.to), rank(m.from))] = m._epCapture!
+      this.board[sq(file(m.to), rank(m.from))] = info.epCapture
     }
 
     if (m.castle) {
@@ -375,9 +383,9 @@ export class Game {
       }
     }
 
-    this.castling = m._castling!
-    this.ep = m._ep!
-    this.halfmove = m._halfmove!
+    this.castling = info.castling
+    this.ep = info.ep
+    this.halfmove = info.halfmove
   }
 
   /** Generate legal moves only */
@@ -385,9 +393,9 @@ export class Game {
     const c = this.turn
     const legal: Move[] = []
     for (const m of this.pseudoMoves()) {
-      this.makeMove(m)
+      const undo = this.makeMove(m)
       if (!this.isInCheck(c)) legal.push(m)
-      this.undoMove(m)
+      this.undoMove(undo)
     }
     return legal
   }
@@ -437,9 +445,9 @@ export class Game {
 
     let alpha = initialAlpha
     for (const m of moves) {
-      this.makeMove(m)
+      const undo = this.makeMove(m)
       const score = -this.alphaBeta(depth - 1, -beta, -alpha)
-      this.undoMove(m)
+      this.undoMove(undo)
       if (score >= beta) return beta
       if (score > alpha) alpha = score
     }
@@ -460,13 +468,13 @@ export class Game {
     let bestScore = Number.NEGATIVE_INFINITY
 
     for (const m of moves) {
-      this.makeMove(m)
+      const undo = this.makeMove(m)
       const score = -this.alphaBeta(
         depth - 1,
         Number.NEGATIVE_INFINITY,
         Number.POSITIVE_INFINITY,
       )
-      this.undoMove(m)
+      this.undoMove(undo)
       if (score > bestScore || (score === bestScore && Math.random() < 0.25)) {
         bestScore = score
         best = m
