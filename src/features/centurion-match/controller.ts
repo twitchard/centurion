@@ -37,7 +37,7 @@ export class CenturionMatchController {
   mount(): void {
     this.mounted = true
     this.bindEventsOnce()
-    this.phase = 'idle'
+    this.phase = 'active'
     this.render()
   }
 

@@ -222,6 +222,12 @@ class FakeCanvasElement extends FakeHTMLElement {
 
 class FakeWindow {
   readonly devicePixelRatio = 1
+  readonly location = { pathname: '/labs' }
+  readonly history = {
+    pushState: (): void => {
+      return
+    },
+  }
   private readonly listeners = new Map<string, ((event: unknown) => void)[]>()
 
   addEventListener(type: string, listener: (event: unknown) => void): void {
@@ -253,7 +259,7 @@ function setupDom(): TestDom {
 
   registerById(
     documentRef,
-    'screen-menu',
+    'screen-labs-menu',
     (id, owner) => new FakeHTMLElement(id, owner),
   )
   registerById(
@@ -274,17 +280,22 @@ function setupDom(): TestDom {
 
   registerById(
     documentRef,
-    'menu-open-superposition',
+    'labs-menu-open-superposition',
     (id, owner) => new FakeButtonElement(id, owner),
   )
   registerById(
     documentRef,
-    'menu-open-chat',
+    'labs-menu-open-chat',
     (id, owner) => new FakeButtonElement(id, owner),
   )
   registerById(
     documentRef,
-    'menu-open-centurion',
+    'labs-menu-open-centurion',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'labs-menu-back-btn',
     (id, owner) => new FakeButtonElement(id, owner),
   )
 
@@ -447,7 +458,9 @@ describe('main app wiring', () => {
 
     await import('./main')
 
-    const menu = documentRef.getElementById('screen-menu') as FakeHTMLElement
+    const labsMenu = documentRef.getElementById(
+      'screen-labs-menu',
+    ) as FakeHTMLElement
     const superposition = documentRef.getElementById(
       'screen-superposition-lab',
     ) as FakeHTMLElement
@@ -458,13 +471,13 @@ describe('main app wiring', () => {
       'screen-centurion-match',
     ) as FakeHTMLElement
 
-    expect(menu.style.display).toBe('flex')
+    expect(labsMenu.style.display).toBe('flex')
     expect(superposition.style.display).toBe('none')
     expect(chat.style.display).toBe('none')
     expect(centurion.style.display).toBe('none')
 
     const openSuperposition = documentRef.getElementById(
-      'menu-open-superposition',
+      'labs-menu-open-superposition',
     ) as FakeButtonElement
     openSuperposition.click()
 
@@ -475,7 +488,7 @@ describe('main app wiring', () => {
       'superposition-arrow-input',
     ) as FakeTextAreaElement
 
-    expect(menu.style.display).toBe('none')
+    expect(labsMenu.style.display).toBe('none')
     expect(superposition.style.display).toBe('flex')
     expect(fenInput.value).toBe(DEFAULT_SUPERPOSITION_FEN_INPUT)
     expect(arrowInput.value).toBe(DEFAULT_SUPERPOSITION_ARROW_INPUT)
@@ -484,11 +497,11 @@ describe('main app wiring', () => {
       'superposition-back-btn',
     ) as FakeButtonElement
     backFromSuperposition.click()
-    expect(menu.style.display).toBe('flex')
+    expect(labsMenu.style.display).toBe('flex')
     expect(superposition.style.display).toBe('none')
 
     const openCenturion = documentRef.getElementById(
-      'menu-open-centurion',
+      'labs-menu-open-centurion',
     ) as FakeButtonElement
     openCenturion.click()
 
@@ -496,6 +509,6 @@ describe('main app wiring', () => {
       'centurion-phase-badge',
     ) as FakeHTMLElement
     expect(centurion.style.display).toBe('flex')
-    expect(phaseBadge.textContent).toBe('IDLE')
+    expect(phaseBadge.textContent).toBe('ACTIVE')
   })
 })

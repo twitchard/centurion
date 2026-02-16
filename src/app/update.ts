@@ -46,6 +46,25 @@ export function updateApp(
   msg: AppMsg,
 ): UpdateResult<AppState, AppCmd> {
   switch (msg.tag) {
+    case 'navigate': {
+      const path = msg.path
+      if (path === '/labs') {
+        return [{ tag: 'labs-menu' }, cleanupCommandsFor(state)]
+      }
+      const nextState: AppState = {
+        tag: 'centurion-match',
+        model: initCenturionMatchModel(),
+      }
+      const cleanup = cleanupCommandsFor(state)
+      if (cleanup.length > 0) {
+        return [
+          nextState,
+          [...cleanup, { tag: 'centurion-match', cmd: { tag: 'mount' } }],
+        ]
+      }
+      return routeToCenturion(nextState)
+    }
+
     case 'open-superposition-lab':
       return [
         { tag: 'superposition-lab', model: initSuperpositionLabModel() },
@@ -73,8 +92,8 @@ export function updateApp(
       return routeToCenturion(nextState)
     }
 
-    case 'back-to-menu':
-      return [{ tag: 'menu' }, cleanupCommandsFor(state)]
+    case 'back-to-labs-menu':
+      return [{ tag: 'labs-menu' }, cleanupCommandsFor(state)]
 
     case 'superposition-lab-msg': {
       if (state.tag !== 'superposition-lab') {
