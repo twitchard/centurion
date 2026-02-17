@@ -94,6 +94,12 @@ class FakeCanvasContext {
   restore(): void {
     return
   }
+  translate(): void {
+    return
+  }
+  rotate(): void {
+    return
+  }
 }
 
 class FakeDocument {
