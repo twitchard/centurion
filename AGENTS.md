@@ -2,6 +2,14 @@
 
 This file is tool-agnostic on purpose and is intended for any coding agent working in this repo.
 
+## Package manager policy (required)
+
+Use Bun for dependency management and script execution in this repo.
+
+- Use `bun install` (not `npm install`).
+- Use `bun run <script>` (not `npm run <script>` or `npx`).
+- If Bun is unavailable in the current environment, treat that as a blocker and report it clearly instead of switching package managers.
+
 ## No temporary stopgaps policy (required)
 
 Do not leave temporary stopgaps in committed code.
