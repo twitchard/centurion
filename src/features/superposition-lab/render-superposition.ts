@@ -4,7 +4,6 @@ import type {
   PieceStack,
   SuperpositionRenderModel,
 } from '../../core/superposition/types'
-import { pipPositions } from './pips'
 
 const BOARD_DARK = '#2d2a26'
 const BOARD_LIGHT = '#38342f'
@@ -133,90 +132,132 @@ export class SuperpositionRenderer {
     squareX: number,
     squareY: number,
   ): void {
+    if (stacks.length === 0) {
+      return
+    }
+
     const ctx = this.context
     const square = this.squareSize
-    const pips = pipPositions(stacks.length)
-    const padding = square * 0.08
-    const innerSize = square - padding * 2
+    const centerX = squareX + square / 2
+    const centerY = squareY + square / 2
+    const pieceTypeCount = stacks.length
+    const orbitRadius = this.orbitRadius(pieceTypeCount)
+    const pieceSize = this.pieceSize(pieceTypeCount, orbitRadius)
 
-    for (let index = 0; index < stacks.length; index++) {
+    for (let index = 0; index < pieceTypeCount; index++) {
       const stack = stacks[index]
-      const pip = pips[index]
-      if (stack === undefined || pip === undefined) {
+      if (stack === undefined) {
         continue
       }
 
       const style = PIECE_GLYPHS[stack.piece]
-      const groupSize = stacks.length
-      const pieceScale =
-        groupSize <= 1
-          ? 0.88
-          : groupSize <= 4
-            ? 0.44
-            : groupSize <= 6
-              ? 0.35
-              : 0.3
-
-      const pieceSize = square * pieceScale
-      const pieceX = squareX + padding + pip.x * innerSize - pieceSize / 2
-      const pieceY = squareY + padding + pip.y * innerSize - pieceSize / 2
+      const slotAngle = this.slotAngle(index, pieceTypeCount)
+      const pieceRotation = slotAngle + Math.PI / 2
+      const anchorX = centerX + Math.cos(slotAngle) * orbitRadius
+      const anchorY = centerY + Math.sin(slotAngle) * orbitRadius
       const opacity = Math.min(1, Math.max(0.12, stack.count / totalPositions))
 
       ctx.save()
       ctx.globalAlpha = opacity
-      this.drawPieceGlyph(style, pieceX, pieceY, pieceSize)
+      ctx.translate(anchorX, anchorY)
+      ctx.rotate(pieceRotation)
+      this.drawPieceGlyph(style, pieceSize)
+      this.drawCountBadge(stack.count, pieceSize, pieceRotation, opacity)
       ctx.restore()
-
-      if (stack.count > 1 && groupSize <= 5) {
-        this.drawCountBadge(stack.count, pieceX, pieceY, pieceSize, opacity)
-      }
     }
+  }
+
+  private slotAngle(index: number, total: number): number {
+    if (total <= 1) {
+      return -Math.PI / 2
+    }
+    return -Math.PI / 2 + (index * Math.PI * 2) / total
+  }
+
+  private orbitRadius(pieceTypeCount: number): number {
+    const square = this.squareSize
+    if (pieceTypeCount <= 1) {
+      return 0
+    }
+    if (pieceTypeCount <= 4) {
+      return square * 0.18
+    }
+    if (pieceTypeCount <= 8) {
+      return square * 0.21
+    }
+    return square * 0.24
+  }
+
+  private pieceSize(pieceTypeCount: number, orbitRadius: number): number {
+    const square = this.squareSize
+    if (pieceTypeCount <= 1) {
+      return square * 0.72
+    }
+
+    const margin = square * 0.08
+    const maxOrbit = square / 2 - margin
+    const arcLength = (Math.PI * 2 * orbitRadius) / pieceTypeCount
+    const radialSpan = Math.max(0, (maxOrbit - orbitRadius) * 2)
+    const maxSize = Math.min(square * 0.4, arcLength * 0.82, radialSpan * 0.92)
+    return Math.max(square * 0.1, maxSize)
   }
 
   private drawCountBadge(
     count: number,
-    pieceX: number,
-    pieceY: number,
     pieceSize: number,
+    pieceRotation: number,
     opacity: number,
   ): void {
     const ctx = this.context
-    const badgeSize = Math.max(8, pieceSize * 0.32)
-    const badgeX = pieceX + pieceSize - badgeSize * 0.3
-    const badgeY = pieceY + pieceSize - badgeSize * 0.3
+    const badgeSize = Math.max(9, pieceSize * 0.34)
+    const badgeY = -pieceSize * 0.6
 
     ctx.save()
+    ctx.translate(0, badgeY)
+    ctx.rotate(-pieceRotation)
     ctx.globalAlpha = Math.min(1, opacity + 0.25)
     ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
     ctx.beginPath()
-    ctx.arc(badgeX, badgeY, badgeSize * 0.58, 0, Math.PI * 2)
+    ctx.arc(0, 0, badgeSize * 0.58, 0, Math.PI * 2)
     ctx.fill()
     ctx.fillStyle = '#ffffff'
     ctx.font = `bold ${badgeSize * 0.72}px sans-serif`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(count > 99 ? '99+' : `${count}`, badgeX, badgeY)
+    ctx.fillText(count > 99 ? '99+' : `${count}`, 0, 0)
     ctx.restore()
   }
 
-  private drawPieceGlyph(
-    style: PieceGlyphStyle,
-    pieceX: number,
-    pieceY: number,
-    pieceSize: number,
-  ): void {
+  private drawPieceGlyph(style: PieceGlyphStyle, pieceSize: number): void {
     const ctx = this.context
-    const centerX = pieceX + pieceSize / 2
-    const centerY = pieceY + pieceSize / 2
+    const radius = pieceSize / 2
+
+    // Render a token-style base for readability on dark/light squares.
+    ctx.beginPath()
+    ctx.arc(0, 0, radius, 0, Math.PI * 2)
+    ctx.fillStyle = style.isWhite ? '#f5f5f5' : '#171717'
+    ctx.fill()
+    ctx.lineWidth = Math.max(1, pieceSize * 0.07)
+    ctx.strokeStyle = style.isWhite ? '#2c2c2c' : '#dedede'
+    ctx.stroke()
+
+    ctx.beginPath()
+    ctx.arc(0, radius * 0.34, radius * 0.42, 0, Math.PI * 2)
+    ctx.fillStyle = style.isWhite
+      ? 'rgba(0, 0, 0, 0.15)'
+      : 'rgba(255, 255, 255, 0.16)'
+    ctx.fill()
 
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.font = `700 ${Math.max(12, pieceSize * 0.9)}px "Noto Sans Symbols", "Segoe UI Symbol", sans-serif`
-    ctx.fillStyle = style.isWhite ? '#f7f7f7' : '#111111'
-    ctx.strokeStyle = style.isWhite ? '#202020' : '#d0d0d0'
+    ctx.font = `700 ${Math.max(10, pieceSize * 0.84)}px "DejaVu Sans", "Noto Sans Symbols 2", "Noto Sans Symbols", "Segoe UI Symbol", sans-serif`
+    ctx.fillStyle = style.isWhite ? '#171717' : '#f2f2f2'
+    ctx.strokeStyle = style.isWhite
+      ? 'rgba(255, 255, 255, 0.45)'
+      : 'rgba(0, 0, 0, 0.5)'
     ctx.lineWidth = Math.max(1, pieceSize * 0.06)
-    ctx.strokeText(style.glyph, centerX, centerY + pieceSize * 0.02)
-    ctx.fillText(style.glyph, centerX, centerY + pieceSize * 0.02)
+    ctx.strokeText(style.glyph, 0, pieceSize * 0.03)
+    ctx.fillText(style.glyph, 0, pieceSize * 0.03)
   }
 
   private drawArrows(arrows: readonly ArrowSegment[]): void {

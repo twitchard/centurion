@@ -14,6 +14,23 @@ See: **[docs/radical-architecture-roadmap.md](./docs/radical-architecture-roadma
 
 This roadmap replaces the older incremental TODO list.
 
+## CI checks (local mirror)
+
+The GitHub Actions workflow runs the following validation checks on PRs:
+
+1. `bun run check`
+2. `bun run typecheck`
+3. `bun run test`
+4. `bun run build`
+
+You can run the same sequence locally with one Bun task:
+
+```bash
+bun run ci:all
+```
+
+See [`AGENTS.md`](./AGENTS.md) for agent-focused workflow notes (Cursor + Claude Code Web).
+
 ## Legacy gameplay rules (current implementation target)
 
 ### Board and display
