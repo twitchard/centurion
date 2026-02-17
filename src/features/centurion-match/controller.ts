@@ -1,37 +1,48 @@
+import type {
+  TransportCallbacks,
+  TransportPort,
+  TransportStatus,
+} from '../../ports/transport'
+
 const LOBBY_COPY = 'Start a new match or join one with a code.'
 const INVALID_JOIN_CODE_COPY = 'Enter a valid 6-digit match code.'
+const SELF_JOIN_CODE_COPY =
+  'You already created this match code on this device. Share it with your opponent instead.'
+const TRANSPORT_ERROR_COPY =
+  'Unable to connect to a match. Check your connection and try again.'
 
 interface CenturionControllerOptions {
   readonly root: HTMLElement
   readonly onRequestExit: () => void
+  readonly transport: TransportPort
 }
 
 function normaliseCode(value: string): string {
   return value.replace(/\D/g, '').slice(0, 6)
 }
 
-function generateCode(): string {
-  return Math.floor(Math.random() * 1_000_000)
-    .toString()
-    .padStart(6, '0')
-}
-
 export class CenturionMatchController {
   private readonly root: HTMLElement
   private readonly onRequestExit: () => void
+  private readonly transport: TransportPort
   private bound = false
   private mounted = false
+  private connectionStatus: TransportStatus = 'disconnected'
   private statusCopy = LOBBY_COPY
   private joinCode = ''
 
   constructor(options: CenturionControllerOptions) {
     this.root = options.root
     this.onRequestExit = options.onRequestExit
+    this.transport = options.transport
+    this.transport.setCallbacks(this.transportCallbacks())
   }
 
   mount(): void {
     this.mounted = true
     this.bindEventsOnce()
+    this.transport.disconnect()
+    this.connectionStatus = 'disconnected'
     this.statusCopy = LOBBY_COPY
     this.joinCode = ''
     this.render()
@@ -39,6 +50,8 @@ export class CenturionMatchController {
 
   unmount(): void {
     this.mounted = false
+    this.transport.disconnect()
+    this.connectionStatus = 'disconnected'
     this.statusCopy = LOBBY_COPY
     this.joinCode = ''
     this.render()
@@ -54,10 +67,8 @@ export class CenturionMatchController {
       this.onRequestExit()
     })
     this.button('centurion-new-match-btn').addEventListener('click', () => {
-      const code = generateCode()
-      this.joinCode = code
-      this.statusCopy = `New match created. Share code ${code} to invite your opponent.`
-      this.render()
+      this.joinCode = ''
+      this.transport.createRoom()
     })
 
     const joinCodeInput = this.input('centurion-join-code-input')
@@ -77,8 +88,16 @@ export class CenturionMatchController {
         this.render()
         return
       }
-      this.statusCopy = `Joining match ${code}...`
-      this.render()
+      if (
+        this.transport.isHost &&
+        this.connectionStatus !== 'disconnected' &&
+        this.transport.code === code
+      ) {
+        this.statusCopy = SELF_JOIN_CODE_COPY
+        this.render()
+        return
+      }
+      this.transport.joinRoom(code)
     })
   }
 
@@ -91,9 +110,61 @@ export class CenturionMatchController {
     }
 
     const joinCodeInput = this.input('centurion-join-code-input')
+    const joinMatchButton = this.button('centurion-join-match-btn')
     body.textContent = this.statusCopy
+    joinMatchButton.disabled =
+      this.joinCode.length !== 6 ||
+      (!this.transport.isHost && this.connectionStatus === 'connecting')
     if (joinCodeInput.value !== this.joinCode) {
       joinCodeInput.value = this.joinCode
+    }
+  }
+
+  private transportCallbacks(): TransportCallbacks {
+    return {
+      onStatusChange: (status) => {
+        this.connectionStatus = status
+        this.syncStatusCopyWithTransport(status)
+        this.render()
+      },
+      onPeerJoin: () => {
+        return
+      },
+      onPeerLeave: () => {
+        return
+      },
+      onMessage: () => {
+        return
+      },
+    }
+  }
+
+  private syncStatusCopyWithTransport(status: TransportStatus): void {
+    const code = this.transport.code
+    switch (status) {
+      case 'disconnected':
+        this.statusCopy = LOBBY_COPY
+        return
+      case 'connecting':
+        this.statusCopy = this.transport.isHost
+          ? `Creating match ${code}...`
+          : `Joining match ${code}...`
+        return
+      case 'waiting':
+        this.statusCopy = `New match created. Share code ${code} to invite your opponent.`
+        return
+      case 'connected':
+        this.statusCopy = this.transport.isHost
+          ? `Opponent joined match ${code}.`
+          : `Joined match ${code}.`
+        return
+      case 'error':
+        this.statusCopy = TRANSPORT_ERROR_COPY
+        return
+      default: {
+        const exhaustive: never = status
+        throw new Error(`Unknown transport status: ${String(exhaustive)}`)
+      }
     }
   }
 

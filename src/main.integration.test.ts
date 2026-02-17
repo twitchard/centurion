@@ -5,27 +5,75 @@ import {
 } from './features/superposition-lab/model'
 
 vi.mock('./adapters/trystero-transport', () => {
+  type MockTransportStatus =
+    | 'disconnected'
+    | 'connecting'
+    | 'waiting'
+    | 'connected'
+    | 'error'
+
+  interface MockTransportCallbacks {
+    readonly onStatusChange: (status: MockTransportStatus) => void
+    readonly onPeerJoin: () => void
+    readonly onPeerLeave: () => void
+    readonly onMessage: (data: unknown) => void
+  }
+
+  const NOOP_CALLBACKS: MockTransportCallbacks = {
+    onStatusChange: () => {
+      return
+    },
+    onPeerJoin: () => {
+      return
+    },
+    onPeerLeave: () => {
+      return
+    },
+    onMessage: () => {
+      return
+    },
+  }
+
   class MockTransportAdapter {
     code = ''
     isHost = false
-    setCallbacks(): void {
-      return
+    status: MockTransportStatus = 'disconnected'
+    private callbacks: MockTransportCallbacks = NOOP_CALLBACKS
+
+    setCallbacks(callbacks: MockTransportCallbacks): void {
+      this.callbacks = callbacks
     }
+
     createRoom(): string {
+      this.disconnect()
       this.code = '123456'
       this.isHost = true
+      this.setStatus('connecting')
+      this.setStatus('waiting')
       return this.code
     }
+
     joinRoom(code: string): void {
+      this.disconnect()
       this.code = code
       this.isHost = false
+      this.setStatus('connecting')
     }
+
     disconnect(): void {
       this.code = ''
       this.isHost = false
+      this.status = 'disconnected'
+      this.callbacks.onStatusChange('disconnected')
     }
+
     send(): void {
       return
+    }
+
+    private setStatus(status: MockTransportStatus): void {
+      this.status = status
+      this.callbacks.onStatusChange(status)
     }
   }
 
@@ -520,11 +568,19 @@ describe('main app wiring', () => {
 
     newMatchButton.click()
     expect(statusCopy.textContent).toContain('Share code')
+    expect(joinCodeInput.value).toBe('')
 
     joinCodeInput.value = '123456'
     joinCodeInput.dispatch('input')
     joinMatchButton.click()
-    expect(statusCopy.textContent).toBe('Joining match 123456...')
+    expect(statusCopy.textContent).toBe(
+      'You already created this match code on this device. Share it with your opponent instead.',
+    )
+
+    joinCodeInput.value = '654321'
+    joinCodeInput.dispatch('input')
+    joinMatchButton.click()
+    expect(statusCopy.textContent).toBe('Joining match 654321...')
   })
 
   it('mounts centurion controls on initial root route', async () => {
