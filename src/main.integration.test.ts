@@ -416,11 +416,6 @@ function setupDom(): TestDom {
   )
   registerById(
     documentRef,
-    'centurion-controls',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
     'centurion-new-match-btn',
     (id, owner) => new FakeButtonElement(id, owner),
   )

@@ -15,17 +15,6 @@ function mapChatCmds(
   return commands.map((cmd) => ({ tag: 'chat-lab', cmd }))
 }
 
-function mapSuperpositionCmds(
-  commands: readonly ReturnType<typeof updateSuperpositionLab>[1][number][],
-): AppCmd[] {
-  if (commands.length > 0) {
-    throw new Error(
-      'Superposition lab does not emit commands in this revision.',
-    )
-  }
-  return []
-}
-
 function cleanupCommandsFor(state: AppState): readonly AppCmd[] {
   if (state.tag === 'chat-lab') {
     return [{ tag: 'chat-lab', cmd: { tag: 'transport-disconnect' } }]
@@ -99,11 +88,8 @@ export function updateApp(
       if (state.tag !== 'superposition-lab') {
         return [state, []]
       }
-      const [nextModel, commands] = updateSuperpositionLab(state.model, msg.msg)
-      return [
-        { tag: 'superposition-lab', model: nextModel },
-        mapSuperpositionCmds(commands),
-      ]
+      const [nextModel] = updateSuperpositionLab(state.model, msg.msg)
+      return [{ tag: 'superposition-lab', model: nextModel }, []]
     }
 
     case 'chat-lab-msg': {

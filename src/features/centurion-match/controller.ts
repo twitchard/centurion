@@ -84,17 +84,14 @@ export class CenturionMatchController {
 
   private render(): void {
     const body = this.element('centurion-status-copy')
-    const controls = this.element('centurion-controls')
 
     if (!this.mounted) {
       body.textContent = ''
-      controls.setAttribute('data-state', 'hidden')
       return
     }
 
     const joinCodeInput = this.input('centurion-join-code-input')
     body.textContent = this.statusCopy
-    controls.setAttribute('data-state', 'ready')
     if (joinCodeInput.value !== this.joinCode) {
       joinCodeInput.value = this.joinCode
     }

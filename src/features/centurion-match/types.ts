@@ -1,9 +1,7 @@
-export interface CenturionMatchModel {
-  readonly lifecycle: 'lobby'
-}
+export interface CenturionMatchModel {}
 
 export function initCenturionMatchModel(): CenturionMatchModel {
-  return { lifecycle: 'lobby' }
+  return {}
 }
 
 export type CenturionMatchCmd =

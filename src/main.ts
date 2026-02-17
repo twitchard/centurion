@@ -168,8 +168,6 @@ function runCommand(command: AppCmd): void {
       }
       centurionController.unmount()
       return
-    case 'superposition-lab':
-      return
     default:
       assertNever(command)
       return

@@ -11,12 +11,10 @@ export type SuperpositionLabMsg =
   | { readonly tag: 'arrow-input-updated'; readonly value: string }
   | { readonly tag: 'reset-fixtures-requested' }
 
-export type SuperpositionLabCmd = never
-
 export function updateSuperpositionLab(
   model: SuperpositionLabModel,
   msg: SuperpositionLabMsg,
-): UpdateResult<SuperpositionLabModel, SuperpositionLabCmd> {
+): UpdateResult<SuperpositionLabModel, never> {
   switch (msg.tag) {
     case 'fen-input-updated':
       return [buildSuperpositionLabModel(msg.value, model.arrowInput), []]
