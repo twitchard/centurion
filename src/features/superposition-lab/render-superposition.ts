@@ -243,7 +243,9 @@ export class SuperpositionRenderer {
 
     ctx.beginPath()
     ctx.arc(0, radius * 0.34, radius * 0.42, 0, Math.PI * 2)
-    ctx.fillStyle = style.isWhite ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.16)'
+    ctx.fillStyle = style.isWhite
+      ? 'rgba(0, 0, 0, 0.15)'
+      : 'rgba(255, 255, 255, 0.16)'
     ctx.fill()
 
     ctx.textAlign = 'center'
