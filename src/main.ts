@@ -83,6 +83,9 @@ const chatDisconnectButton = button('chat-disconnect-btn')
 const chatSendButton = button('chat-send-btn')
 
 const chatTransport = new TrysteroTransportAdapter()
+const centurionTransport = new TrysteroTransportAdapter(
+  'centurion-chess-match-v1',
+)
 
 let state: AppState = initAppState()
 
@@ -107,6 +110,7 @@ const centurionController = new CenturionMatchController({
   onRequestExit: () => {
     navigate('/labs')
   },
+  transport: centurionTransport,
 })
 
 chatTransport.setCallbacks({
