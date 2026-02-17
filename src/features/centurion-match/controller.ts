@@ -8,8 +8,6 @@ const LOBBY_COPY = 'Start a new match or join one with a code.'
 const INVALID_JOIN_CODE_COPY = 'Enter a valid 6-digit match code.'
 const SELF_JOIN_CODE_COPY =
   'You already created this match code on this device. Share it with your opponent instead.'
-const TRANSPORT_ERROR_COPY =
-  'Unable to connect to a match. Check your connection and try again.'
 
 interface CenturionControllerOptions {
   readonly root: HTMLElement
@@ -159,7 +157,10 @@ export class CenturionMatchController {
           : `Joined match ${code}.`
         return
       case 'error':
-        this.statusCopy = TRANSPORT_ERROR_COPY
+        this.statusCopy =
+          code.length === 6
+            ? `Could not connect to match ${code}. Keep the host tab open and try again.`
+            : 'Could not connect to a match. Keep the host tab open and try again.'
         return
       default: {
         const exhaustive: never = status

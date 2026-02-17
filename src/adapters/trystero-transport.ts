@@ -7,6 +7,8 @@ import {
 } from '../ports/transport'
 
 const DEFAULT_APP_ID = 'centurion-chess-chat-lab-v1'
+const DEFAULT_GUEST_CONNECT_TIMEOUT_MS = 15_000
+const PEER_POLL_INTERVAL_MS = 750
 
 type Room = ReturnType<typeof joinRoom>
 type Sender = (data: unknown, targetPeers?: readonly string[]) => void
@@ -17,12 +19,19 @@ export class TrysteroTransportAdapter implements TransportPort {
   private callbacks: TransportCallbacks = NOOP_TRANSPORT_CALLBACKS
   private currentStatus: TransportStatus = 'disconnected'
   private readonly appId: string
+  private readonly guestConnectTimeoutMs: number
+  private guestConnectTimeout: ReturnType<typeof setTimeout> | null = null
+  private guestPeerPoll: ReturnType<typeof setInterval> | null = null
 
   code = ''
   isHost = false
 
-  constructor(appId: string = DEFAULT_APP_ID) {
+  constructor(
+    appId: string = DEFAULT_APP_ID,
+    guestConnectTimeoutMs: number = DEFAULT_GUEST_CONNECT_TIMEOUT_MS,
+  ) {
     this.appId = appId
+    this.guestConnectTimeoutMs = guestConnectTimeoutMs
   }
 
   get status(): TransportStatus {
@@ -55,6 +64,7 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   disconnect(): void {
+    this.clearGuestConnectWatchdog()
     this.room?.leave()
     this.room = null
     this.sendFn = null
@@ -64,6 +74,9 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   private setStatus(status: TransportStatus): void {
+    if (status !== 'connecting') {
+      this.clearGuestConnectWatchdog()
+    }
     this.currentStatus = status
     this.callbacks.onStatusChange(status)
   }
@@ -97,6 +110,39 @@ export class TrysteroTransportAdapter implements TransportPort {
 
     if (this.isHost) {
       this.setStatus('waiting')
+      return
+    }
+
+    if (this.currentStatus === 'connecting') {
+      this.startGuestConnectWatchdog()
+    }
+  }
+
+  private startGuestConnectWatchdog(): void {
+    this.clearGuestConnectWatchdog()
+    this.guestConnectTimeout = setTimeout(() => {
+      if (!this.isHost && this.currentStatus === 'connecting') {
+        this.setStatus('error')
+      }
+    }, this.guestConnectTimeoutMs)
+    this.guestPeerPoll = setInterval(() => {
+      if (this.currentStatus !== 'connecting' || this.room === null) {
+        return
+      }
+      if (Object.keys(this.room.getPeers()).length > 0) {
+        this.setStatus('connected')
+      }
+    }, PEER_POLL_INTERVAL_MS)
+  }
+
+  private clearGuestConnectWatchdog(): void {
+    if (this.guestConnectTimeout !== null) {
+      clearTimeout(this.guestConnectTimeout)
+      this.guestConnectTimeout = null
+    }
+    if (this.guestPeerPoll !== null) {
+      clearInterval(this.guestPeerPoll)
+      this.guestPeerPoll = null
     }
   }
 
