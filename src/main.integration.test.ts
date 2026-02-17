@@ -510,7 +510,9 @@ describe('main app wiring', () => {
     ) as FakeButtonElement
 
     expect(centurion.style.display).toBe('flex')
-    expect(statusCopy.textContent).toBe('Start a new match or join one with a code.')
+    expect(statusCopy.textContent).toBe(
+      'Start a new match or join one with a code.',
+    )
 
     newMatchButton.click()
     expect(statusCopy.textContent).toContain('Share code')

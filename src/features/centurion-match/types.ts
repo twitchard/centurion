@@ -1,4 +1,4 @@
-export interface CenturionMatchModel {}
+export type CenturionMatchModel = {}
 
 export function initCenturionMatchModel(): CenturionMatchModel {
   return {}
