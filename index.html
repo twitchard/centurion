@@ -77,15 +77,22 @@
     <header class="feature-header">
       <button class="text-btn" id="centurion-back-btn">← Labs</button>
       <h2>Centurion Match</h2>
-      <span id="centurion-phase-badge" class="phase-badge"></span>
+      <span></span>
     </header>
     <div class="centurion-shell panel">
       <p id="centurion-status-copy"></p>
       <div id="centurion-controls" class="centurion-controls">
-        <button class="btn btn-primary" id="centurion-to-active-btn">Start Match</button>
-        <button class="btn btn-secondary" id="centurion-to-resolving-btn">Resolve Turn</button>
-        <button class="btn btn-outline" id="centurion-to-complete-btn">Finish Match</button>
-        <button class="btn btn-outline" id="centurion-reset-btn">New Match</button>
+        <button class="btn btn-primary" id="centurion-new-match-btn">New Match</button>
+        <div class="centurion-join-row">
+          <input
+            id="centurion-join-code-input"
+            type="text"
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="000000"
+          >
+          <button class="btn btn-secondary" id="centurion-join-match-btn">Join with code</button>
+        </div>
       </div>
     </div>
   </section>

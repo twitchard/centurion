@@ -1,8 +1,5 @@
 import { type UpdateResult, assertNever } from '../core/update'
-import {
-  type CenturionMatchCmd,
-  initCenturionMatchModel,
-} from '../features/centurion-match/types'
+import type { CenturionMatchCmd } from '../features/centurion-match/types'
 import { initChatLabModel } from '../features/chat-lab/model'
 import { updateChatLab } from '../features/chat-lab/update'
 import { initSuperpositionLabModel } from '../features/superposition-lab/model'
@@ -13,17 +10,6 @@ function mapChatCmds(
   commands: readonly ReturnType<typeof updateChatLab>[1][number][],
 ): AppCmd[] {
   return commands.map((cmd) => ({ tag: 'chat-lab', cmd }))
-}
-
-function mapSuperpositionCmds(
-  commands: readonly ReturnType<typeof updateSuperpositionLab>[1][number][],
-): AppCmd[] {
-  if (commands.length > 0) {
-    throw new Error(
-      'Superposition lab does not emit commands in this revision.',
-    )
-  }
-  return []
 }
 
 function cleanupCommandsFor(state: AppState): readonly AppCmd[] {
@@ -51,10 +37,7 @@ export function updateApp(
       if (path === '/labs') {
         return [{ tag: 'labs-menu' }, cleanupCommandsFor(state)]
       }
-      const nextState: AppState = {
-        tag: 'centurion-match',
-        model: initCenturionMatchModel(),
-      }
+      const nextState: AppState = { tag: 'centurion-match' }
       const cleanup = cleanupCommandsFor(state)
       if (cleanup.length > 0) {
         return [
@@ -78,10 +61,7 @@ export function updateApp(
       ]
 
     case 'open-centurion-match': {
-      const nextState: AppState = {
-        tag: 'centurion-match',
-        model: initCenturionMatchModel(),
-      }
+      const nextState: AppState = { tag: 'centurion-match' }
       const cleanup = cleanupCommandsFor(state)
       if (cleanup.length > 0) {
         return [
@@ -99,11 +79,8 @@ export function updateApp(
       if (state.tag !== 'superposition-lab') {
         return [state, []]
       }
-      const [nextModel, commands] = updateSuperpositionLab(state.model, msg.msg)
-      return [
-        { tag: 'superposition-lab', model: nextModel },
-        mapSuperpositionCmds(commands),
-      ]
+      const [nextModel] = updateSuperpositionLab(state.model, msg.msg)
+      return [{ tag: 'superposition-lab', model: nextModel }, []]
     }
 
     case 'chat-lab-msg': {

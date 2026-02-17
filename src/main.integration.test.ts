@@ -411,37 +411,22 @@ function setupDom(): TestDom {
   )
   registerById(
     documentRef,
-    'centurion-phase-badge',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
     'centurion-status-copy',
     (id, owner) => new FakeHTMLElement(id, owner),
   )
   registerById(
     documentRef,
-    'centurion-controls',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'centurion-to-active-btn',
+    'centurion-new-match-btn',
     (id, owner) => new FakeButtonElement(id, owner),
   )
   registerById(
     documentRef,
-    'centurion-to-resolving-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
+    'centurion-join-code-input',
+    (id, owner) => new FakeInputElement(id, owner),
   )
   registerById(
     documentRef,
-    'centurion-to-complete-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'centurion-reset-btn',
+    'centurion-join-match-btn',
     (id, owner) => new FakeButtonElement(id, owner),
   )
 
@@ -511,10 +496,30 @@ describe('main app wiring', () => {
     ) as FakeButtonElement
     openCenturion.click()
 
-    const phaseBadge = documentRef.getElementById(
-      'centurion-phase-badge',
+    const statusCopy = documentRef.getElementById(
+      'centurion-status-copy',
     ) as FakeHTMLElement
+    const newMatchButton = documentRef.getElementById(
+      'centurion-new-match-btn',
+    ) as FakeButtonElement
+    const joinCodeInput = documentRef.getElementById(
+      'centurion-join-code-input',
+    ) as FakeInputElement
+    const joinMatchButton = documentRef.getElementById(
+      'centurion-join-match-btn',
+    ) as FakeButtonElement
+
     expect(centurion.style.display).toBe('flex')
-    expect(phaseBadge.textContent).toBe('ACTIVE')
+    expect(statusCopy.textContent).toBe(
+      'Start a new match or join one with a code.',
+    )
+
+    newMatchButton.click()
+    expect(statusCopy.textContent).toContain('Share code')
+
+    joinCodeInput.value = '123456'
+    joinCodeInput.dispatch('input')
+    joinMatchButton.click()
+    expect(statusCopy.textContent).toBe('Joining match 123456...')
   })
 })
