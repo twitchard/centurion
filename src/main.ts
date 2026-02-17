@@ -433,4 +433,4 @@ function bindEvents(): void {
 }
 
 bindEvents()
-render()
+navigate(window.location.pathname, false)

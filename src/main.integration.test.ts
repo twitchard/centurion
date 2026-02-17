@@ -228,13 +228,17 @@ class FakeCanvasElement extends FakeHTMLElement {
 
 class FakeWindow {
   readonly devicePixelRatio = 1
-  readonly location = { pathname: '/labs' }
+  readonly location: { pathname: string }
   readonly history = {
     pushState: (): void => {
       return
     },
   }
   private readonly listeners = new Map<string, ((event: unknown) => void)[]>()
+
+  constructor(pathname = '/labs') {
+    this.location = { pathname }
+  }
 
   addEventListener(type: string, listener: (event: unknown) => void): void {
     const existing = this.listeners.get(type)
@@ -259,9 +263,9 @@ function registerById<T extends FakeElement>(
   return documentRef.register(id, create(id, documentRef))
 }
 
-function setupDom(): TestDom {
+function setupDom(pathname = '/labs'): TestDom {
   const documentRef = new FakeDocument()
-  const windowRef = new FakeWindow()
+  const windowRef = new FakeWindow(pathname)
 
   registerById(
     documentRef,
@@ -444,7 +448,7 @@ function setupDom(): TestDom {
 describe('main app wiring', () => {
   it('shows one screen at a time and wires menu navigation', async () => {
     vi.resetModules()
-    const { documentRef, windowRef } = setupDom()
+    const { documentRef, windowRef } = setupDom('/labs')
     void windowRef
 
     await import('./main')
@@ -521,5 +525,34 @@ describe('main app wiring', () => {
     joinCodeInput.dispatch('input')
     joinMatchButton.click()
     expect(statusCopy.textContent).toBe('Joining match 123456...')
+  })
+
+  it('mounts centurion controls on initial root route', async () => {
+    vi.resetModules()
+    const { documentRef } = setupDom('/')
+
+    await import('./main')
+
+    const labsMenu = documentRef.getElementById(
+      'screen-labs-menu',
+    ) as FakeHTMLElement
+    const centurion = documentRef.getElementById(
+      'screen-centurion-match',
+    ) as FakeHTMLElement
+    const statusCopy = documentRef.getElementById(
+      'centurion-status-copy',
+    ) as FakeHTMLElement
+    const newMatchButton = documentRef.getElementById(
+      'centurion-new-match-btn',
+    ) as FakeButtonElement
+
+    expect(labsMenu.style.display).toBe('none')
+    expect(centurion.style.display).toBe('flex')
+    expect(statusCopy.textContent).toBe(
+      'Start a new match or join one with a code.',
+    )
+
+    newMatchButton.click()
+    expect(statusCopy.textContent).toContain('Share code')
   })
 })
