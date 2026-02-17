@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check": "biome check src/",
-    "fix": "biome check --write src/"
+    "fix": "biome check --write src/",
+    "ci:all": "bun run check && bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
     "trystero": "^0.21.0"
