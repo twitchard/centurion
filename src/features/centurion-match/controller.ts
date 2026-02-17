@@ -1,25 +1,19 @@
-type CenturionPhase = 'idle' | 'active' | 'resolving' | 'complete'
+const LOBBY_COPY = 'Start a new match or join one with a code.'
+const INVALID_JOIN_CODE_COPY = 'Enter a valid 6-digit match code.'
 
 interface CenturionControllerOptions {
   readonly root: HTMLElement
   readonly onRequestExit: () => void
 }
 
-function phaseCopy(phase: CenturionPhase): string {
-  switch (phase) {
-    case 'idle':
-      return 'Centurion Match is in preview while full gameplay is being rebuilt.'
-    case 'active':
-      return 'Match in progress.'
-    case 'resolving':
-      return 'Resolving this turn...'
-    case 'complete':
-      return 'Match complete.'
-    default: {
-      const exhaustive: never = phase
-      throw new Error(`Unknown centurion phase: ${String(exhaustive)}`)
-    }
-  }
+function normaliseCode(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 6)
+}
+
+function generateCode(): string {
+  return Math.floor(Math.random() * 1_000_000)
+    .toString()
+    .padStart(6, '0')
 }
 
 export class CenturionMatchController {
@@ -27,7 +21,8 @@ export class CenturionMatchController {
   private readonly onRequestExit: () => void
   private bound = false
   private mounted = false
-  private phase: CenturionPhase = 'idle'
+  private statusCopy = LOBBY_COPY
+  private joinCode = ''
 
   constructor(options: CenturionControllerOptions) {
     this.root = options.root
@@ -37,13 +32,15 @@ export class CenturionMatchController {
   mount(): void {
     this.mounted = true
     this.bindEventsOnce()
-    this.phase = 'active'
+    this.statusCopy = LOBBY_COPY
+    this.joinCode = ''
     this.render()
   }
 
   unmount(): void {
     this.mounted = false
-    this.phase = 'idle'
+    this.statusCopy = LOBBY_COPY
+    this.joinCode = ''
     this.render()
   }
 
@@ -56,40 +53,51 @@ export class CenturionMatchController {
     this.button('centurion-back-btn').addEventListener('click', () => {
       this.onRequestExit()
     })
-    this.button('centurion-to-active-btn').addEventListener('click', () => {
-      this.setPhase('active')
+    this.button('centurion-new-match-btn').addEventListener('click', () => {
+      const code = generateCode()
+      this.joinCode = code
+      this.statusCopy = `New match created. Share code ${code} to invite your opponent.`
+      this.render()
     })
-    this.button('centurion-to-resolving-btn').addEventListener('click', () => {
-      this.setPhase('resolving')
-    })
-    this.button('centurion-to-complete-btn').addEventListener('click', () => {
-      this.setPhase('complete')
-    })
-    this.button('centurion-reset-btn').addEventListener('click', () => {
-      this.setPhase('idle')
-    })
-  }
 
-  private setPhase(phase: CenturionPhase): void {
-    this.phase = phase
-    this.render()
+    const joinCodeInput = this.input('centurion-join-code-input')
+    joinCodeInput.addEventListener('input', (event) => {
+      const value = normaliseCode((event.target as HTMLInputElement).value)
+      this.joinCode = value
+      if (joinCodeInput.value !== value) {
+        joinCodeInput.value = value
+      }
+    })
+
+    this.button('centurion-join-match-btn').addEventListener('click', () => {
+      const code = normaliseCode(this.joinCode)
+      this.joinCode = code
+      if (code.length !== 6) {
+        this.statusCopy = INVALID_JOIN_CODE_COPY
+        this.render()
+        return
+      }
+      this.statusCopy = `Joining match ${code}...`
+      this.render()
+    })
   }
 
   private render(): void {
-    const badge = this.element('centurion-phase-badge')
     const body = this.element('centurion-status-copy')
     const controls = this.element('centurion-controls')
 
     if (!this.mounted) {
-      badge.textContent = ''
       body.textContent = ''
-      controls.setAttribute('data-phase', 'hidden')
+      controls.setAttribute('data-state', 'hidden')
       return
     }
 
-    badge.textContent = this.phase.toUpperCase()
-    body.textContent = phaseCopy(this.phase)
-    controls.setAttribute('data-phase', this.phase)
+    const joinCodeInput = this.input('centurion-join-code-input')
+    body.textContent = this.statusCopy
+    controls.setAttribute('data-state', 'ready')
+    if (joinCodeInput.value !== this.joinCode) {
+      joinCodeInput.value = this.joinCode
+    }
   }
 
   private element(id: string): HTMLElement {
@@ -104,6 +112,14 @@ export class CenturionMatchController {
     const node = this.element(id)
     if (!(node instanceof HTMLButtonElement)) {
       throw new Error(`Expected centurion button for #${id}`)
+    }
+    return node
+  }
+
+  private input(id: string): HTMLInputElement {
+    const node = this.element(id)
+    if (!(node instanceof HTMLInputElement)) {
+      throw new Error(`Expected centurion input for #${id}`)
     }
     return node
   }
