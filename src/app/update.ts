@@ -1,8 +1,5 @@
 import { type UpdateResult, assertNever } from '../core/update'
-import {
-  type CenturionMatchCmd,
-  initCenturionMatchModel,
-} from '../features/centurion-match/types'
+import type { CenturionMatchCmd } from '../features/centurion-match/types'
 import { initChatLabModel } from '../features/chat-lab/model'
 import { updateChatLab } from '../features/chat-lab/update'
 import { initSuperpositionLabModel } from '../features/superposition-lab/model'
@@ -40,10 +37,7 @@ export function updateApp(
       if (path === '/labs') {
         return [{ tag: 'labs-menu' }, cleanupCommandsFor(state)]
       }
-      const nextState: AppState = {
-        tag: 'centurion-match',
-        model: initCenturionMatchModel(),
-      }
+      const nextState: AppState = { tag: 'centurion-match' }
       const cleanup = cleanupCommandsFor(state)
       if (cleanup.length > 0) {
         return [
@@ -67,10 +61,7 @@ export function updateApp(
       ]
 
     case 'open-centurion-match': {
-      const nextState: AppState = {
-        tag: 'centurion-match',
-        model: initCenturionMatchModel(),
-      }
+      const nextState: AppState = { tag: 'centurion-match' }
       const cleanup = cleanupCommandsFor(state)
       if (cleanup.length > 0) {
         return [

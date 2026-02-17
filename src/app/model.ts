@@ -1,15 +1,11 @@
-import {
-  type CenturionMatchCmd,
-  type CenturionMatchModel,
-  initCenturionMatchModel,
-} from '../features/centurion-match/types'
+import type { CenturionMatchCmd } from '../features/centurion-match/types'
 import type { ChatLabModel } from '../features/chat-lab/model'
 import type { ChatLabCmd, ChatLabMsg } from '../features/chat-lab/update'
 import type { SuperpositionLabModel } from '../features/superposition-lab/model'
 import type { SuperpositionLabMsg } from '../features/superposition-lab/update'
 
 export type AppState =
-  | { readonly tag: 'centurion-match'; readonly model: CenturionMatchModel }
+  | { readonly tag: 'centurion-match' }
   | { readonly tag: 'labs-menu' }
   | { readonly tag: 'superposition-lab'; readonly model: SuperpositionLabModel }
   | { readonly tag: 'chat-lab'; readonly model: ChatLabModel }
@@ -32,5 +28,5 @@ export function initAppState(): AppState {
   if (path === '/labs') {
     return { tag: 'labs-menu' }
   }
-  return { tag: 'centurion-match', model: initCenturionMatchModel() }
+  return { tag: 'centurion-match' }
 }
