@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Centurion Board</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: #272522; color: #e6e6e6;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .root {
+      display: grid;
+      grid-template-columns: minmax(280px, 36%) 1fr;
+      height: 100dvh;
+      gap: 10px;
+      padding: 10px;
+    }
+    .inputs {
+      display: flex; flex-direction: column; gap: 8px;
+      border: 1px solid #3a3835; border-radius: 10px;
+      background: #211f1c; padding: 10px; overflow: auto;
+    }
+    label { font-size: 0.82rem; color: #b0b0b0; }
+    textarea {
+      width: 100%; border: 1px solid #4f4f4f; border-radius: 8px;
+      background: #171614; color: #f2f2f2; padding: 0.6rem;
+      font-family: "SF Mono", Menlo, Consolas, monospace;
+      min-height: 110px; resize: vertical;
+    }
+    ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .ok  { color: #7db95b; font-size: 0.78rem; }
+    .err { color: #e28787; font-size: 0.78rem; }
+    .board-wrap {
+      border: 1px solid #3a3835; border-radius: 10px;
+      background: #211f1c;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    canvas { display: block; }
+    @media (max-width: 720px) {
+      .root { grid-template-columns: 1fr; height: auto; }
+      .board-wrap { min-height: 300px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="root">
+    <div class="inputs">
+      <label for="board-fen-input">FEN positions (newline or semicolon separated)</label>
+      <textarea id="board-fen-input" spellcheck="false"></textarea>
+      <ul id="board-fen-diagnostics"></ul>
+
+      <label for="board-arrow-input">Arrows (e.g. e2-&gt;e4, one per line)</label>
+      <textarea id="board-arrow-input" spellcheck="false"></textarea>
+      <ul id="board-arrow-diagnostics"></ul>
+    </div>
+    <div class="board-wrap" id="board-wrap">
+      <canvas id="board-canvas"></canvas>
+    </div>
+  </div>
+  <script type="module" src="./src/board.ts"></script>
+</body>
+</html>
