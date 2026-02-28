@@ -105,11 +105,8 @@ export function updateApp(
       if (state.tag !== 'single-player-match') {
         return [state, []]
       }
-      const [nextModel, cmds] = updateSinglePlayer(state.model, msg.msg)
-      return [
-        { tag: 'single-player-match', model: nextModel },
-        cmds.map((cmd) => ({ tag: 'single-player-match' as const, cmd })),
-      ]
+      const [nextModel] = updateSinglePlayer(state.model, msg.msg)
+      return [{ tag: 'single-player-match', model: nextModel }, []]
     }
 
     default:

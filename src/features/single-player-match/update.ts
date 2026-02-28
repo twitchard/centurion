@@ -5,14 +5,11 @@ import type { ArrowEntry, SinglePlayerModel } from './model'
 export type SinglePlayerMsg =
   | { readonly tag: 'arrow-input-updated'; readonly value: string }
   | { readonly tag: 'arrow-submit-requested' }
-  | { readonly tag: 'computer-arrow-received'; readonly notation: string }
-
-export type SinglePlayerCmd = { readonly tag: 'generate-computer-arrow' }
 
 export function updateSinglePlayer(
   model: SinglePlayerModel,
   msg: SinglePlayerMsg,
-): UpdateResult<SinglePlayerModel, SinglePlayerCmd> {
+): UpdateResult<SinglePlayerModel, never> {
   switch (msg.tag) {
     case 'arrow-input-updated':
       return [{ ...model, arrowInput: msg.value, inputError: null }, []]
@@ -32,35 +29,21 @@ export function updateSinglePlayer(
           [],
         ]
       }
-      const playerEntry: ArrowEntry = {
-        by: 'player',
+      const entry: ArrowEntry = {
+        by: model.activePlayer,
         notation: input,
         turn: model.turn,
       }
+      const nextPlayer: 1 | 2 = model.activePlayer === 1 ? 2 : 1
+      const nextTurn = nextPlayer === 1 ? model.turn + 1 : model.turn
       return [
         {
           ...model,
-          arrowHistory: [...model.arrowHistory, playerEntry],
+          arrowHistory: [...model.arrowHistory, entry],
           arrowInput: '',
           inputError: null,
-          awaitingComputer: true,
-        },
-        [{ tag: 'generate-computer-arrow' }],
-      ]
-    }
-
-    case 'computer-arrow-received': {
-      const computerEntry: ArrowEntry = {
-        by: 'computer',
-        notation: msg.notation,
-        turn: model.turn,
-      }
-      return [
-        {
-          ...model,
-          arrowHistory: [...model.arrowHistory, computerEntry],
-          awaitingComputer: false,
-          turn: model.turn + 1,
+          activePlayer: nextPlayer,
+          turn: nextTurn,
         },
         [],
       ]

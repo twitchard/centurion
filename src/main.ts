@@ -168,20 +168,6 @@ chatTransport.setCallbacks({
   },
 })
 
-function generateComputerArrow(): string {
-  const files = 'abcdefgh'
-  const ranks = '12345678'
-  const fromFile = files[Math.floor(Math.random() * 8)] ?? 'e'
-  const fromRank = ranks[Math.floor(Math.random() * 8)] ?? '7'
-  let toFile: string
-  let toRank: string
-  do {
-    toFile = files[Math.floor(Math.random() * 8)] ?? 'd'
-    toRank = ranks[Math.floor(Math.random() * 8)] ?? '5'
-  } while (toFile === fromFile && toRank === fromRank)
-  return `${fromFile}${fromRank}->${toFile}${toRank}`
-}
-
 function runCommand(command: AppCmd): void {
   switch (command.tag) {
     case 'chat-lab':
@@ -209,14 +195,6 @@ function runCommand(command: AppCmd): void {
       }
       centurionController.unmount()
       return
-    case 'single-player-match': {
-      const notation = generateComputerArrow()
-      dispatch({
-        tag: 'single-player-msg',
-        msg: { tag: 'computer-arrow-received', notation },
-      })
-      return
-    }
     default:
       assertNever(command)
       return
@@ -356,9 +334,8 @@ function renderChatLab(model: ChatLabModel): void {
 
 function renderArrowHistoryEntry(entry: ArrowEntry): HTMLLIElement {
   const item = document.createElement('li')
-  item.className = `single-player-history-entry single-player-history-entry--${entry.by}`
-  const label = entry.by === 'player' ? 'You' : 'CPU'
-  item.textContent = `T${entry.turn} ${label}: ${entry.notation}`
+  item.className = `single-player-history-entry single-player-history-entry--player-${entry.by}`
+  item.textContent = `T${entry.turn} P${entry.by}: ${entry.notation}`
   return item
 }
 
@@ -374,7 +351,7 @@ function resizeSinglePlayerRenderer(): void {
 }
 
 function renderSinglePlayerMatch(model: SinglePlayerModel): void {
-  singlePlayerTurnEl.textContent = `Turn ${model.turn}`
+  singlePlayerTurnEl.textContent = `Turn ${model.turn} — Player ${model.activePlayer}`
 
   if (singlePlayerArrowInput.value !== model.arrowInput) {
     singlePlayerArrowInput.value = model.arrowInput
@@ -387,7 +364,7 @@ function renderSinglePlayerMatch(model: SinglePlayerModel): void {
     singlePlayerHistory.appendChild(renderArrowHistoryEntry(entry))
   }
 
-  singlePlayerSubmitBtn.disabled = model.awaitingComputer
+  singlePlayerSubmitBtn.textContent = `Submit — Player ${model.activePlayer}`
 
   const allArrowNotations = model.arrowHistory.map((e) => e.notation).join('\n')
   const arrowResult = parseArrowList(allArrowNotations)

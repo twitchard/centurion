@@ -1,5 +1,5 @@
 export type ArrowEntry = {
-  readonly by: 'player' | 'computer'
+  readonly by: 1 | 2
   readonly notation: string
   readonly turn: number
 }
@@ -9,7 +9,7 @@ export type SinglePlayerModel = {
   readonly arrowInput: string
   readonly inputError: string | null
   readonly turn: number
-  readonly awaitingComputer: boolean
+  readonly activePlayer: 1 | 2
 }
 
 export const STARTING_FEN =
@@ -21,6 +21,6 @@ export function initSinglePlayerModel(): SinglePlayerModel {
     arrowInput: '',
     inputError: null,
     turn: 1,
-    awaitingComputer: false,
+    activePlayer: 1,
   }
 }
