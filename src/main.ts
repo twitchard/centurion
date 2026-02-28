@@ -9,6 +9,9 @@ import {
 } from './app/model'
 import { updateApp } from './app/update'
 import type { ParseResult } from './core/parsing/types'
+import { buildSuperpositionRenderModel } from './core/superposition/build-render-model'
+import { parseArrowList } from './core/superposition/parse-arrow-list'
+import { parseFenList } from './core/superposition/parse-fen-list'
 import { assertNever } from './core/update'
 import { CenturionMatchController } from './features/centurion-match/controller'
 import type {
@@ -16,6 +19,11 @@ import type {
   ChatLabModel,
   ChatLine,
 } from './features/chat-lab/model'
+import {
+  type ArrowEntry,
+  STARTING_FEN,
+  type SinglePlayerModel,
+} from './features/single-player-match/model'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
 import { SuperpositionRenderer } from './features/superposition-lab/render-superposition'
 
@@ -63,6 +71,7 @@ const screenLabsMenu = element('screen-labs-menu')
 const screenSuperposition = element('screen-superposition-lab')
 const screenChat = element('screen-chat-lab')
 const screenCenturion = element('screen-centurion-match')
+const screenSinglePlayer = element('screen-single-player-match')
 
 const superpositionFenInput = textarea('superposition-fen-input')
 const superpositionArrowInput = textarea('superposition-arrow-input')
@@ -81,6 +90,20 @@ const chatCreateRoomButton = button('chat-create-room-btn')
 const chatJoinRoomButton = button('chat-join-room-btn')
 const chatDisconnectButton = button('chat-disconnect-btn')
 const chatSendButton = button('chat-send-btn')
+
+const singlePlayerTurnEl = element('single-player-turn')
+const singlePlayerHistory = element('single-player-history')
+const singlePlayerArrowInput = input('single-player-arrow-input')
+const singlePlayerErrorEl = element('single-player-error')
+const singlePlayerSubmitBtn = button('single-player-submit-btn')
+const singlePlayerBoardPanel = element('single-player-board-panel')
+const singlePlayerCanvas = canvas('single-player-canvas')
+const singlePlayerRenderer = new SuperpositionRenderer(singlePlayerCanvas)
+
+const startingFenPositions = (() => {
+  const result = parseFenList(STARTING_FEN)
+  return result.tag === 'valid' ? result.value : []
+})()
 
 const chatTransport = new TrysteroTransportAdapter()
 const centurionTransport = new TrysteroTransportAdapter(
@@ -145,6 +168,20 @@ chatTransport.setCallbacks({
   },
 })
 
+function generateComputerArrow(): string {
+  const files = 'abcdefgh'
+  const ranks = '12345678'
+  const fromFile = files[Math.floor(Math.random() * 8)] ?? 'e'
+  const fromRank = ranks[Math.floor(Math.random() * 8)] ?? '7'
+  let toFile: string
+  let toRank: string
+  do {
+    toFile = files[Math.floor(Math.random() * 8)] ?? 'd'
+    toRank = ranks[Math.floor(Math.random() * 8)] ?? '5'
+  } while (toFile === fromFile && toRank === fromRank)
+  return `${fromFile}${fromRank}->${toFile}${toRank}`
+}
+
 function runCommand(command: AppCmd): void {
   switch (command.tag) {
     case 'chat-lab':
@@ -172,6 +209,14 @@ function runCommand(command: AppCmd): void {
       }
       centurionController.unmount()
       return
+    case 'single-player-match': {
+      const notation = generateComputerArrow()
+      dispatch({
+        tag: 'single-player-msg',
+        msg: { tag: 'computer-arrow-received', notation },
+      })
+      return
+    }
     default:
       assertNever(command)
       return
@@ -184,6 +229,8 @@ function setScreenVisibility(screen: AppState['tag']): void {
     screen === 'superposition-lab' ? 'flex' : 'none'
   screenChat.style.display = screen === 'chat-lab' ? 'flex' : 'none'
   screenCenturion.style.display = screen === 'centurion-match' ? 'flex' : 'none'
+  screenSinglePlayer.style.display =
+    screen === 'single-player-match' ? 'flex' : 'none'
 }
 
 function renderDiagnostics(
@@ -307,6 +354,53 @@ function renderChatLab(model: ChatLabModel): void {
   chatSendButton.disabled = !connected || model.draft.trim().length === 0
 }
 
+function renderArrowHistoryEntry(entry: ArrowEntry): HTMLLIElement {
+  const item = document.createElement('li')
+  item.className = `single-player-history-entry single-player-history-entry--${entry.by}`
+  const label = entry.by === 'player' ? 'You' : 'CPU'
+  item.textContent = `T${entry.turn} ${label}: ${entry.notation}`
+  return item
+}
+
+function resizeSinglePlayerRenderer(): void {
+  const maxSquare = Math.min(
+    singlePlayerBoardPanel.clientWidth,
+    singlePlayerBoardPanel.clientHeight > 0
+      ? singlePlayerBoardPanel.clientHeight
+      : singlePlayerBoardPanel.clientWidth,
+    720,
+  )
+  singlePlayerRenderer.resize(maxSquare)
+}
+
+function renderSinglePlayerMatch(model: SinglePlayerModel): void {
+  singlePlayerTurnEl.textContent = `Turn ${model.turn}`
+
+  if (singlePlayerArrowInput.value !== model.arrowInput) {
+    singlePlayerArrowInput.value = model.arrowInput
+  }
+
+  singlePlayerErrorEl.textContent = model.inputError ?? ''
+
+  singlePlayerHistory.innerHTML = ''
+  for (const entry of [...model.arrowHistory].reverse()) {
+    singlePlayerHistory.appendChild(renderArrowHistoryEntry(entry))
+  }
+
+  singlePlayerSubmitBtn.disabled = model.awaitingComputer
+
+  const allArrowNotations = model.arrowHistory.map((e) => e.notation).join('\n')
+  const arrowResult = parseArrowList(allArrowNotations)
+  const arrows = arrowResult.tag === 'valid' ? arrowResult.value : []
+  const renderModel = buildSuperpositionRenderModel(
+    startingFenPositions,
+    arrows,
+  )
+
+  resizeSinglePlayerRenderer()
+  singlePlayerRenderer.render(renderModel)
+}
+
 function render(): void {
   setScreenVisibility(state.tag)
 
@@ -317,6 +411,11 @@ function render(): void {
 
   if (state.tag === 'chat-lab') {
     renderChatLab(state.model)
+    return
+  }
+
+  if (state.tag === 'single-player-match') {
+    renderSinglePlayerMatch(state.model)
     return
   }
 
@@ -427,7 +526,55 @@ function bindEvents(): void {
     navigate(window.location.pathname, false)
   })
 
+  button('centurion-single-player-btn').addEventListener('click', () => {
+    dispatch({ tag: 'open-single-player-match' })
+  })
+
+  button('single-player-back-btn').addEventListener('click', () => {
+    navigate('/')
+  })
+  singlePlayerArrowInput.addEventListener('input', (event) => {
+    dispatch({
+      tag: 'single-player-msg',
+      msg: {
+        tag: 'arrow-input-updated',
+        value: (event.target as HTMLInputElement).value,
+      },
+    })
+  })
+  singlePlayerArrowInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') {
+      return
+    }
+    event.preventDefault()
+    dispatch({
+      tag: 'single-player-msg',
+      msg: { tag: 'arrow-submit-requested' },
+    })
+  })
+  singlePlayerSubmitBtn.addEventListener('click', () => {
+    dispatch({
+      tag: 'single-player-msg',
+      msg: { tag: 'arrow-submit-requested' },
+    })
+  })
+
   window.addEventListener('resize', () => {
+    if (state.tag === 'single-player-match') {
+      resizeSinglePlayerRenderer()
+      singlePlayerRenderer.render(
+        buildSuperpositionRenderModel(
+          startingFenPositions,
+          (() => {
+            const r = parseArrowList(
+              state.model.arrowHistory.map((e) => e.notation).join('\n'),
+            )
+            return r.tag === 'valid' ? r.value : []
+          })(),
+        ),
+      )
+      return
+    }
     if (state.tag !== 'superposition-lab') {
       return
     }

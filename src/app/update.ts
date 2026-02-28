@@ -2,6 +2,8 @@ import { type UpdateResult, assertNever } from '../core/update'
 import type { CenturionMatchCmd } from '../features/centurion-match/types'
 import { initChatLabModel } from '../features/chat-lab/model'
 import { updateChatLab } from '../features/chat-lab/update'
+import { initSinglePlayerModel } from '../features/single-player-match/model'
+import { updateSinglePlayer } from '../features/single-player-match/update'
 import { initSuperpositionLabModel } from '../features/superposition-lab/model'
 import { updateSuperpositionLab } from '../features/superposition-lab/update'
 import type { AppCmd, AppMsg, AppState } from './model'
@@ -89,6 +91,25 @@ export function updateApp(
       }
       const [nextModel, commands] = updateChatLab(state.model, msg.msg)
       return [{ tag: 'chat-lab', model: nextModel }, mapChatCmds(commands)]
+    }
+
+    case 'open-single-player-match': {
+      const nextState: AppState = {
+        tag: 'single-player-match',
+        model: initSinglePlayerModel(),
+      }
+      return [nextState, cleanupCommandsFor(state)]
+    }
+
+    case 'single-player-msg': {
+      if (state.tag !== 'single-player-match') {
+        return [state, []]
+      }
+      const [nextModel, cmds] = updateSinglePlayer(state.model, msg.msg)
+      return [
+        { tag: 'single-player-match', model: nextModel },
+        cmds.map((cmd) => ({ tag: 'single-player-match' as const, cmd })),
+      ]
     }
 
     default:

@@ -481,6 +481,64 @@ function setupDom(pathname = '/labs'): TestDom {
     'centurion-join-match-btn',
     (id, owner) => new FakeButtonElement(id, owner),
   )
+  registerById(
+    documentRef,
+    'centurion-single-player-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+
+  registerById(
+    documentRef,
+    'screen-single-player-match',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'single-player-turn',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'single-player-history',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'single-player-arrow-input',
+    (id, owner) => new FakeInputElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'single-player-error',
+    (id, owner) => new FakeHTMLElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'single-player-submit-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'single-player-back-btn',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+
+  const singlePlayerBoardPanel = registerById(
+    documentRef,
+    'single-player-board-panel',
+    (id, owner) => {
+      const panel = new FakeHTMLElement(id, owner)
+      panel.clientWidth = 400
+      panel.clientHeight = 400
+      return panel
+    },
+  )
+  void singlePlayerBoardPanel
+  registerById(
+    documentRef,
+    'single-player-canvas',
+    (id, owner) => new FakeCanvasElement(id, owner),
+  )
 
   vi.stubGlobal('document', documentRef as unknown as Document)
   vi.stubGlobal('window', windowRef as unknown as Window)

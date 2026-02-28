@@ -312,6 +312,63 @@ canvas {
   white-space: nowrap;
 }
 
+.single-player-layout {
+  grid-template-columns: minmax(260px, 38%) minmax(300px, 1fr);
+}
+
+.single-player-section-label {
+  font-size: 0.82rem;
+  color: #b0b0b0;
+  font-weight: 600;
+}
+
+.single-player-history {
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  flex: 1;
+  min-height: 80px;
+  overflow: auto;
+  border: 1px solid #3d3d3d;
+  border-radius: 8px;
+  background: #141311;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.single-player-history-entry {
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+
+.single-player-history-entry--player {
+  background: #1e3a5a;
+  color: #9fd9ff;
+  align-self: flex-end;
+}
+
+.single-player-history-entry--computer {
+  background: #3a2a1e;
+  color: #ffb870;
+  align-self: flex-start;
+}
+
+.single-player-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.single-player-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #e28787;
+  min-height: 1.1em;
+}
+
 @media (max-width: 980px) {
   .feature-layout,
   .chat-layout {
