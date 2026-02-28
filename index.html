@@ -82,7 +82,8 @@
     <div class="centurion-shell panel">
       <p id="centurion-status-copy"></p>
       <div id="centurion-controls" class="centurion-controls">
-        <button class="btn btn-primary" id="centurion-new-match-btn">New Match</button>
+        <button class="btn btn-primary" id="centurion-single-player-btn">Pass &amp; Play</button>
+        <button class="btn btn-secondary" id="centurion-new-match-btn">New Multiplayer Match</button>
         <div class="centurion-join-row">
           <input
             id="centurion-join-code-input"
@@ -93,6 +94,35 @@
           >
           <button class="btn btn-secondary" id="centurion-join-match-btn">Join with code</button>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screen-single-player-match" class="screen screen-feature">
+    <header class="feature-header">
+      <button class="text-btn" id="single-player-back-btn">← Back</button>
+      <h2>Pass &amp; Play</h2>
+      <span id="single-player-turn">Turn 1</span>
+    </header>
+    <div class="feature-layout single-player-layout">
+      <div class="panel controls-panel">
+        <div class="single-player-section-label">Arrow History</div>
+        <ul id="single-player-history" class="single-player-history"></ul>
+        <div class="single-player-compose">
+          <label for="single-player-arrow-input">Arrow (e.g. e2-&gt;e4)</label>
+          <input
+            id="single-player-arrow-input"
+            type="text"
+            placeholder="e2->e4"
+            spellcheck="false"
+            autocomplete="off"
+          >
+          <p id="single-player-error" class="single-player-error"></p>
+          <button class="btn btn-primary" id="single-player-submit-btn">Submit Arrow</button>
+        </div>
+      </div>
+      <div class="panel board-panel" id="single-player-board-panel">
+        <canvas id="single-player-canvas"></canvas>
       </div>
     </div>
   </section>
