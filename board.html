@@ -4,12 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Centurion Board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0;
       width: 100%; height: 100%;
-      background: #272522; color: #e6e6e6;
+      background: #1c1612; color: #ece3d2;
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     .root {
@@ -21,32 +24,33 @@
     }
     .inputs {
       display: flex; flex-direction: column; gap: 8px;
-      border: 1px solid #3a3835; border-radius: 10px;
-      background: #211f1c; padding: 10px; overflow: auto;
+      border: 1px solid #57422a; border-radius: 6px;
+      background: #241c15; padding: 10px; overflow: auto;
     }
-    label { font-size: 0.82rem; color: #b0b0b0; }
+    label { font-size: 0.82rem; color: #c2b193; font-variant: small-caps; letter-spacing: 0.5px; }
     textarea {
-      width: 100%; border: 1px solid #4f4f4f; border-radius: 8px;
-      background: #171614; color: #f2f2f2; padding: 0.6rem;
+      width: 100%; border: 1px solid #6e5433; border-radius: 4px;
+      background: #14100c; color: #ece3d2; padding: 0.6rem;
       font-family: "SF Mono", Menlo, Consolas, monospace;
       min-height: 110px; resize: vertical;
     }
     ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
     .mode-toggle {
       display: inline-flex; align-self: flex-start;
-      border: 1px solid #4f4f4f; border-radius: 8px; overflow: hidden;
+      border: 1px solid #6e5433; border-radius: 4px; overflow: hidden;
     }
     .mode-toggle button {
-      border: none; background: transparent; color: #b0b0b0;
-      font-size: 0.78rem; font-weight: 600; padding: 5px 14px; cursor: pointer;
+      border: none; background: transparent; color: #c2b193;
+      font-family: "Cinzel", "Trajan Pro", Georgia, serif;
+      font-size: 0.78rem; font-weight: 600; letter-spacing: 0.5px; padding: 5px 14px; cursor: pointer;
     }
-    .mode-toggle button + button { border-left: 1px solid #4f4f4f; }
-    .mode-toggle button.active { background: #629924; color: #ffffff; }
-    .ok  { color: #7db95b; font-size: 0.78rem; }
-    .err { color: #e28787; font-size: 0.78rem; }
+    .mode-toggle button + button { border-left: 1px solid #6e5433; }
+    .mode-toggle button.active { background: #c9a227; color: #241a09; }
+    .ok  { color: #8fae57; font-size: 0.78rem; }
+    .err { color: #e28d7f; font-size: 0.78rem; }
     .board-wrap {
-      border: 1px solid #3a3835; border-radius: 10px;
-      background: #211f1c;
+      border: 1px solid #57422a; border-radius: 6px;
+      background: #241c15;
       display: flex; align-items: center; justify-content: center;
       overflow: hidden;
     }

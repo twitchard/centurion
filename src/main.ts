@@ -638,12 +638,12 @@ function renderChatLab(model: ChatLabModel): void {
 }
 
 function playerColorName(player: PlayerId): string {
-  return player === 1 ? 'green' : 'red'
+  return player === 1 ? 'gold' : 'crimson'
 }
 
 function playerLabel(session: MatchSession, player: PlayerId): string {
   if (session.mode.tag === 'solo') {
-    return player === 1 ? 'You (green)' : 'The field'
+    return player === 1 ? 'You (gold)' : 'The field'
   }
   const base = `Player ${player} (${playerColorName(player)})`
   if (session.mode.tag === 'remote' && session.mode.you === player) {

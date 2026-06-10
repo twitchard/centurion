@@ -5,10 +5,10 @@ import type {
   SuperpositionRenderModel,
 } from '../../core/superposition/types'
 
-const BOARD_DARK = '#2d2a26'
-const BOARD_LIGHT = '#38342f'
-const GRID_LINE = 'rgba(255, 255, 255, 0.05)'
-const LABEL_COLOR = '#a8a8a8'
+const BOARD_DARK = '#2a2017'
+const BOARD_LIGHT = '#3a2d20'
+const GRID_LINE = 'rgba(236, 217, 160, 0.06)'
+const LABEL_COLOR = '#a38c61'
 
 const WHITE_CHIP_BG = '#efe9dd'
 const WHITE_CHIP_FG = '#1c1a17'
@@ -200,9 +200,9 @@ export class SuperpositionRenderer {
     const square = this.squareSize
     const x = col * square
     const y = (7 - row) * square
-    ctx.fillStyle = 'rgba(122, 199, 255, 0.22)'
+    ctx.fillStyle = 'rgba(224, 185, 79, 0.22)'
     ctx.fillRect(x, y, square, square)
-    ctx.strokeStyle = 'rgba(122, 199, 255, 0.85)'
+    ctx.strokeStyle = 'rgba(224, 185, 79, 0.85)'
     ctx.lineWidth = Math.max(2, square * 0.04)
     ctx.strokeRect(x + 1, y + 1, square - 2, square - 2)
   }
@@ -404,14 +404,16 @@ export class SuperpositionRenderer {
     }
   }
 
+  // Legion gold for player 1, imperial crimson for player 2, matching
+  // the arrow-history entry colors in the side panel.
   private arrowColor(owner: 1 | 2 | undefined, alpha: number): string {
     if (owner === 1) {
-      return `rgba(120, 200, 80, ${alpha})`
+      return `rgba(224, 185, 79, ${alpha})`
     }
     if (owner === 2) {
-      return `rgba(228, 90, 84, ${alpha})`
+      return `rgba(199, 62, 50, ${alpha})`
     }
-    return `rgba(90, 185, 255, ${alpha})`
+    return `rgba(143, 174, 87, ${alpha})`
   }
 
   private drawArrow(arrow: ArrowSegment, alpha: number): void {

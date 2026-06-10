@@ -424,7 +424,7 @@ export function updateCenturion(
       if (model.tag !== 'lobby') {
         return noCmd(model)
       }
-      // You are always player 1 (green); every arrow is yours.
+      // You are always player 1 (gold); every arrow is yours.
       const match = initMatch(msg.seed, { firstPlacer: 1 })
       return noCmd(playing(startSession(match, { tag: 'solo' })))
     }

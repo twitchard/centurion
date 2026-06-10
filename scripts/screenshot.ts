@@ -61,6 +61,8 @@ async function main(): Promise<void> {
       setup: async () => {
         await page.click('#centurion-pass-and-play-btn')
         await page.waitForTimeout(500)
+        // The arrow input lives inside a collapsed <details>.
+        await page.click('.centurion-type-move summary')
         await page.fill('#centurion-arrow-input', 'e2->e4')
         await page.press('#centurion-arrow-input', 'Enter')
         await page.waitForTimeout(800)

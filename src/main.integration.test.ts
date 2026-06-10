@@ -843,7 +843,9 @@ describe('main app wiring', () => {
     const turnLine = documentRef.getElementById(
       'centurion-turn-line',
     ) as FakeHTMLElement
-    expect(scoreLine.textContent).toBe('Player 1 (green) 0 : 0 Player 2 (red)')
+    expect(scoreLine.textContent).toBe(
+      'Player 1 (gold) 0 : 0 Player 2 (crimson)',
+    )
     expect(activeLine.textContent).toBe('100 of 100 games active')
     expect(turnLine.textContent).toContain('Turn 1')
 
