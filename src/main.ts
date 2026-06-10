@@ -140,6 +140,8 @@ const chatJoinRoomButton = button('chat-join-room-btn')
 const chatDisconnectButton = button('chat-disconnect-btn')
 const chatSendButton = button('chat-send-btn')
 
+const centurionBackButton = button('centurion-back-btn')
+const centurionLabsFoot = element('centurion-labs-foot')
 const centurionLobby = element('centurion-lobby')
 const centurionSession = element('centurion-session')
 const centurionStatusCopy = element('centurion-status-copy')
@@ -833,10 +835,28 @@ function renderCenturionSession(session: MatchSession): void {
   )
 }
 
+function confirmReturnToLobby(model: CenturionModel): boolean {
+  if (model.tag === 'lobby') {
+    return true
+  }
+  const message =
+    model.tag === 'playing'
+      ? 'Leave this match and return to the lobby?'
+      : 'Cancel and return to the lobby?'
+  return window.confirm(message)
+}
+
+function renderCenturionChrome(model: CenturionModel): void {
+  const inLobby = model.tag === 'lobby'
+  centurionBackButton.style.display = inLobby ? 'none' : ''
+  centurionLabsFoot.style.display = inLobby ? 'block' : 'none'
+}
+
 function renderCenturion(model: CenturionModel): void {
   const inSession = model.tag === 'playing'
   centurionLobby.style.display = inSession ? 'none' : 'flex'
   centurionSession.style.display = inSession ? 'grid' : 'none'
+  renderCenturionChrome(model)
 
   if (model.tag === 'playing') {
     renderCenturionSession(model.session)
@@ -1012,7 +1032,16 @@ function bindEvents(): void {
     })
   })
 
-  button('centurion-back-btn').addEventListener('click', () => {
+  centurionBackButton.addEventListener('click', () => {
+    if (state.tag !== 'centurion-match') {
+      return
+    }
+    if (!confirmReturnToLobby(state.model)) {
+      return
+    }
+    dispatchCenturion({ tag: 'leave-session-requested' })
+  })
+  button('centurion-open-labs-btn').addEventListener('click', () => {
     navigate('labs')
   })
   centurionSoloButton.addEventListener('click', () => {

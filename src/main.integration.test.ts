@@ -578,6 +578,8 @@ function setupDom(pathname = '/labs'): TestDom {
   ])[] = [
     ['centurion-back-btn', 'button'],
     ['centurion-lobby', 'element'],
+    ['centurion-labs-foot', 'element'],
+    ['centurion-open-labs-btn', 'button'],
     ['centurion-session', 'element'],
     ['centurion-status-copy', 'element'],
     ['centurion-solo-btn', 'button'],
@@ -657,6 +659,7 @@ function setupDom(pathname = '/labs'): TestDom {
 
   vi.stubGlobal('document', documentRef as unknown as Document)
   vi.stubGlobal('window', windowRef as unknown as Window)
+  vi.stubGlobal('confirm', () => true)
   vi.stubGlobal('HTMLElement', FakeHTMLElement)
   vi.stubGlobal('HTMLButtonElement', FakeButtonElement)
   vi.stubGlobal('HTMLInputElement', FakeInputElement)
