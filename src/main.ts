@@ -28,7 +28,9 @@ import {
   sideToMove,
 } from './core/match/model'
 import {
-  describeGameResult,
+  describeGameReplayLabel,
+  gameMoveSourceCounts,
+  gamesForReplaySelection,
   matchGameToPgn,
   replaySnapshot,
 } from './core/match/pgn'
@@ -165,6 +167,7 @@ const centurionReplayPrevButton = button('centurion-replay-prev')
 const centurionReplayNextButton = button('centurion-replay-next')
 const centurionReplayEndButton = button('centurion-replay-end')
 const centurionReplayBoard = new ReplayBoard(centurionReplayBoardHost)
+let centurionGameReplayOptionsKey = ''
 const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
@@ -689,12 +692,20 @@ function renderGameReplay(session: MatchSession): void {
     return
   }
 
-  if (centurionGameSelect.options.length !== match.games.length) {
+  const sortedGames = gamesForReplaySelection(match.games)
+  const optionsKey = sortedGames
+    .map((game) => {
+      const counts = gameMoveSourceCounts(game)
+      return `${game.id}:${counts.arrow}:${counts.engine}:${game.moves.length}`
+    })
+    .join('|')
+  if (centurionGameReplayOptionsKey !== optionsKey) {
+    centurionGameReplayOptionsKey = optionsKey
     centurionGameSelect.innerHTML = ''
-    for (const game of match.games) {
+    for (const game of sortedGames) {
       const option = document.createElement('option')
       option.value = String(game.id)
-      option.textContent = `Game ${game.id + 1} (${describeGameResult(game)}, ${game.moves.length} plies)`
+      option.textContent = describeGameReplayLabel(game)
       centurionGameSelect.appendChild(option)
     }
   }
@@ -704,10 +715,11 @@ function renderGameReplay(session: MatchSession): void {
   centurionReplayBoard.setPosition(snapshot.fen, snapshot.lastMove)
   centurionReplayBoard.redraw()
 
+  const sourceCounts = gameMoveSourceCounts(selectedGame)
   centurionReplayMoveInfo.textContent =
     snapshot.moveCount === 0
       ? 'No moves recorded for this game.'
-      : `Ply ${snapshot.ply} of ${snapshot.moveCount}`
+      : `Ply ${snapshot.ply} of ${snapshot.moveCount} (${sourceCounts.arrow} arrow, ${sourceCounts.engine} engine)`
 
   centurionReplayPgn.value = matchGameToPgn(selectedGame, {
     white: playerLabel(session, selectedGame.whiteOwner),

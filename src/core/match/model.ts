@@ -41,6 +41,14 @@ export type GameStatus =
   | { readonly tag: 'won'; readonly by: PlayerId }
   | { readonly tag: 'drawn'; readonly reason: DrawReason }
 
+/** Whether a half-move followed a board arrow or Stockfish's choice. */
+export type MoveSource = 'arrow' | 'engine'
+
+export interface RecordedMove {
+  readonly uci: string
+  readonly source: MoveSource
+}
+
 export interface MatchGame {
   readonly id: number
   readonly whiteOwner: PlayerId
@@ -49,8 +57,8 @@ export interface MatchGame {
   readonly position: Chess
   readonly repetition: ReadonlyMap<string, number>
   readonly status: GameStatus
-  /** UCI half-moves played from `startingFen`. */
-  readonly moves: readonly string[]
+  /** Half-moves played from `startingFen`, with resolution source. */
+  readonly moves: readonly RecordedMove[]
 }
 
 export interface ResolutionSummary {

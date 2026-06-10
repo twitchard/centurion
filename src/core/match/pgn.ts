@@ -11,7 +11,53 @@ import {
 import { makeSanAndPlay } from 'chessops/san'
 import { isNormal } from 'chessops/types'
 import { makeSquare, parseUci } from 'chessops/util'
-import type { MatchGame } from './model'
+import type { MatchGame, RecordedMove } from './model'
+
+export interface GameMoveSourceCounts {
+  readonly arrow: number
+  readonly engine: number
+}
+
+export function gameMoveSourceCounts(game: MatchGame): GameMoveSourceCounts {
+  let arrow = 0
+  let engine = 0
+  for (const move of game.moves) {
+    if (move.source === 'arrow') {
+      arrow += 1
+    } else {
+      engine += 1
+    }
+  }
+  return { arrow, engine }
+}
+
+/** Games steered most by arrows (vs Stockfish) appear first. */
+export function compareGamesForReplay(a: MatchGame, b: MatchGame): number {
+  const aCounts = gameMoveSourceCounts(a)
+  const bCounts = gameMoveSourceCounts(b)
+  if (bCounts.arrow !== aCounts.arrow) {
+    return bCounts.arrow - aCounts.arrow
+  }
+  if (aCounts.engine !== bCounts.engine) {
+    return aCounts.engine - bCounts.engine
+  }
+  return a.id - b.id
+}
+
+export function gamesForReplaySelection(
+  games: readonly MatchGame[],
+): readonly MatchGame[] {
+  return [...games].sort(compareGamesForReplay)
+}
+
+export function defaultReplayGameId(games: readonly MatchGame[]): number {
+  const [first] = gamesForReplaySelection(games)
+  return first?.id ?? 0
+}
+
+function recordedUci(move: RecordedMove): string {
+  return move.uci
+}
 
 export const STANDARD_START_FEN = makeFen(Chess.default().toSetup())
 
@@ -44,7 +90,11 @@ export function replaySnapshot(game: MatchGame, ply: number): ReplaySnapshot {
   let lastMove: [string, string] | undefined
   const clampedPly = Math.max(0, Math.min(ply, game.moves.length))
   for (let index = 0; index < clampedPly; index++) {
-    const uci = game.moves[index]
+    const recorded = game.moves[index]
+    if (recorded === undefined) {
+      break
+    }
+    const uci = recordedUci(recorded)
     if (uci === undefined) {
       break
     }
@@ -87,8 +137,8 @@ export function matchGameToPgn(
   const position = Chess.fromSetup(parseFen(game.startingFen).unwrap()).unwrap()
   const root = new Node<PgnNodeData>()
   let parent = root
-  for (const uci of game.moves) {
-    const move = parseUci(uci)
+  for (const recorded of game.moves) {
+    const move = parseUci(recordedUci(recorded))
     if (move === undefined || !isNormal(move)) {
       break
     }
@@ -100,6 +150,11 @@ export function matchGameToPgn(
 
   const pgnGame: Game<PgnNodeData> = { headers, moves: root }
   return makePgn(pgnGame)
+}
+
+export function describeGameReplayLabel(game: MatchGame): string {
+  const counts = gameMoveSourceCounts(game)
+  return `Game ${game.id + 1} (${counts.arrow} arrow / ${counts.engine} engine, ${describeGameResult(game)}, ${game.moves.length} plies)`
 }
 
 export function describeGameResult(game: MatchGame): string {

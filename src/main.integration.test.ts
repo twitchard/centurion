@@ -324,6 +324,7 @@ class FakeOptionElement extends FakeHTMLElement {
 
 class FakeSelectElement extends FakeHTMLElement {
   value = ''
+  readonly dataset: Record<string, string> = {}
   private optionNodes: FakeOptionElement[] = []
 
   get options(): FakeOptionElement[] {

@@ -12,6 +12,7 @@ import {
   initMatch,
   otherPlayer,
 } from '../../core/match/model'
+import { defaultReplayGameId } from '../../core/match/pgn'
 import { toCanonicalSquare } from '../../core/match/render'
 import {
   type PendingResolution,
@@ -126,7 +127,10 @@ function withFinishedReplay(
   if (match.phase.tag !== 'finished' || next.gameReplay !== null) {
     return next
   }
-  return { ...next, gameReplay: { gameId: 0, ply: 0 } }
+  return {
+    ...next,
+    gameReplay: { gameId: defaultReplayGameId(match.games), ply: 0 },
+  }
 }
 
 function clampReplayPly(moveCount: number, ply: number): number {
