@@ -7,7 +7,7 @@ import {
   type MatchState,
   activeGameCount,
   activePlacer,
-  arrowWeight,
+  arrowPullWeight,
   canPlaceArrows,
   initMatch,
   sideToMove,
@@ -118,13 +118,18 @@ describe('arrowMoveForGame', () => {
   })
 })
 
-describe('arrowWeight', () => {
-  it('halves each turn until the arrow vanishes', () => {
-    expect(arrowWeight(1, 1)).toBe(8)
-    expect(arrowWeight(1, 2)).toBe(4)
-    expect(arrowWeight(1, 3)).toBe(2)
-    expect(arrowWeight(1, 4)).toBe(1)
-    expect(arrowWeight(1, 5)).toBe(0)
+describe('arrowPullWeight', () => {
+  it('halves cardinality each turn until the arrow vanishes', () => {
+    expect(arrowPullWeight(8, 1, 1)).toBe(8)
+    expect(arrowPullWeight(8, 1, 2)).toBe(4)
+    expect(arrowPullWeight(8, 1, 3)).toBe(2)
+    expect(arrowPullWeight(8, 1, 4)).toBe(1)
+    expect(arrowPullWeight(8, 1, 5)).toBe(0)
+  })
+
+  it('scales pull weight with stacked cardinality', () => {
+    expect(arrowPullWeight(16, 3, 3)).toBe(16)
+    expect(arrowPullWeight(16, 3, 4)).toBe(8)
   })
 })
 
@@ -174,9 +179,12 @@ describe('beginResolution', () => {
       match = resolveTurn(match, { from: sq('a7'), to: sq('a6') })
     }
     expect(match.turn).toBe(5)
-    expect(match.arrows.some((entry) => entry.turn === 1)).toBe(false)
+    expect(match.arrows.some((entry) => entry.placedTurn === 1)).toBe(false)
     expect(
-      match.arrows.every((entry) => arrowWeight(entry.turn, match.turn) > 0),
+      match.arrows.every(
+        (entry) =>
+          arrowPullWeight(entry.cardinality, entry.placedTurn, match.turn) > 0,
+      ),
     ).toBe(true)
   })
 

@@ -133,9 +133,9 @@ function arrowSendCommands(
       tag: 'transport-send',
       payload: encodeMatchWireMessage({
         type: 'centurion:arrow',
-        from: placed.arrow.from,
-        to: placed.arrow.to,
-        turn: placed.turn,
+        from: placed.from,
+        to: placed.to,
+        turn: placed.placedTurn,
         moves,
       }),
     },

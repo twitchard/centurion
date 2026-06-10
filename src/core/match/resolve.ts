@@ -5,14 +5,15 @@ import { parseUci, squareRank } from 'chessops/util'
 import { type RngState, pickIndex } from '../rng'
 import {
   type Arrow,
+  type BoardArrow,
   type GameStatus,
   type MatchGame,
   type MatchPhase,
   type MatchState,
-  type PlacedArrow,
   type PlayerId,
   activePlacer,
-  arrowWeight,
+  addBoardArrow,
+  arrowPullWeight,
   canPlaceArrows,
   otherPlayer,
   positionKey,
@@ -127,7 +128,7 @@ export interface PendingEngineGame {
  */
 export interface PendingResolution {
   readonly base: MatchState
-  readonly arrows: readonly PlacedArrow[]
+  readonly arrows: readonly BoardArrow[]
   readonly games: readonly MatchGame[]
   readonly rng: RngState
   readonly arrowMoves: number
@@ -153,12 +154,13 @@ export function beginResolution(
   if (!canPlaceArrows(match)) {
     return null
   }
-  const placed: PlacedArrow = {
+  const arrows = addBoardArrow(
+    match.arrows,
     arrow,
-    placedBy: activePlacer(match),
-    turn: match.turn,
-  }
-  return beginResolutionPhase(match, [...match.arrows, placed])
+    activePlacer(match),
+    match.turn,
+  )
+  return beginResolutionPhase(match, arrows)
 }
 
 /**
@@ -177,7 +179,7 @@ export function beginAutoResolution(
 
 function beginResolutionPhase(
   match: MatchState,
-  arrows: readonly PlacedArrow[],
+  arrows: readonly BoardArrow[],
 ): PendingResolution {
   const games = [...match.games]
   const advanced = new Set<number>()
@@ -189,7 +191,11 @@ function beginResolutionPhase(
     if (entry === undefined) {
       continue
     }
-    const weight = arrowWeight(entry.turn, match.turn)
+    const weight = arrowPullWeight(
+      entry.cardinality,
+      entry.placedTurn,
+      match.turn,
+    )
     if (weight === 0) {
       continue
     }
@@ -207,7 +213,10 @@ function beginResolutionPhase(
         ) {
           continue
         }
-        const move = arrowMoveForGame(game, entry.arrow)
+        const move = arrowMoveForGame(game, {
+          from: entry.from,
+          to: entry.to,
+        })
         if (move !== null) {
           candidates.push({ gameIndex, move })
         }
@@ -319,7 +328,8 @@ export function completeResolution(
 
   const nextTurn = base.turn + 1
   const activeArrows = resolution.arrows.filter(
-    (entry) => arrowWeight(entry.turn, nextTurn) > 0,
+    (entry) =>
+      arrowPullWeight(entry.cardinality, entry.placedTurn, nextTurn) > 0,
   )
 
   return {

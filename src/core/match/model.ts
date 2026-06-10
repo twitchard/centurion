@@ -9,7 +9,7 @@ export type PlayerId = 1 | 2
 export type BoardSquare = number
 
 /**
- * An arrow on the unified board, stored in the canonical frame
+ * A placement input: origin and destination in the canonical frame
  * (player 1's point of view). Player 2 sees the board rank-flipped.
  */
 export interface Arrow {
@@ -17,10 +17,17 @@ export interface Arrow {
   readonly to: BoardSquare
 }
 
-export interface PlacedArrow {
-  readonly arrow: Arrow
-  readonly placedBy: PlayerId
-  readonly turn: number
+/**
+ * A persistent arrow on the board: a square pair, its owner, how much
+ * pull weight it carries (increases when stacked), and the turn it was
+ * last placed or refreshed.
+ */
+export interface BoardArrow {
+  readonly from: BoardSquare
+  readonly to: BoardSquare
+  readonly owner: PlayerId
+  readonly cardinality: number
+  readonly placedTurn: number
 }
 
 export type DrawReason =
@@ -58,7 +65,7 @@ export type MatchPhase =
 export interface MatchState {
   readonly gameCount: number
   readonly games: readonly MatchGame[]
-  readonly arrows: readonly PlacedArrow[]
+  readonly arrows: readonly BoardArrow[]
   readonly turn: number
   readonly firstPlacer: PlayerId
   readonly scores: { readonly p1: number; readonly p2: number }
@@ -76,16 +83,57 @@ export const ARROW_DECAY_INITIAL = 8
 export const ARROW_PLACEMENT_LAST_TURN = 100
 
 /**
- * How many games an arrow can pull on a given turn. Starts at 8 on the
- * placement turn, halves (rounded) each turn, and reaches 0 after four
- * more turns (8 → 4 → 2 → 1 → gone).
+ * How many games an arrow can pull on a given turn. Cardinality halves
+ * each turn (integer divide by two) from the turn it was last placed or
+ * stacked; at zero the arrow is removed.
  */
-export function arrowWeight(placedTurn: number, currentTurn: number): number {
+export function arrowPullWeight(
+  cardinality: number,
+  placedTurn: number,
+  currentTurn: number,
+): number {
   const age = currentTurn - placedTurn
-  if (age < 0 || age >= 4) {
+  if (age < 0) {
     return 0
   }
-  return ARROW_DECAY_INITIAL >> age
+  return cardinality >> age
+}
+
+/** Add or stack an arrow, moving a refreshed stack to the end of the list. */
+export function addBoardArrow(
+  arrows: readonly BoardArrow[],
+  arrow: Arrow,
+  owner: PlayerId,
+  turn: number,
+): BoardArrow[] {
+  const index = arrows.findIndex(
+    (entry) =>
+      entry.from === arrow.from &&
+      entry.to === arrow.to &&
+      entry.owner === owner,
+  )
+  if (index >= 0) {
+    const existing = arrows[index]
+    if (existing === undefined) {
+      throw new Error('missing stacked arrow')
+    }
+    const refreshed: BoardArrow = {
+      ...existing,
+      cardinality: existing.cardinality + ARROW_DECAY_INITIAL,
+      placedTurn: turn,
+    }
+    return [...arrows.slice(0, index), ...arrows.slice(index + 1), refreshed]
+  }
+  return [
+    ...arrows,
+    {
+      from: arrow.from,
+      to: arrow.to,
+      owner,
+      cardinality: ARROW_DECAY_INITIAL,
+      placedTurn: turn,
+    },
+  ]
 }
 
 export function canPlaceArrows(match: MatchState): boolean {

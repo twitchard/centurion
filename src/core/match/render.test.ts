@@ -89,7 +89,7 @@ describe('matchRenderModel', () => {
     ])
   })
 
-  it('collapses a re-placed arrow into one stack with a count', () => {
+  it('increases cardinality when an arrow is stacked', () => {
     // Turn 1: first placer plays e2->e4. Turn 2: the other player plays
     // a different arrow. Turn 3: the first placer stacks e2->e4 again.
     let match = initMatch(9, { gameCount: 4 })
@@ -111,10 +111,12 @@ describe('matchRenderModel', () => {
       from: { col: 4, row: 1 },
       to: { col: 4, row: 3 },
       owner: firstPlacer,
-      count: 10,
+      count: 16,
     })
     const single = model.arrows[0]
     expect(single?.count).toBe(4)
+    expect(resolution.arrows).toHaveLength(2)
+    expect(resolution.arrows[1]?.cardinality).toBe(16)
   })
 
   it('colors pieces by ownership: the viewer is white, the opponent black', () => {

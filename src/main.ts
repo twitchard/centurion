@@ -680,12 +680,12 @@ function renderCenturionSession(session: MatchSession): void {
   centurionResolutionSummary.textContent = resolutionSummaryText(match)
 
   centurionArrowHistory.innerHTML = ''
-  for (const placed of [...match.arrows].reverse()) {
+  for (const boardArrow of [...match.arrows].reverse()) {
     const item = document.createElement('li')
-    item.className = `centurion-arrow-entry centurion-arrow-entry--player-${placed.placedBy}`
-    const from = squareName(toCanonicalSquare(viewer, placed.arrow.from))
-    const to = squareName(toCanonicalSquare(viewer, placed.arrow.to))
-    item.textContent = `T${placed.turn} P${placed.placedBy}: ${from}->${to}`
+    item.className = `centurion-arrow-entry centurion-arrow-entry--player-${boardArrow.owner}`
+    const from = squareName(toCanonicalSquare(viewer, boardArrow.from))
+    const to = squareName(toCanonicalSquare(viewer, boardArrow.to))
+    item.textContent = `T${boardArrow.placedTurn} P${boardArrow.owner}: ${from}->${to} (×${boardArrow.cardinality})`
     centurionArrowHistory.appendChild(item)
   }
 

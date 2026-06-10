@@ -12,7 +12,7 @@ import {
   type BoardSquare,
   type MatchState,
   type PlayerId,
-  arrowWeight,
+  arrowPullWeight,
   otherPlayer,
 } from './model'
 import { type PendingResolution, flipSquare } from './resolve'
@@ -107,29 +107,23 @@ export function matchRenderModel(
     positions.push({ pieces })
   }
 
-  // Collapse stacked copies (same squares, same player) into one segment
-  // with a count equal to their combined pull weight this turn.
-  const stacks = new Map<string, ArrowSegment>()
-  for (const placed of placedArrows) {
-    const weight = arrowWeight(placed.turn, match.turn)
+  const arrows: ArrowSegment[] = []
+  for (const boardArrow of placedArrows) {
+    const weight = arrowPullWeight(
+      boardArrow.cardinality,
+      boardArrow.placedTurn,
+      match.turn,
+    )
     if (weight === 0) {
       continue
     }
-    const key = `${placed.arrow.from}-${placed.arrow.to}-${placed.placedBy}`
-    const existing = stacks.get(key)
-    if (existing !== undefined) {
-      stacks.delete(key)
-      stacks.set(key, { ...existing, count: (existing.count ?? 0) + weight })
-      continue
-    }
-    stacks.set(key, {
-      from: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.from)),
-      to: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.to)),
-      owner: placed.placedBy,
+    arrows.push({
+      from: squareToCoordinate(toCanonicalSquare(viewer, boardArrow.from)),
+      to: squareToCoordinate(toCanonicalSquare(viewer, boardArrow.to)),
+      owner: boardArrow.owner,
       count: weight,
     })
   }
-  const arrows: ArrowSegment[] = [...stacks.values()]
 
   const base = buildSuperpositionRenderModel(positions, arrows)
   if (selected === null) {

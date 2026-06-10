@@ -222,7 +222,7 @@ describe('solo mode', () => {
     expect(model.session.resolving).toBeNull()
     // One arrow total, every arrow yours, both plies played everywhere.
     expect(model.session.match.arrows).toHaveLength(1)
-    expect(model.session.match.arrows[0]?.placedBy).toBe(1)
+    expect(model.session.match.arrows[0]?.owner).toBe(1)
     for (const game of model.session.match.games) {
       expect(game.position.fullmoves).toBe(2)
       expect(game.position.turn).toBe('white')
