@@ -45,4 +45,5 @@ export interface SuperpositionRenderModel {
   readonly squareLayers: readonly SquareLayer[]
   readonly arrows: readonly ArrowSegment[]
   readonly positionCount: number
+  readonly highlight?: ArrowCoordinate
 }

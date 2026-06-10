@@ -60,11 +60,12 @@ vi.mock('./adapters/trystero-transport', () => {
       this.setStatus('connecting')
     }
 
+    // Matches the real adapter: disconnect() resets state without
+    // emitting a status callback.
     disconnect(): void {
       this.code = ''
       this.isHost = false
       this.status = 'disconnected'
-      this.callbacks.onStatusChange('disconnected')
     }
 
     send(): void {
@@ -107,6 +108,9 @@ class FakeCanvasContext {
     return
   }
   fillRect(): void {
+    return
+  }
+  strokeRect(): void {
     return
   }
   beginPath(): void {
@@ -456,87 +460,57 @@ function setupDom(pathname = '/labs'): TestDom {
     (id, owner) => new FakeHTMLElement(id, owner),
   )
 
+  const centurionIds: readonly (readonly [
+    string,
+    'element' | 'button' | 'input' | 'canvas',
+  ])[] = [
+    ['centurion-back-btn', 'button'],
+    ['centurion-lobby', 'element'],
+    ['centurion-session', 'element'],
+    ['centurion-status-copy', 'element'],
+    ['centurion-pass-and-play-btn', 'button'],
+    ['centurion-new-match-btn', 'button'],
+    ['centurion-join-code-input', 'input'],
+    ['centurion-join-match-btn', 'button'],
+    ['centurion-cancel-btn', 'button'],
+    ['centurion-score-line', 'element'],
+    ['centurion-active-line', 'element'],
+    ['centurion-turn-line', 'element'],
+    ['centurion-session-notice', 'element'],
+    ['centurion-result-banner', 'element'],
+    ['centurion-arrow-input', 'input'],
+    ['centurion-arrow-error', 'element'],
+    ['centurion-submit-arrow-btn', 'button'],
+    ['centurion-resolution-summary', 'element'],
+    ['centurion-arrow-history', 'element'],
+    ['centurion-leave-btn', 'button'],
+  ]
+  for (const [id, kind] of centurionIds) {
+    if (kind === 'button') {
+      registerById(
+        documentRef,
+        id,
+        (i, owner) => new FakeButtonElement(i, owner),
+      )
+    } else if (kind === 'input') {
+      registerById(
+        documentRef,
+        id,
+        (i, owner) => new FakeInputElement(i, owner),
+      )
+    } else {
+      registerById(documentRef, id, (i, owner) => new FakeHTMLElement(i, owner))
+    }
+  }
+  registerById(documentRef, 'centurion-board-panel', (id, owner) => {
+    const panel = new FakeHTMLElement(id, owner)
+    panel.clientWidth = 400
+    panel.clientHeight = 400
+    return panel
+  })
   registerById(
     documentRef,
-    'centurion-back-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'centurion-status-copy',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'centurion-new-match-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'centurion-join-code-input',
-    (id, owner) => new FakeInputElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'centurion-join-match-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'centurion-single-player-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-
-  registerById(
-    documentRef,
-    'screen-single-player-match',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'single-player-turn',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'single-player-history',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'single-player-arrow-input',
-    (id, owner) => new FakeInputElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'single-player-error',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'single-player-submit-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'single-player-back-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-
-  const singlePlayerBoardPanel = registerById(
-    documentRef,
-    'single-player-board-panel',
-    (id, owner) => {
-      const panel = new FakeHTMLElement(id, owner)
-      panel.clientWidth = 400
-      panel.clientHeight = 400
-      return panel
-    },
-  )
-  void singlePlayerBoardPanel
-  registerById(
-    documentRef,
-    'single-player-canvas',
+    'centurion-canvas',
     (id, owner) => new FakeCanvasElement(id, owner),
   )
 
@@ -620,20 +594,19 @@ describe('main app wiring', () => {
     ) as FakeButtonElement
 
     expect(centurion.style.display).toBe('flex')
-    expect(statusCopy.textContent).toBe(
-      'Start a new match or join one with a code.',
-    )
+    expect(statusCopy.textContent).toContain('multiplayer match')
 
+    // While hosting, the lobby actions are locked until cancelled.
     newMatchButton.click()
-    expect(statusCopy.textContent).toContain('Share code')
-    expect(joinCodeInput.value).toBe('')
+    expect(statusCopy.textContent).toContain('Share code 123456')
+    expect(newMatchButton.disabled).toBe(true)
+    expect(joinMatchButton.disabled).toBe(true)
 
-    joinCodeInput.value = '123456'
-    joinCodeInput.dispatch('input')
-    joinMatchButton.click()
-    expect(statusCopy.textContent).toBe(
-      'You already created this match code on this device. Share it with your opponent instead.',
-    )
+    const cancelButton = documentRef.getElementById(
+      'centurion-cancel-btn',
+    ) as FakeButtonElement
+    cancelButton.click()
+    expect(newMatchButton.disabled).toBe(false)
 
     joinCodeInput.value = '654321'
     joinCodeInput.dispatch('input')
@@ -641,7 +614,7 @@ describe('main app wiring', () => {
     expect(statusCopy.textContent).toBe('Joining match 654321...')
   })
 
-  it('mounts centurion controls on initial root route', async () => {
+  it('mounts the centurion lobby on initial root route', async () => {
     vi.resetModules()
     const { documentRef } = setupDom('/')
 
@@ -662,11 +635,75 @@ describe('main app wiring', () => {
 
     expect(labsMenu.style.display).toBe('none')
     expect(centurion.style.display).toBe('flex')
-    expect(statusCopy.textContent).toBe(
-      'Start a new match or join one with a code.',
-    )
+    expect(statusCopy.textContent).toContain('multiplayer match')
 
     newMatchButton.click()
     expect(statusCopy.textContent).toContain('Share code')
+  })
+
+  it('plays a pass-and-play turn end to end', async () => {
+    vi.resetModules()
+    const { documentRef } = setupDom('/')
+
+    await import('./main')
+
+    const lobby = documentRef.getElementById(
+      'centurion-lobby',
+    ) as FakeHTMLElement
+    const session = documentRef.getElementById(
+      'centurion-session',
+    ) as FakeHTMLElement
+    const passAndPlayButton = documentRef.getElementById(
+      'centurion-pass-and-play-btn',
+    ) as FakeButtonElement
+
+    expect(lobby.style.display).toBe('flex')
+    expect(session.style.display).toBe('none')
+
+    passAndPlayButton.click()
+    expect(lobby.style.display).toBe('none')
+    expect(session.style.display).toBe('grid')
+
+    const scoreLine = documentRef.getElementById(
+      'centurion-score-line',
+    ) as FakeHTMLElement
+    const activeLine = documentRef.getElementById(
+      'centurion-active-line',
+    ) as FakeHTMLElement
+    const turnLine = documentRef.getElementById(
+      'centurion-turn-line',
+    ) as FakeHTMLElement
+    expect(scoreLine.textContent).toBe('Player 1 0 : 0 Player 2')
+    expect(activeLine.textContent).toBe('100 of 100 games active')
+    expect(turnLine.textContent).toContain('Turn 1')
+
+    const arrowInput = documentRef.getElementById(
+      'centurion-arrow-input',
+    ) as FakeInputElement
+    const submitButton = documentRef.getElementById(
+      'centurion-submit-arrow-btn',
+    ) as FakeButtonElement
+    const history = documentRef.getElementById(
+      'centurion-arrow-history',
+    ) as FakeHTMLElement
+
+    arrowInput.value = 'e2->e4'
+    arrowInput.dispatch('input')
+    submitButton.click()
+
+    expect(turnLine.textContent).toContain('Turn 2')
+    expect(history.scrollHeight).toBeGreaterThan(0)
+
+    const summary = documentRef.getElementById(
+      'centurion-resolution-summary',
+    ) as FakeHTMLElement
+    expect(summary.textContent).toContain('followed arrows')
+
+    const leaveButton = documentRef.getElementById(
+      'centurion-leave-btn',
+    ) as FakeButtonElement
+    leaveButton.click()
+    expect(lobby.style.display).toBe('flex')
+    expect(session.style.display).toBe('none')
   })
 })

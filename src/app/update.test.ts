@@ -30,14 +30,33 @@ describe('updateApp', () => {
     ])
   })
 
-  it('issues mount command when entering centurion match', () => {
+  it('enters the centurion lobby without side effects', () => {
     const [state, commands] = updateApp(
       { tag: 'labs-menu' },
       { tag: 'open-centurion-match' },
     )
-    expect(state.tag).toBe('centurion-match')
+    if (state.tag !== 'centurion-match') {
+      throw new Error('expected centurion-match state')
+    }
+    expect(state.model).toEqual({
+      tag: 'lobby',
+      joinCodeInput: '',
+      notice: null,
+    })
+    expect(commands).toEqual([])
+  })
+
+  it('issues a transport disconnect when leaving the centurion match', () => {
+    const [state, commands] = updateApp(
+      {
+        tag: 'centurion-match',
+        model: { tag: 'lobby', joinCodeInput: '', notice: null },
+      },
+      { tag: 'navigate', path: '/labs' },
+    )
+    expect(state.tag).toBe('labs-menu')
     expect(commands).toEqual([
-      { tag: 'centurion-match', cmd: { tag: 'mount' } },
+      { tag: 'centurion', cmd: { tag: 'transport-disconnect' } },
     ])
   })
 

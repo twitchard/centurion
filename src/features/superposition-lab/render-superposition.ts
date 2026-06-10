@@ -61,8 +61,23 @@ export class SuperpositionRenderer {
     }
 
     this.drawBoard()
+    if (model.highlight !== undefined) {
+      this.drawHighlight(model.highlight.col, model.highlight.row)
+    }
     this.drawPieceLayers(model)
     this.drawArrows(model.arrows)
+  }
+
+  private drawHighlight(col: number, row: number): void {
+    const ctx = this.context
+    const square = this.squareSize
+    const x = col * square
+    const y = (7 - row) * square
+    ctx.fillStyle = 'rgba(122, 199, 255, 0.22)'
+    ctx.fillRect(x, y, square, square)
+    ctx.strokeStyle = 'rgba(122, 199, 255, 0.85)'
+    ctx.lineWidth = Math.max(2, square * 0.04)
+    ctx.strokeRect(x + 1, y + 1, square - 2, square - 2)
   }
 
   private drawBoard(): void {

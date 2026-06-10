@@ -1,32 +1,20 @@
 import { type UpdateResult, assertNever } from '../core/update'
-import type { CenturionMatchCmd } from '../features/centurion-match/types'
+import { initCenturionModel } from '../features/centurion-match/model'
+import { updateCenturion } from '../features/centurion-match/update'
 import { initChatLabModel } from '../features/chat-lab/model'
 import { updateChatLab } from '../features/chat-lab/update'
-import { initSinglePlayerModel } from '../features/single-player-match/model'
-import { updateSinglePlayer } from '../features/single-player-match/update'
 import { initSuperpositionLabModel } from '../features/superposition-lab/model'
 import { updateSuperpositionLab } from '../features/superposition-lab/update'
 import type { AppCmd, AppMsg, AppState } from './model'
-
-function mapChatCmds(
-  commands: readonly ReturnType<typeof updateChatLab>[1][number][],
-): AppCmd[] {
-  return commands.map((cmd) => ({ tag: 'chat-lab', cmd }))
-}
 
 function cleanupCommandsFor(state: AppState): readonly AppCmd[] {
   if (state.tag === 'chat-lab') {
     return [{ tag: 'chat-lab', cmd: { tag: 'transport-disconnect' } }]
   }
   if (state.tag === 'centurion-match') {
-    return [{ tag: 'centurion-match', cmd: { tag: 'unmount' } }]
+    return [{ tag: 'centurion', cmd: { tag: 'transport-disconnect' } }]
   }
   return []
-}
-
-function routeToCenturion(nextState: AppState): UpdateResult<AppState, AppCmd> {
-  const mount: CenturionMatchCmd = { tag: 'mount' }
-  return [nextState, [{ tag: 'centurion-match', cmd: mount }]]
 }
 
 export function updateApp(
@@ -35,19 +23,19 @@ export function updateApp(
 ): UpdateResult<AppState, AppCmd> {
   switch (msg.tag) {
     case 'navigate': {
-      const path = msg.path
-      if (path === '/labs') {
+      if (msg.path === '/labs') {
+        if (state.tag === 'labs-menu') {
+          return [state, []]
+        }
         return [{ tag: 'labs-menu' }, cleanupCommandsFor(state)]
       }
-      const nextState: AppState = { tag: 'centurion-match' }
-      const cleanup = cleanupCommandsFor(state)
-      if (cleanup.length > 0) {
-        return [
-          nextState,
-          [...cleanup, { tag: 'centurion-match', cmd: { tag: 'mount' } }],
-        ]
+      if (state.tag === 'centurion-match') {
+        return [state, []]
       }
-      return routeToCenturion(nextState)
+      return [
+        { tag: 'centurion-match', model: initCenturionModel() },
+        cleanupCommandsFor(state),
+      ]
     }
 
     case 'open-superposition-lab':
@@ -62,17 +50,14 @@ export function updateApp(
         cleanupCommandsFor(state),
       ]
 
-    case 'open-centurion-match': {
-      const nextState: AppState = { tag: 'centurion-match' }
-      const cleanup = cleanupCommandsFor(state)
-      if (cleanup.length > 0) {
-        return [
-          nextState,
-          [...cleanup, { tag: 'centurion-match', cmd: { tag: 'mount' } }],
-        ]
+    case 'open-centurion-match':
+      if (state.tag === 'centurion-match') {
+        return [state, []]
       }
-      return routeToCenturion(nextState)
-    }
+      return [
+        { tag: 'centurion-match', model: initCenturionModel() },
+        cleanupCommandsFor(state),
+      ]
 
     case 'back-to-labs-menu':
       return [{ tag: 'labs-menu' }, cleanupCommandsFor(state)]
@@ -90,23 +75,21 @@ export function updateApp(
         return [state, []]
       }
       const [nextModel, commands] = updateChatLab(state.model, msg.msg)
-      return [{ tag: 'chat-lab', model: nextModel }, mapChatCmds(commands)]
+      return [
+        { tag: 'chat-lab', model: nextModel },
+        commands.map((cmd): AppCmd => ({ tag: 'chat-lab', cmd })),
+      ]
     }
 
-    case 'open-single-player-match': {
-      const nextState: AppState = {
-        tag: 'single-player-match',
-        model: initSinglePlayerModel(),
-      }
-      return [nextState, cleanupCommandsFor(state)]
-    }
-
-    case 'single-player-msg': {
-      if (state.tag !== 'single-player-match') {
+    case 'centurion-msg': {
+      if (state.tag !== 'centurion-match') {
         return [state, []]
       }
-      const [nextModel] = updateSinglePlayer(state.model, msg.msg)
-      return [{ tag: 'single-player-match', model: nextModel }, []]
+      const [nextModel, commands] = updateCenturion(state.model, msg.msg)
+      return [
+        { tag: 'centurion-match', model: nextModel },
+        commands.map((cmd): AppCmd => ({ tag: 'centurion', cmd })),
+      ]
     }
 
     default:

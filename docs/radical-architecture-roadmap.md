@@ -1,6 +1,6 @@
 # Radical Architecture Roadmap
 
-Last updated: 2026-02-16
+Last updated: 2026-06-10
 
 This document replaces the old incremental "top 5 improvements" approach with a full architecture reset.
 
@@ -130,69 +130,72 @@ Versions below were checked on 2026-02-16 via npm.
 Status legend: `[ ]` not started, `[~]` in progress, `[x]` complete.
 
 ### Project 1 - Strict TypeScript hardening
-- [ ] Add strictness options listed above and fix all resulting type errors.
-- [ ] Remove unchecked casts in DOM/network boundaries using typed decoders.
-- [ ] Add `npm run typecheck` and enforce in CI.
+- [x] Add strictness options listed above and fix all resulting type errors.
+- [x] Remove unchecked casts in DOM/network boundaries using typed decoders.
+- [x] Add a `typecheck` script and enforce in CI.
 - Exit criteria: zero TypeScript errors under strict profile, deterministic CI gate.
 
 ### Project 2 - App shell state machine (Elm architecture)
-- [ ] Introduce top-level `AppState`, `AppMsg`, `AppCmd`.
-- [ ] Build pure `updateApp(state, msg)` reducer.
-- [ ] Build command interpreter for side effects.
+- [x] Introduce top-level `AppState`, `AppMsg`, `AppCmd`.
+- [x] Build pure `updateApp(state, msg)` reducer.
+- [x] Build command interpreter for side effects.
 - Exit criteria: every screen transition goes through typed messages and reducers.
 
 ### Project 3 - Superposition Board Core (pure domain)
-- [ ] Define pure types for board layers, overlays, and opacity blending.
-- [ ] Build deterministic parser for delimiter-separated FEN input.
-- [ ] Build deterministic parser for delimiter-separated arrow input.
+- [x] Define pure types for board layers, overlays, and opacity blending.
+- [x] Build deterministic parser for delimiter-separated FEN input.
+- [x] Build deterministic parser for delimiter-separated arrow input.
 - Exit criteria: board composition testable without DOM or canvas.
 
 ### Project 4 - Superposition Board Renderer module
-- [ ] Isolate rendering pipeline into independent module (`render-superposition`).
-- [ ] Define renderer input contract independent of game/network state.
-- [ ] Add screenshot/fixture-style rendering assertions.
+- [x] Isolate rendering pipeline into independent module (`render-superposition`).
+- [x] Define renderer input contract independent of game/network state.
+- [~] Add screenshot/fixture-style rendering assertions (`bun run screenshot` covers all screens manually; no automated pixel assertions yet).
 - Exit criteria: renderer can be run with static fixtures and no app bootstrapping.
 
 ### Project 5 - Superposition Lab feature (menu destination #1)
-- [ ] Build lab UI around pure parser + renderer module.
-- [ ] Show parse diagnostics inline for invalid FEN/arrow inputs.
-- [ ] Keep all user edits represented in typed model (no hidden mutable globals).
+- [x] Build lab UI around pure parser + renderer module.
+- [x] Show parse diagnostics inline for invalid FEN/arrow inputs.
+- [x] Keep all user edits represented in typed model (no hidden mutable globals).
 - Exit criteria: manual and automated tests for input->render flow.
 
 ### Project 6 - P2P Chat Lab feature (menu destination #2)
-- [ ] Build isolated chat state machine (`ChatState`, `ChatMsg`, `ChatCmd`).
-- [ ] Reuse transport adapter with strict typed message codecs.
-- [ ] Add reconnect/error states as explicit union members.
+- [x] Build isolated chat state machine (`ChatState`, `ChatMsg`, `ChatCmd`).
+- [x] Reuse transport adapter with strict typed message codecs.
+- [x] Add reconnect/error states as explicit union members.
 - Exit criteria: chat works independently from chess logic, with deterministic reducer tests.
 
 ### Project 7 - Match domain rewrite (menu destination #3)
-- [ ] Re-model match lifecycle as explicit union states.
-- [ ] Reify arrow resolution as pure transitions + effectful command execution.
-- [ ] Make randomness/timing injectable via ports for repeatable tests.
+- [x] Re-model match lifecycle as explicit union states (`core/match/model.ts`).
+- [x] Reify arrow resolution as pure transitions + effectful command execution (`core/match/resolve.ts`).
+- [x] Make randomness injectable for repeatable tests (seeded RNG threaded through `MatchState`).
+- [x] Full rules: arrow matching with vertical-flip interpretation, deterministic engine fallback, scoring, draw detection (stalemate, insufficient material, fifty-move, threefold), catch-up match end.
+- [x] Multiplayer lockstep: host shares a seed, peers exchange only arrows, both resolve deterministically.
 - Exit criteria: deterministic simulation tests for resolution and scoring.
+- Note: the fallback engine is a built-in deterministic shallow search rather than Stockfish depth 5 — see README for the rationale (serverless lockstep determinism).
 
 ### Project 8 - Integration and routing
-- [ ] Replace current startup with new three-option menu.
-- [ ] Keep each destination bootstrapped independently.
-- [ ] Add integration tests for menu navigation and module isolation.
+- [x] Three-destination labs menu plus the Centurion match at `/`.
+- [x] Keep each destination bootstrapped independently.
+- [x] Add integration tests for menu navigation and module isolation.
 - Exit criteria: each feature can start, run, and fail independently without cascading breakage.
 
 ### Project 9 - Test architecture upgrade (manual + automated)
-- [ ] Unit tests for pure reducers/parsers.
-- [ ] Model-based tests for state-machine transitions.
-- [ ] Integration tests for adapters (network, DOM, timers).
-- [ ] Manual test scripts/checklists for each menu destination.
+- [x] Unit tests for pure reducers/parsers (match core, engine, codecs, feature reducers).
+- [~] Model-based tests for state-machine transitions (example-based today, no property-based generation yet).
+- [x] Integration tests for the app shell with a mocked transport.
+- [~] Manual test scripts: `bun run screenshot` walks every screen including a live pass-and-play turn.
 - Exit criteria: release confidence from both deterministic automation and explicit manual protocol.
 
 ### Project 10 - Legacy cleanup and migration completion
-- [ ] Remove old imperative wiring once replacement paths are stable.
-- [ ] Publish migration notes and architecture diagrams.
-- [ ] Freeze unstable APIs behind typed boundaries.
+- [x] Old imperative match controller and placeholder single-player feature removed.
+- [x] Migration notes in README (architecture section).
+- [~] Freeze unstable APIs behind typed boundaries (wire codec is versioned by message type; no protocol version field yet).
 - Exit criteria: old flow removed, new architecture documented and enforced.
 
-## Immediate next steps (first iteration)
+## Remaining work (next iteration)
 
-1. Land strict typecheck gate and config hardening.
-2. Introduce top-level app state machine shell (`menu` + route transitions only).
-3. Extract current renderer input/output contract into a standalone module.
-4. Build a minimal Superposition Lab from static fixtures before wiring live match state.
+1. Reconnect/resync for multiplayer matches (currently a dropped peer ends the match in practice; state is not re-synced on rejoin).
+2. Split-view toggle (white games vs black games panels) from the original vision.
+3. Automated rendering assertions (pixel or layer-model fixtures) for the superposition renderer.
+4. Optional: deterministic Stockfish build behind `core/match/engine.ts` for a stronger fallback.

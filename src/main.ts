@@ -8,22 +8,34 @@ import {
   initAppState,
 } from './app/model'
 import { updateApp } from './app/update'
+import {
+  type MatchState,
+  type PlayerId,
+  activeGameCount,
+  activePlacer,
+  sideToMove,
+} from './core/match/model'
+import {
+  matchRenderModel,
+  squareName,
+  toCanonicalSquare,
+} from './core/match/render'
 import type { ParseResult } from './core/parsing/types'
-import { buildSuperpositionRenderModel } from './core/superposition/build-render-model'
-import { parseArrowList } from './core/superposition/parse-arrow-list'
-import { parseFenList } from './core/superposition/parse-fen-list'
 import { assertNever } from './core/update'
-import { CenturionMatchController } from './features/centurion-match/controller'
+import type {
+  CenturionModel,
+  MatchSession,
+} from './features/centurion-match/model'
+import { sessionViewer } from './features/centurion-match/model'
+import {
+  type CenturionMsg,
+  LOBBY_COPY,
+} from './features/centurion-match/update'
 import type {
   ChatConnectionState,
   ChatLabModel,
   ChatLine,
 } from './features/chat-lab/model'
-import {
-  type ArrowEntry,
-  STARTING_FEN,
-  type SinglePlayerModel,
-} from './features/single-player-match/model'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
 import { SuperpositionRenderer } from './features/superposition-lab/render-superposition'
 
@@ -71,7 +83,6 @@ const screenLabsMenu = element('screen-labs-menu')
 const screenSuperposition = element('screen-superposition-lab')
 const screenChat = element('screen-chat-lab')
 const screenCenturion = element('screen-centurion-match')
-const screenSinglePlayer = element('screen-single-player-match')
 
 const superpositionFenInput = textarea('superposition-fen-input')
 const superpositionArrowInput = textarea('superposition-arrow-input')
@@ -91,19 +102,28 @@ const chatJoinRoomButton = button('chat-join-room-btn')
 const chatDisconnectButton = button('chat-disconnect-btn')
 const chatSendButton = button('chat-send-btn')
 
-const singlePlayerTurnEl = element('single-player-turn')
-const singlePlayerHistory = element('single-player-history')
-const singlePlayerArrowInput = input('single-player-arrow-input')
-const singlePlayerErrorEl = element('single-player-error')
-const singlePlayerSubmitBtn = button('single-player-submit-btn')
-const singlePlayerBoardPanel = element('single-player-board-panel')
-const singlePlayerCanvas = canvas('single-player-canvas')
-const singlePlayerRenderer = new SuperpositionRenderer(singlePlayerCanvas)
-
-const startingFenPositions = (() => {
-  const result = parseFenList(STARTING_FEN)
-  return result.tag === 'valid' ? result.value : []
-})()
+const centurionLobby = element('centurion-lobby')
+const centurionSession = element('centurion-session')
+const centurionStatusCopy = element('centurion-status-copy')
+const centurionPassAndPlayButton = button('centurion-pass-and-play-btn')
+const centurionNewMatchButton = button('centurion-new-match-btn')
+const centurionJoinCodeInput = input('centurion-join-code-input')
+const centurionJoinMatchButton = button('centurion-join-match-btn')
+const centurionCancelButton = button('centurion-cancel-btn')
+const centurionScoreLine = element('centurion-score-line')
+const centurionActiveLine = element('centurion-active-line')
+const centurionTurnLine = element('centurion-turn-line')
+const centurionSessionNotice = element('centurion-session-notice')
+const centurionResultBanner = element('centurion-result-banner')
+const centurionArrowInput = input('centurion-arrow-input')
+const centurionArrowError = element('centurion-arrow-error')
+const centurionSubmitArrowButton = button('centurion-submit-arrow-btn')
+const centurionResolutionSummary = element('centurion-resolution-summary')
+const centurionArrowHistory = element('centurion-arrow-history')
+const centurionLeaveButton = button('centurion-leave-btn')
+const centurionBoardPanel = element('centurion-board-panel')
+const centurionCanvas = canvas('centurion-canvas')
+const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
 
 const chatTransport = new TrysteroTransportAdapter()
 const centurionTransport = new TrysteroTransportAdapter(
@@ -121,6 +141,10 @@ function dispatch(msg: AppMsg): void {
   }
 }
 
+function dispatchCenturion(msg: CenturionMsg): void {
+  dispatch({ tag: 'centurion-msg', msg })
+}
+
 function navigate(path: string, pushState = true): void {
   if (pushState) {
     window.history.pushState({}, '', path)
@@ -128,13 +152,9 @@ function navigate(path: string, pushState = true): void {
   dispatch({ tag: 'navigate', path })
 }
 
-const centurionController = new CenturionMatchController({
-  root: screenCenturion,
-  onRequestExit: () => {
-    navigate('/labs')
-  },
-  transport: centurionTransport,
-})
+function newSeed(): number {
+  return Math.floor(Math.random() * 0x100000000) >>> 0
+}
 
 chatTransport.setCallbacks({
   onStatusChange: (status) => {
@@ -168,6 +188,26 @@ chatTransport.setCallbacks({
   },
 })
 
+centurionTransport.setCallbacks({
+  onStatusChange: (status) => {
+    dispatchCenturion({
+      tag: 'transport-status-changed',
+      status,
+      code: centurionTransport.code,
+      isHost: centurionTransport.isHost,
+    })
+  },
+  onPeerJoin: () => {
+    dispatchCenturion({ tag: 'transport-peer-joined', seed: newSeed() })
+  },
+  onPeerLeave: () => {
+    dispatchCenturion({ tag: 'transport-peer-left' })
+  },
+  onMessage: (data: unknown) => {
+    dispatchCenturion({ tag: 'transport-message-received', payload: data })
+  },
+})
+
 function runCommand(command: AppCmd): void {
   switch (command.tag) {
     case 'chat-lab':
@@ -188,13 +228,24 @@ function runCommand(command: AppCmd): void {
           assertNever(command.cmd)
           return
       }
-    case 'centurion-match':
-      if (command.cmd.tag === 'mount') {
-        centurionController.mount()
-        return
+    case 'centurion':
+      switch (command.cmd.tag) {
+        case 'transport-create-room':
+          centurionTransport.createRoom()
+          return
+        case 'transport-join-room':
+          centurionTransport.joinRoom(command.cmd.code)
+          return
+        case 'transport-disconnect':
+          centurionTransport.disconnect()
+          return
+        case 'transport-send':
+          centurionTransport.send(command.cmd.payload)
+          return
+        default:
+          assertNever(command.cmd)
+          return
       }
-      centurionController.unmount()
-      return
     default:
       assertNever(command)
       return
@@ -207,8 +258,6 @@ function setScreenVisibility(screen: AppState['tag']): void {
     screen === 'superposition-lab' ? 'flex' : 'none'
   screenChat.style.display = screen === 'chat-lab' ? 'flex' : 'none'
   screenCenturion.style.display = screen === 'centurion-match' ? 'flex' : 'none'
-  screenSinglePlayer.style.display =
-    screen === 'single-player-match' ? 'flex' : 'none'
 }
 
 function renderDiagnostics(
@@ -233,15 +282,12 @@ function renderDiagnostics(
   }
 }
 
-function resizeSuperpositionRenderer(): void {
-  const maxSquare = Math.min(
-    superpositionBoardPanel.clientWidth,
-    superpositionBoardPanel.clientHeight > 0
-      ? superpositionBoardPanel.clientHeight
-      : superpositionBoardPanel.clientWidth,
+function panelBoardSize(panel: HTMLElement): number {
+  return Math.min(
+    panel.clientWidth,
+    panel.clientHeight > 0 ? panel.clientHeight : panel.clientWidth,
     720,
   )
-  superpositionRenderer.resize(maxSquare)
 }
 
 function renderSuperpositionLab(model: SuperpositionLabModel): void {
@@ -265,7 +311,7 @@ function renderSuperpositionLab(model: SuperpositionLabModel): void {
       : 'Arrow parsing failed.',
   )
 
-  resizeSuperpositionRenderer()
+  superpositionRenderer.resize(panelBoardSize(superpositionBoardPanel))
   superpositionRenderer.render(model.renderModel)
 }
 
@@ -332,50 +378,139 @@ function renderChatLab(model: ChatLabModel): void {
   chatSendButton.disabled = !connected || model.draft.trim().length === 0
 }
 
-function renderArrowHistoryEntry(entry: ArrowEntry): HTMLLIElement {
-  const item = document.createElement('li')
-  item.className = `single-player-history-entry single-player-history-entry--player-${entry.by}`
-  item.textContent = `T${entry.turn} P${entry.by}: ${entry.notation}`
-  return item
+function playerLabel(session: MatchSession, player: PlayerId): string {
+  if (session.mode.tag === 'remote') {
+    return session.mode.you === player
+      ? `Player ${player} (you)`
+      : `Player ${player}`
+  }
+  return `Player ${player}`
 }
 
-function resizeSinglePlayerRenderer(): void {
-  const maxSquare = Math.min(
-    singlePlayerBoardPanel.clientWidth,
-    singlePlayerBoardPanel.clientHeight > 0
-      ? singlePlayerBoardPanel.clientHeight
-      : singlePlayerBoardPanel.clientWidth,
-    720,
-  )
-  singlePlayerRenderer.resize(maxSquare)
+function describePlacer(session: MatchSession): string {
+  const match = session.match
+  const placer = activePlacer(match)
+  const color = sideToMove(match)
+  const who =
+    session.mode.tag === 'remote'
+      ? placer === session.mode.you
+        ? 'You place'
+        : 'Opponent places'
+      : `Player ${placer} places`
+  return `Turn ${match.turn}: ${who} an arrow, then all games advance (${color} to move).`
 }
 
-function renderSinglePlayerMatch(model: SinglePlayerModel): void {
-  singlePlayerTurnEl.textContent = `Turn ${model.turn} — Player ${model.activePlayer}`
+function describeResult(session: MatchSession, match: MatchState): string {
+  if (match.phase.tag !== 'finished') {
+    return ''
+  }
+  const winner = match.phase.winner
+  if (winner === 'draw') {
+    return `Match drawn ${match.scores.p1} : ${match.scores.p2}.`
+  }
+  if (session.mode.tag === 'remote') {
+    return winner === session.mode.you
+      ? `You win the match ${match.scores.p1} : ${match.scores.p2}!`
+      : `${playerLabel(session, winner)} wins ${match.scores.p1} : ${match.scores.p2}.`
+  }
+  return `Player ${winner} wins the match ${match.scores.p1} : ${match.scores.p2}!`
+}
 
-  if (singlePlayerArrowInput.value !== model.arrowInput) {
-    singlePlayerArrowInput.value = model.arrowInput
+function resolutionSummaryText(match: MatchState): string {
+  const summary = match.lastResolution
+  if (summary === null) {
+    return 'No turns resolved yet.'
+  }
+  const base = `Turn ${summary.turn}: ${summary.arrowMoves} game(s) followed arrows, ${summary.engineMoves} played engine moves.`
+  const decided = summary.p1Wins + summary.p2Wins + summary.draws
+  if (decided === 0) {
+    return base
+  }
+  return `${base} Decided: P1 +${summary.p1Wins}, P2 +${summary.p2Wins}, draws +${summary.draws}.`
+}
+
+function renderCenturionSession(session: MatchSession): void {
+  const match = session.match
+  const viewer = sessionViewer(session)
+
+  centurionScoreLine.textContent = `${playerLabel(session, 1)} ${match.scores.p1} : ${match.scores.p2} ${playerLabel(session, 2)}`
+  centurionActiveLine.textContent = `${activeGameCount(match)} of ${match.gameCount} games active`
+  centurionTurnLine.textContent =
+    match.phase.tag === 'finished' ? 'Match over.' : describePlacer(session)
+
+  centurionSessionNotice.textContent = session.notice ?? ''
+  centurionArrowError.textContent = session.inputError ?? ''
+
+  const result = describeResult(session, match)
+  centurionResultBanner.textContent = result
+  centurionResultBanner.style.display = result.length > 0 ? 'block' : 'none'
+
+  if (centurionArrowInput.value !== session.arrowInput) {
+    centurionArrowInput.value = session.arrowInput
   }
 
-  singlePlayerErrorEl.textContent = model.inputError ?? ''
+  const yourTurn =
+    session.mode.tag !== 'remote' || activePlacer(match) === session.mode.you
+  centurionSubmitArrowButton.disabled =
+    match.phase.tag === 'finished' || !yourTurn
 
-  singlePlayerHistory.innerHTML = ''
-  for (const entry of [...model.arrowHistory].reverse()) {
-    singlePlayerHistory.appendChild(renderArrowHistoryEntry(entry))
+  centurionResolutionSummary.textContent = resolutionSummaryText(match)
+
+  centurionArrowHistory.innerHTML = ''
+  for (const placed of [...match.arrows].reverse()) {
+    const item = document.createElement('li')
+    item.className = `centurion-arrow-entry centurion-arrow-entry--player-${placed.placedBy}`
+    const from = squareName(toCanonicalSquare(viewer, placed.arrow.from))
+    const to = squareName(toCanonicalSquare(viewer, placed.arrow.to))
+    item.textContent = `T${placed.turn} P${placed.placedBy}: ${from}->${to}`
+    centurionArrowHistory.appendChild(item)
   }
 
-  singlePlayerSubmitBtn.textContent = `Submit — Player ${model.activePlayer}`
-
-  const allArrowNotations = model.arrowHistory.map((e) => e.notation).join('\n')
-  const arrowResult = parseArrowList(allArrowNotations)
-  const arrows = arrowResult.tag === 'valid' ? arrowResult.value : []
-  const renderModel = buildSuperpositionRenderModel(
-    startingFenPositions,
-    arrows,
+  centurionRenderer.resize(panelBoardSize(centurionBoardPanel))
+  centurionRenderer.render(
+    matchRenderModel(match, viewer, session.selectedSquare),
   )
+}
 
-  resizeSinglePlayerRenderer()
-  singlePlayerRenderer.render(renderModel)
+function renderCenturion(model: CenturionModel): void {
+  const inSession = model.tag === 'playing'
+  centurionLobby.style.display = inSession ? 'none' : 'flex'
+  centurionSession.style.display = inSession ? 'grid' : 'none'
+
+  if (model.tag === 'playing') {
+    renderCenturionSession(model.session)
+    return
+  }
+
+  const idle = model.tag === 'lobby'
+  centurionPassAndPlayButton.disabled = !idle
+  centurionNewMatchButton.disabled = !idle
+  centurionJoinMatchButton.disabled = !idle || model.joinCodeInput.length !== 6
+  centurionCancelButton.style.display = idle ? 'none' : 'block'
+
+  switch (model.tag) {
+    case 'lobby':
+      centurionStatusCopy.textContent = model.notice ?? LOBBY_COPY
+      if (centurionJoinCodeInput.value !== model.joinCodeInput) {
+        centurionJoinCodeInput.value = model.joinCodeInput
+      }
+      return
+    case 'connecting':
+      centurionStatusCopy.textContent =
+        model.role === 'host'
+          ? 'Creating match...'
+          : `Joining match ${model.code}...`
+      return
+    case 'waiting':
+      centurionStatusCopy.textContent = `New match created. Share code ${model.code} to invite your opponent.`
+      return
+    case 'syncing':
+      centurionStatusCopy.textContent =
+        'Connected. Waiting for the host to start the match...'
+      return
+    default:
+      assertNever(model)
+  }
 }
 
 function render(): void {
@@ -391,14 +526,23 @@ function render(): void {
     return
   }
 
-  if (state.tag === 'single-player-match') {
-    renderSinglePlayerMatch(state.model)
-    return
-  }
-
   if (state.tag === 'centurion-match') {
+    renderCenturion(state.model)
     return
   }
+}
+
+function centurionSquareFromClick(event: MouseEvent): number | null {
+  const rect = centurionCanvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null
+  }
+  const col = Math.floor(((event.clientX - rect.left) / rect.width) * 8)
+  const rowFromTop = Math.floor(((event.clientY - rect.top) / rect.height) * 8)
+  if (col < 0 || col > 7 || rowFromTop < 0 || rowFromTop > 7) {
+    return null
+  }
+  return (7 - rowFromTop) * 8 + col
 }
 
 function bindEvents(): void {
@@ -499,64 +643,60 @@ function bindEvents(): void {
     })
   })
 
-  window.addEventListener('popstate', () => {
-    navigate(window.location.pathname, false)
+  button('centurion-back-btn').addEventListener('click', () => {
+    navigate('/labs')
   })
-
-  button('centurion-single-player-btn').addEventListener('click', () => {
-    dispatch({ tag: 'open-single-player-match' })
+  centurionPassAndPlayButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'pass-and-play-requested', seed: newSeed() })
   })
-
-  button('single-player-back-btn').addEventListener('click', () => {
-    navigate('/')
+  centurionNewMatchButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'new-match-requested' })
   })
-  singlePlayerArrowInput.addEventListener('input', (event) => {
-    dispatch({
-      tag: 'single-player-msg',
-      msg: {
-        tag: 'arrow-input-updated',
-        value: (event.target as HTMLInputElement).value,
-      },
+  centurionJoinMatchButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'join-match-requested' })
+  })
+  centurionCancelButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'leave-session-requested' })
+  })
+  centurionJoinCodeInput.addEventListener('input', (event) => {
+    dispatchCenturion({
+      tag: 'join-code-updated',
+      value: (event.target as HTMLInputElement).value,
     })
   })
-  singlePlayerArrowInput.addEventListener('keydown', (event) => {
+  centurionArrowInput.addEventListener('input', (event) => {
+    dispatchCenturion({
+      tag: 'arrow-input-updated',
+      value: (event.target as HTMLInputElement).value,
+    })
+  })
+  centurionArrowInput.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') {
       return
     }
     event.preventDefault()
-    dispatch({
-      tag: 'single-player-msg',
-      msg: { tag: 'arrow-submit-requested' },
-    })
+    dispatchCenturion({ tag: 'arrow-submit-requested' })
   })
-  singlePlayerSubmitBtn.addEventListener('click', () => {
-    dispatch({
-      tag: 'single-player-msg',
-      msg: { tag: 'arrow-submit-requested' },
-    })
+  centurionSubmitArrowButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'arrow-submit-requested' })
+  })
+  centurionLeaveButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'leave-session-requested' })
+  })
+  centurionCanvas.addEventListener('click', (event) => {
+    const square = centurionSquareFromClick(event as MouseEvent)
+    if (square === null) {
+      return
+    }
+    dispatchCenturion({ tag: 'board-square-clicked', square })
+  })
+
+  window.addEventListener('popstate', () => {
+    navigate(window.location.pathname, false)
   })
 
   window.addEventListener('resize', () => {
-    if (state.tag === 'single-player-match') {
-      resizeSinglePlayerRenderer()
-      singlePlayerRenderer.render(
-        buildSuperpositionRenderModel(
-          startingFenPositions,
-          (() => {
-            const r = parseArrowList(
-              state.model.arrowHistory.map((e) => e.notation).join('\n'),
-            )
-            return r.tag === 'valid' ? r.value : []
-          })(),
-        ),
-      )
-      return
-    }
-    if (state.tag !== 'superposition-lab') {
-      return
-    }
-    resizeSuperpositionRenderer()
-    superpositionRenderer.render(state.model.renderModel)
+    render()
   })
 }
 
