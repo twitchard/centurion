@@ -101,6 +101,18 @@
         </div>
         <button class="btn btn-outline" id="centurion-cancel-btn">Cancel</button>
       </div>
+      <details class="centurion-rules">
+        <summary>How to play</summary>
+        <ul>
+          <li>You and your opponent are playing <strong>100 games of chess at once</strong>: you are white in 50 and black in 50.</li>
+          <li>All games appear stacked on one board. Each chip shows a piece and how many games have it on that square &mdash; a light chip <strong>P&nbsp;34</strong> means a white pawn sits there in 34 games.</li>
+          <li>Your black games are shown flipped so your pieces always start nearest you. One arrow speaks for both colors: e2&rarr;e4 also means e7&rarr;e5 in your black games.</li>
+          <li>On your turn, place <strong>one arrow</strong>: tap its start square, then its end square. Arrows are permanent and shared &mdash; they can move your opponent's games too.</li>
+          <li>After each arrow, <strong>every game advances one half-move</strong>. Each arrow ever placed (newest first) moves one random game where it is a legal move; every other game plays Stockfish's best move. Placing the same arrow again stacks it, doubling its pull.</li>
+          <li><strong>Checkmate scores a point</strong> for the player whose side delivered it. Draws score nothing. Finished games leave the board.</li>
+          <li>You win when your lead is bigger than the number of games still running. If everything finishes level, the match is a draw.</li>
+        </ul>
+      </details>
     </div>
 
     <div id="centurion-session" class="feature-layout centurion-session">

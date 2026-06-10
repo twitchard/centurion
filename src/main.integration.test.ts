@@ -132,6 +132,9 @@ class FakeCanvasContext {
   clearRect(): void {
     return
   }
+  setTransform(): void {
+    return
+  }
   fillRect(): void {
     return
   }

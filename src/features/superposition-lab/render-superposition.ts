@@ -111,10 +111,15 @@ export class SuperpositionRenderer {
     const evenSize = Math.max(160, Math.floor(size / 8) * 8)
     this.boardWidth = evenSize
     this.squareSize = evenSize / 8
-    this.canvas.width = evenSize
-    this.canvas.height = evenSize
+    // Back the canvas at device resolution so text stays crisp on
+    // high-DPI (phone) screens; drawing code keeps using CSS pixels.
+    const ratio =
+      typeof window !== 'undefined' ? (window.devicePixelRatio ?? 1) : 1
+    this.canvas.width = Math.round(evenSize * ratio)
+    this.canvas.height = Math.round(evenSize * ratio)
     this.canvas.style.width = `${evenSize}px`
     this.canvas.style.height = `${evenSize}px`
+    this.context.setTransform(ratio, 0, 0, ratio, 0, 0)
   }
 
   render(model: SuperpositionRenderModel): void {

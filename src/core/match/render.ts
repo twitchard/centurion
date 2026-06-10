@@ -9,7 +9,7 @@ import type {
   SuperpositionRenderModel,
 } from '../superposition/types'
 import type { BoardSquare, MatchState, PlayerId } from './model'
-import { flipSquare } from './resolve'
+import { type PendingResolution, flipSquare } from './resolve'
 
 const WHITE_SYMBOLS: Record<Role, FenPieceSymbol> = {
   pawn: 'P',
@@ -62,14 +62,22 @@ function visualSquare(
  * Project the live match onto the unified superposition board as seen by
  * one player: their white games render as-is and their black games render
  * rank-flipped, so their own pieces are always closest to them.
+ *
+ * While a turn is mid-resolution (Stockfish still computing), pass the
+ * pending resolution so the just-placed arrow and any games it already
+ * moved appear immediately instead of after the engine finishes.
  */
 export function matchRenderModel(
   match: MatchState,
   viewer: PlayerId,
   selected: BoardSquare | null,
+  resolving: PendingResolution | null = null,
 ): SuperpositionRenderModel {
+  const games = resolving === null ? match.games : resolving.games
+  const placedArrows = resolving === null ? match.arrows : resolving.arrows
+
   const positions: FenBoardPosition[] = []
-  for (const game of match.games) {
+  for (const game of games) {
     if (game.status.tag !== 'active') {
       continue
     }
@@ -86,7 +94,7 @@ export function matchRenderModel(
     positions.push({ pieces })
   }
 
-  const arrows: ArrowSegment[] = match.arrows.map((placed) => ({
+  const arrows: ArrowSegment[] = placedArrows.map((placed) => ({
     from: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.from)),
     to: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.to)),
   }))

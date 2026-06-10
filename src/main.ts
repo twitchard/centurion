@@ -562,7 +562,7 @@ function renderCenturionSession(session: MatchSession): void {
 
   centurionRenderer.resize(panelBoardSize(centurionBoardPanel))
   centurionRenderer.render(
-    matchRenderModel(match, viewer, session.selectedSquare),
+    matchRenderModel(match, viewer, session.selectedSquare, session.resolving),
   )
 }
 
