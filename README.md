@@ -38,10 +38,8 @@ After each arrow placement, all active games advance by one half-move (one ply) 
    - For each arrow: select one game at random from the set of active games that has not yet advanced this turn and for which the arrow is a legal move for the side whose turn it is.
    - An arrow placed on the unified board is interpreted through the vertical flip: a visual arrow represents the same positional idea for both colors. For example, a visual arrow pushing a pawn from the second row to the fourth row corresponds to e2->e4 in your white games and e7->e5 in your black games.
    - If a matching game exists, that move is made and the game is marked as advanced for this turn. Pawn promotion is always to queen. Castling and en passant are legal per standard chess rules.
-2. **Engine fallback**
-   - Any active game that has not yet advanced this turn plays a move chosen by the built-in fallback engine: a deterministic shallow material search with a mating-drive heuristic, so games actually conclude rather than shuffling forever.
-
-> **Deviation from the original vision:** the spec called for Stockfish at depth 5 as the fallback. The implementation uses a small deterministic engine instead, because multiplayer is serverless lockstep — both peers replay each turn from a shared seed, and the fallback must produce byte-identical moves on both machines with no WASM worker or network dependency. Swapping in a deterministic Stockfish build later would be a drop-in change behind `core/match/engine.ts`.
+2. **Stockfish fallback**
+   - Any active game that has not yet advanced this turn plays the best move as determined by Stockfish at depth 5 (single-threaded WASM build, running in a web worker), evaluated from the perspective of the side whose turn it is.
 
 ### Scoring
 
@@ -61,10 +59,12 @@ The app follows a strict Elm-style architecture under maximum practical TypeScri
 
 - `src/core/` — pure domain logic: chess rules ([chessops](https://github.com/niklasf/chessops)), match state and arrow resolution (`core/match`), seeded RNG, parsers, codecs. Everything deterministic and testable without a browser.
 - `src/features/` — feature reducers (`centurion-match`, `chat-lab`, `superposition-lab`) plus the canvas superposition renderer.
-- `src/ports/` + `src/adapters/` — effect interfaces and their Trystero/browser implementations.
+- `src/ports/` + `src/adapters/` — effect interfaces and their implementations: Trystero (WebRTC transport) and Stockfish (WASM in a web worker, speaking UCI).
 - `src/app/` + `src/main.ts` — top-level state machine and the imperative shell that interprets commands.
 
-Multiplayer works without a server: the host generates a seed, sends it to the guest, and from then on the only messages exchanged are the placed arrows. Both clients resolve every turn deterministically from the shared seed, staying in lockstep.
+Each turn resolves in two phases. The arrow phase is pure and deterministic, driven by a seeded RNG shared by both players. The engine phase is asynchronous: Stockfish computes the fallback moves for every game the arrows did not reach (about 100 searches at depth 5, roughly 100ms after warmup).
+
+Multiplayer works without a server. The host sends the guest a seed; after that the only message per turn is the placed arrow plus Stockfish's chosen moves, computed once by the player who placed the arrow. The opponent replays the deterministic arrow phase from the shared seed and applies the received engine moves after validating their legality — so the two clients stay in lockstep without requiring Stockfish itself to be bit-for-bit reproducible across machines.
 
 ## CI checks (local mirror)
 

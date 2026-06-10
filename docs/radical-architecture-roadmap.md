@@ -169,10 +169,9 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` complete.
 - [x] Re-model match lifecycle as explicit union states (`core/match/model.ts`).
 - [x] Reify arrow resolution as pure transitions + effectful command execution (`core/match/resolve.ts`).
 - [x] Make randomness injectable for repeatable tests (seeded RNG threaded through `MatchState`).
-- [x] Full rules: arrow matching with vertical-flip interpretation, deterministic engine fallback, scoring, draw detection (stalemate, insufficient material, fifty-move, threefold), catch-up match end.
-- [x] Multiplayer lockstep: host shares a seed, peers exchange only arrows, both resolve deterministically.
+- [x] Full rules: arrow matching with vertical-flip interpretation, Stockfish depth-5 fallback (WASM worker), scoring, draw detection (stalemate, insufficient material, fifty-move, threefold), catch-up match end.
+- [x] Multiplayer lockstep: host shares a seed; per turn the placer sends the arrow plus Stockfish's moves, the opponent replays the deterministic arrow phase and validates/applies the engine moves.
 - Exit criteria: deterministic simulation tests for resolution and scoring.
-- Note: the fallback engine is a built-in deterministic shallow search rather than Stockfish depth 5 — see README for the rationale (serverless lockstep determinism).
 
 ### Project 8 - Integration and routing
 - [x] Three-destination labs menu plus the Centurion match at `/`.
@@ -198,4 +197,3 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` complete.
 1. Reconnect/resync for multiplayer matches (currently a dropped peer ends the match in practice; state is not re-synced on rejoin).
 2. Split-view toggle (white games vs black games panels) from the original vision.
 3. Automated rendering assertions (pixel or layer-model fixtures) for the superposition renderer.
-4. Optional: deterministic Stockfish build behind `core/match/engine.ts` for a stronger fallback.

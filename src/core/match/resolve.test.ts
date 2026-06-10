@@ -1,15 +1,22 @@
-import { makeFen } from 'chessops/fen'
-import { parseSquare } from 'chessops/util'
+import { Chess } from 'chessops/chess'
+import { makeFen, parseFen } from 'chessops/fen'
+import { makeUci, parseSquare, squareRank } from 'chessops/util'
 import { describe, expect, it } from 'vitest'
-import { chooseEngineMove } from './engine'
 import {
+  type Arrow,
   type MatchState,
   activeGameCount,
   activePlacer,
   initMatch,
   sideToMove,
 } from './model'
-import { arrowMoveForGame, flipSquare, placeArrowAndResolve } from './resolve'
+import {
+  type PendingResolution,
+  arrowMoveForGame,
+  beginResolution,
+  completeResolution,
+  flipSquare,
+} from './resolve'
 
 function sq(name: string): number {
   const square = parseSquare(name)
@@ -17,6 +24,38 @@ function sq(name: string): number {
     throw new Error(`Bad square: ${name}`)
   }
   return square
+}
+
+/** Stand-in for Stockfish in tests: the first legal move per position. */
+function firstLegalUci(fen: string): string {
+  const position = Chess.fromSetup(parseFen(fen).unwrap()).unwrap()
+  for (const [from, dests] of position.allDests()) {
+    for (const to of dests) {
+      const isPawn = position.board.getRole(from) === 'pawn'
+      const toRank = squareRank(to)
+      if (isPawn && (toRank === 0 || toRank === 7)) {
+        return makeUci({ from, to, promotion: 'queen' })
+      }
+      return makeUci({ from, to })
+    }
+  }
+  throw new Error(`No legal move in ${fen}`)
+}
+
+function engineMovesFor(resolution: PendingResolution): string[] {
+  return resolution.pending.map((entry) => firstLegalUci(entry.fen))
+}
+
+function resolveTurn(match: MatchState, arrow: Arrow): MatchState {
+  const resolution = beginResolution(match, arrow)
+  if (resolution === null) {
+    throw new Error('match already finished')
+  }
+  const next = completeResolution(resolution, engineMovesFor(resolution))
+  if (next === null) {
+    throw new Error('resolution rejected its own engine moves')
+  }
+  return next
 }
 
 function fens(match: MatchState): readonly string[] {
@@ -76,10 +115,63 @@ describe('arrowMoveForGame', () => {
   })
 })
 
-describe('placeArrowAndResolve', () => {
+describe('beginResolution', () => {
+  it('matches each arrow instance to at most one game', () => {
+    const match = initMatch(3, { gameCount: 10 })
+    const resolution = beginResolution(match, {
+      from: sq('e2'),
+      to: sq('e4'),
+    })
+    if (resolution === null) {
+      throw new Error('expected a resolution')
+    }
+    expect(resolution.arrowMoves).toBe(1)
+    expect(resolution.pending).toHaveLength(9)
+  })
+
+  it('keeps old arrows active in later turns', () => {
+    let match = initMatch(3, { gameCount: 4 })
+    match = resolveTurn(match, { from: sq('e2'), to: sq('e4') })
+    // Turn 2: black to move. The earlier e2->e4 arrow now also matches the
+    // flipped games (actual move e7->e5).
+    const resolution = beginResolution(match, {
+      from: sq('d7'),
+      to: sq('d5'),
+    })
+    if (resolution === null) {
+      throw new Error('expected a resolution')
+    }
+    expect(resolution.arrowMoves).toBeGreaterThanOrEqual(1)
+    expect(resolution.arrows).toHaveLength(2)
+  })
+
+  it('replays the arrow phase deterministically for a given seed', () => {
+    const arrowPhase = (): PendingResolution => {
+      const match = resolveTurn(initMatch(99, { gameCount: 12 }), {
+        from: sq('e2'),
+        to: sq('e4'),
+      })
+      const resolution = beginResolution(match, {
+        from: sq('g8'),
+        to: sq('f6'),
+      })
+      if (resolution === null) {
+        throw new Error('expected a resolution')
+      }
+      return resolution
+    }
+    const first = arrowPhase()
+    const second = arrowPhase()
+    expect(first.pending).toEqual(second.pending)
+    expect(first.rng).toBe(second.rng)
+    expect(first.arrowMoves).toBe(second.arrowMoves)
+  })
+})
+
+describe('completeResolution', () => {
   it('advances every active game exactly one ply per turn', () => {
     const match = initMatch(3, { gameCount: 10 })
-    const next = placeArrowAndResolve(match, { from: sq('e2'), to: sq('e4') })
+    const next = resolveTurn(match, { from: sq('e2'), to: sq('e4') })
     expect(next.turn).toBe(2)
     expect(sideToMove(next)).toBe('black')
     for (const game of next.games) {
@@ -91,37 +183,12 @@ describe('placeArrowAndResolve', () => {
     expect((summary?.arrowMoves ?? 0) + (summary?.engineMoves ?? 0)).toBe(10)
   })
 
-  it('matches each arrow instance to at most one game', () => {
-    const match = initMatch(3, { gameCount: 10 })
-    const next = placeArrowAndResolve(match, { from: sq('e2'), to: sq('e4') })
-    expect(next.lastResolution?.arrowMoves).toBe(1)
-    const movedGames = next.games.filter((game) => {
-      const fen = makeFen(game.position.toSetup())
-      return game.whiteOwner === 1
-        ? fen.startsWith('rnbqkbnr/pppppppp/8/8/4P3/8')
-        : fen.startsWith('rnbqkbnr/pppp1ppp/8/4p3')
-    })
-    // The arrow moved one of player 1's white games; flipped games could
-    // only match e2->e4 as the black reply e7->e5, and it is white to move.
-    expect(movedGames.length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('keeps old arrows active in later turns', () => {
-    let match = initMatch(3, { gameCount: 4 })
-    match = placeArrowAndResolve(match, { from: sq('e2'), to: sq('e4') })
-    // Turn 2: black to move. The earlier e2->e4 arrow now also matches the
-    // flipped games (actual move e7->e5).
-    match = placeArrowAndResolve(match, { from: sq('d7'), to: sq('d5') })
-    expect(match.lastResolution?.arrowMoves).toBeGreaterThanOrEqual(1)
-    expect(match.arrows).toHaveLength(2)
-  })
-
-  it('is deterministic for a given seed and arrow sequence', () => {
+  it('produces identical matches for identical inputs', () => {
     const play = (): MatchState => {
       let match = initMatch(99, { gameCount: 12 })
-      match = placeArrowAndResolve(match, { from: sq('e2'), to: sq('e4') })
-      match = placeArrowAndResolve(match, { from: sq('g8'), to: sq('f6') })
-      match = placeArrowAndResolve(match, { from: sq('d2'), to: sq('d4') })
+      match = resolveTurn(match, { from: sq('e2'), to: sq('e4') })
+      match = resolveTurn(match, { from: sq('g8'), to: sq('f6') })
+      match = resolveTurn(match, { from: sq('d2'), to: sq('d4') })
       return match
     }
     const first = play()
@@ -131,20 +198,36 @@ describe('placeArrowAndResolve', () => {
     expect(first.rng).toBe(second.rng)
   })
 
-  it('diverges across different seeds', () => {
-    const playWith = (seed: number): readonly string[] => {
-      let match = initMatch(seed, { gameCount: 12 })
-      match = placeArrowAndResolve(match, { from: sq('e2'), to: sq('e4') })
-      match = placeArrowAndResolve(match, { from: sq('g8'), to: sq('f6') })
-      return fens(match)
+  it('rejects a move list of the wrong length', () => {
+    const match = initMatch(3, { gameCount: 4 })
+    const resolution = beginResolution(match, {
+      from: sq('e2'),
+      to: sq('e4'),
+    })
+    if (resolution === null) {
+      throw new Error('expected a resolution')
     }
-    expect(playWith(1)).not.toEqual(playWith(2))
+    expect(completeResolution(resolution, [])).toBeNull()
+  })
+
+  it('rejects illegal engine moves', () => {
+    const match = initMatch(3, { gameCount: 2 })
+    const resolution = beginResolution(match, {
+      from: sq('e2'),
+      to: sq('e4'),
+    })
+    if (resolution === null) {
+      throw new Error('expected a resolution')
+    }
+    const moves = engineMovesFor(resolution)
+    moves[0] = 'e2e5'
+    expect(completeResolution(resolution, moves)).toBeNull()
   })
 
   it('scores checkmate for the side that delivered it and ends the match', () => {
     // One game, white mates in one with Ra8#. Player 1 owns white.
     const match = initMatch(5, { fens: ['6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1'] })
-    const next = placeArrowAndResolve(match, { from: sq('a1'), to: sq('a8') })
+    const next = resolveTurn(match, { from: sq('a1'), to: sq('a8') })
     const game = next.games[0]
     expect(game?.status).toEqual({ tag: 'won', by: 1 })
     expect(next.scores).toEqual({ p1: 1, p2: 0 })
@@ -156,7 +239,7 @@ describe('placeArrowAndResolve', () => {
     // Black has only Ka8. White plays Qb6->c7, covering a7/b7/b8 while
     // leaving a8 unattacked: stalemate.
     const match = initMatch(5, { fens: ['k7/8/1Q6/8/8/8/8/4K3 w - - 0 1'] })
-    const next = placeArrowAndResolve(match, { from: sq('b6'), to: sq('c7') })
+    const next = resolveTurn(match, { from: sq('b6'), to: sq('c7') })
     expect(next.lastResolution?.arrowMoves).toBe(1)
     expect(next.games[0]?.status).toEqual({
       tag: 'drawn',
@@ -166,56 +249,16 @@ describe('placeArrowAndResolve', () => {
     expect(next.phase).toEqual({ tag: 'finished', winner: 'draw' })
   })
 
-  it('declares the match decided when the trailing player cannot catch up', () => {
-    // Two games; player 1 wins one by checkmate while the other stays
-    // active: lead (1) > active (1) is false, so use a single decisive
-    // game plus none active -> covered above. Here check the inverse:
-    // with one game still active and scores 1:0 the match continues.
+  it('declares the match decided only when the trailing player cannot catch up', () => {
     const match = initMatch(5, {
       fens: [
         '6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1',
         'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       ],
     })
-    const next = placeArrowAndResolve(match, { from: sq('a1'), to: sq('a8') })
+    const next = resolveTurn(match, { from: sq('a1'), to: sq('a8') })
     expect(next.scores.p1).toBe(1)
     expect(activeGameCount(next)).toBe(1)
     expect(next.phase).toEqual({ tag: 'active' })
-  })
-})
-
-describe('chooseEngineMove', () => {
-  it('finds mate in one', () => {
-    const match = initMatch(1, { fens: ['6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1'] })
-    const game = match.games[0]
-    if (game === undefined) {
-      throw new Error('missing game')
-    }
-    const [move] = chooseEngineMove(game, match.rng)
-    expect(move).toEqual({ from: sq('a1'), to: sq('a8') })
-  })
-
-  it('prefers winning a hanging queen', () => {
-    // Black queen on d5 hangs to Qd1xd5 along the open d-file.
-    const match = initMatch(1, {
-      fens: ['rnb1kbnr/ppp1pppp/8/3q4/8/8/PPP1PPPP/RNBQKBNR w KQkq - 0 1'],
-    })
-    const game = match.games[0]
-    if (game === undefined) {
-      throw new Error('missing game')
-    }
-    const [move] = chooseEngineMove(game, match.rng)
-    expect(move).toEqual({ from: sq('d1'), to: sq('d5') })
-  })
-
-  it('is deterministic for identical inputs', () => {
-    const match = initMatch(123, { gameCount: 1 })
-    const game = match.games[0]
-    if (game === undefined) {
-      throw new Error('missing game')
-    }
-    const [a] = chooseEngineMove(game, match.rng)
-    const [b] = chooseEngineMove(game, match.rng)
-    expect(a).toEqual(b)
   })
 })

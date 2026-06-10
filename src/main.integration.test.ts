@@ -81,6 +81,31 @@ vi.mock('./adapters/trystero-transport', () => {
   return { TrysteroTransportAdapter: MockTransportAdapter }
 })
 
+vi.mock('./adapters/stockfish-engine', () => {
+  class MockStockfishEngineAdapter {
+    async bestMoves(fens: readonly string[]): Promise<readonly string[]> {
+      const { Chess } = await import('chessops/chess')
+      const { parseFen } = await import('chessops/fen')
+      const { makeUci, squareRank } = await import('chessops/util')
+      return fens.map((fen) => {
+        const position = Chess.fromSetup(parseFen(fen).unwrap()).unwrap()
+        for (const [from, dests] of position.allDests()) {
+          for (const to of dests) {
+            const isPawn = position.board.getRole(from) === 'pawn'
+            const toRank = squareRank(to)
+            if (isPawn && (toRank === 0 || toRank === 7)) {
+              return makeUci({ from, to, promotion: 'queen' })
+            }
+            return makeUci({ from, to })
+          }
+        }
+        throw new Error(`No legal move in ${fen}`)
+      })
+    }
+  }
+  return { StockfishEngineAdapter: MockStockfishEngineAdapter }
+})
+
 type Listener = (event: FakeEvent) => void
 
 interface FakeEvent {
@@ -691,7 +716,11 @@ describe('main app wiring', () => {
     arrowInput.dispatch('input')
     submitButton.click()
 
-    expect(turnLine.textContent).toContain('Turn 2')
+    // The arrow phase is synchronous; Stockfish (mocked) answers async.
+    expect(turnLine.textContent).toContain('resolving')
+    await vi.waitFor(() => {
+      expect(turnLine.textContent).toContain('Turn 2')
+    })
     expect(history.scrollHeight).toBeGreaterThan(0)
 
     const summary = documentRef.getElementById(

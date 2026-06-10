@@ -11,7 +11,11 @@ import {
   otherPlayer,
 } from '../../core/match/model'
 import { toCanonicalSquare } from '../../core/match/render'
-import { placeArrowAndResolve } from '../../core/match/resolve'
+import {
+  type PendingResolution,
+  beginResolution,
+  completeResolution,
+} from '../../core/match/resolve'
 import { parseArrowList } from '../../core/superposition/parse-arrow-list'
 import { type UpdateResult, assertNever, noCmd } from '../../core/update'
 import type { TransportStatus } from '../../ports/transport'
@@ -30,6 +34,11 @@ export type CenturionMsg =
   | { readonly tag: 'board-square-clicked'; readonly square: BoardSquare }
   | { readonly tag: 'arrow-input-updated'; readonly value: string }
   | { readonly tag: 'arrow-submit-requested' }
+  | {
+      readonly tag: 'engine-moves-computed'
+      readonly moves: readonly string[]
+    }
+  | { readonly tag: 'engine-moves-failed'; readonly message: string }
   | { readonly tag: 'leave-session-requested' }
   | {
       readonly tag: 'transport-status-changed'
@@ -46,6 +55,10 @@ export type CenturionCmd =
   | { readonly tag: 'transport-join-room'; readonly code: string }
   | { readonly tag: 'transport-disconnect' }
   | { readonly tag: 'transport-send'; readonly payload: unknown }
+  | {
+      readonly tag: 'compute-engine-moves'
+      readonly fens: readonly string[]
+    }
 
 export const LOBBY_COPY =
   'Play both seats at one device, or start a multiplayer match and share the code.'
@@ -55,6 +68,7 @@ const TRANSPORT_ERROR_COPY =
 const NOT_YOUR_TURN_COPY = 'Waiting for your opponent to place an arrow.'
 const OUT_OF_SYNC_COPY =
   'Received an out-of-sync message from the opponent; the match may have diverged.'
+const RESOLVING_COPY = 'Stockfish is resolving the turn...'
 
 function sanitizeJoinCode(value: string): string {
   return value.replace(/\D/g, '').slice(0, 6)
@@ -78,11 +92,38 @@ function startSession(
   return {
     mode,
     match,
+    resolving: null,
     selectedSquare: null,
     arrowInput: '',
     inputError: null,
     notice: null,
   }
+}
+
+function arrowSendCommands(
+  session: MatchSession,
+  resolution: PendingResolution,
+  moves: readonly string[],
+): readonly CenturionCmd[] {
+  if (session.mode.tag !== 'remote') {
+    return []
+  }
+  const placed = resolution.arrows[resolution.arrows.length - 1]
+  if (placed === undefined) {
+    return []
+  }
+  return [
+    {
+      tag: 'transport-send',
+      payload: encodeMatchWireMessage({
+        type: 'centurion:arrow',
+        from: placed.arrow.from,
+        to: placed.arrow.to,
+        turn: placed.turn,
+        moves,
+      }),
+    },
+  ]
 }
 
 function placerIsYou(session: MatchSession): boolean {
@@ -97,7 +138,7 @@ function submitArrow(
   visualFrom: BoardSquare,
   visualTo: BoardSquare,
 ): UpdateResult<CenturionModel, CenturionCmd> {
-  if (session.match.phase.tag === 'finished') {
+  if (session.match.phase.tag === 'finished' || session.resolving !== null) {
     return noCmd(playing(session))
   }
   if (!placerIsYou(session)) {
@@ -115,33 +156,38 @@ function submitArrow(
     from: toCanonicalSquare(viewer, visualFrom),
     to: toCanonicalSquare(viewer, visualTo),
   }
-  const turnBefore = session.match.turn
-  const match = placeArrowAndResolve(session.match, arrow)
-  const nextSession: MatchSession = {
+  const resolution = beginResolution(session.match, arrow)
+  if (resolution === null) {
+    return noCmd(playing(session))
+  }
+  const cleared: MatchSession = {
     ...session,
-    match,
     selectedSquare: null,
     arrowInput: '',
     inputError: null,
   }
 
-  if (session.mode.tag === 'remote') {
+  if (resolution.pending.length === 0) {
+    // Every game advanced by an arrow; no engine moves needed.
+    const match = completeResolution(resolution, [])
+    if (match === null) {
+      return noCmd(playing(session))
+    }
     return [
-      playing(nextSession),
-      [
-        {
-          tag: 'transport-send',
-          payload: encodeMatchWireMessage({
-            type: 'centurion:arrow',
-            from: arrow.from,
-            to: arrow.to,
-            turn: turnBefore,
-          }),
-        },
-      ],
+      playing({ ...cleared, match }),
+      arrowSendCommands(session, resolution, []),
     ]
   }
-  return noCmd(playing(nextSession))
+
+  return [
+    playing({ ...cleared, resolving: resolution }),
+    [
+      {
+        tag: 'compute-engine-moves',
+        fens: resolution.pending.map((entry) => entry.fen),
+      },
+    ],
+  ]
 }
 
 export function updateCenturion(
@@ -195,6 +241,9 @@ export function updateCenturion(
       if (session.match.phase.tag === 'finished') {
         return noCmd(model)
       }
+      if (session.resolving !== null) {
+        return noCmd(model)
+      }
       if (!placerIsYou(session)) {
         return noCmd(withSession(model, { inputError: NOT_YOUR_TURN_COPY }))
       }
@@ -223,6 +272,9 @@ export function updateCenturion(
         return noCmd(model)
       }
       const session = model.session
+      if (session.resolving !== null) {
+        return noCmd(withSession(model, { inputError: RESOLVING_COPY }))
+      }
       const input = session.arrowInput.trim()
       if (input.length === 0) {
         return noCmd(
@@ -248,6 +300,42 @@ export function updateCenturion(
       const visualFrom = arrow.from.row * 8 + arrow.from.col
       const visualTo = arrow.to.row * 8 + arrow.to.col
       return submitArrow(session, visualFrom, visualTo)
+    }
+
+    case 'engine-moves-computed': {
+      if (model.tag !== 'playing') {
+        return noCmd(model)
+      }
+      const session = model.session
+      const resolution = session.resolving
+      if (resolution === null) {
+        return noCmd(model)
+      }
+      const match = completeResolution(resolution, msg.moves)
+      if (match === null) {
+        return noCmd(
+          withSession(model, {
+            resolving: null,
+            notice: 'Stockfish returned an unusable move; turn abandoned.',
+          }),
+        )
+      }
+      return [
+        withSession(model, { match, resolving: null }),
+        arrowSendCommands(session, resolution, msg.moves),
+      ]
+    }
+
+    case 'engine-moves-failed': {
+      if (model.tag !== 'playing' || model.session.resolving === null) {
+        return noCmd(model)
+      }
+      return noCmd(
+        withSession(model, {
+          resolving: null,
+          notice: `Engine error: ${msg.message} Turn abandoned; place your arrow again.`,
+        }),
+      )
     }
 
     case 'leave-session-requested': {
@@ -403,10 +491,17 @@ export function updateCenturion(
       ) {
         return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
       }
-      const match = placeArrowAndResolve(session.match, {
+      // The arrow phase replays deterministically from the shared rng;
+      // the opponent's Stockfish moves are validated and applied verbatim.
+      const resolution = beginResolution(session.match, {
         from: wire.from,
         to: wire.to,
       })
+      const match =
+        resolution === null ? null : completeResolution(resolution, wire.moves)
+      if (match === null) {
+        return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
+      }
       return noCmd(
         withSession(model, { match, selectedSquare: null, inputError: null }),
       )

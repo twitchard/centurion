@@ -1,4 +1,5 @@
 import type { BoardSquare, MatchState, PlayerId } from '../../core/match/model'
+import type { PendingResolution } from '../../core/match/resolve'
 
 export type SessionMode =
   | { readonly tag: 'local' }
@@ -12,6 +13,8 @@ export type SessionMode =
 export interface MatchSession {
   readonly mode: SessionMode
   readonly match: MatchState
+  /** Non-null while Stockfish is computing this turn's fallback moves. */
+  readonly resolving: PendingResolution | null
   readonly selectedSquare: BoardSquare | null
   readonly arrowInput: string
   readonly inputError: string | null

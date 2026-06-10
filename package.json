@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "chessops": "^0.15.0",
+    "stockfish": "^18.0.7",
     "trystero": "^0.21.0"
   },
   "devDependencies": {

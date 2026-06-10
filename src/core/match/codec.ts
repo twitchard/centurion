@@ -9,6 +9,12 @@ export type MatchWireMessage =
       readonly from: number
       readonly to: number
       readonly turn: number
+      /**
+       * Stockfish moves (UCI) for the games the arrows did not reach,
+       * computed by the player who placed the arrow and applied verbatim
+       * (after legality validation) by the opponent.
+       */
+      readonly moves: readonly string[]
     }
 
 export function encodeMatchWireMessage(
@@ -16,6 +22,8 @@ export function encodeMatchWireMessage(
 ): Record<string, unknown> {
   return { ...message }
 }
+
+const UCI_PATTERN = /^[a-h][1-8][a-h][1-8][qrbn]?$/
 
 function isBoardSquare(value: unknown): value is number {
   return (
@@ -30,13 +38,21 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 
+function isUciMoveList(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= 1000 &&
+    value.every((entry) => typeof entry === 'string' && UCI_PATTERN.test(entry))
+  )
+}
+
 export function decodeMatchWireMessage(
   payload: unknown,
 ): MatchWireMessage | null {
   if (typeof payload !== 'object' || payload === null) {
     return null
   }
-  const { type, seed, gameCount, from, to, turn } = payload as Record<
+  const { type, seed, gameCount, from, to, turn, moves } = payload as Record<
     string,
     unknown
   >
@@ -54,9 +70,10 @@ export function decodeMatchWireMessage(
     if (
       isBoardSquare(from) &&
       isBoardSquare(to) &&
-      isNonNegativeInteger(turn)
+      isNonNegativeInteger(turn) &&
+      isUciMoveList(moves)
     ) {
-      return { type: 'centurion:arrow', from, to, turn }
+      return { type: 'centurion:arrow', from, to, turn, moves }
     }
     return null
   }

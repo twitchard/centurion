@@ -1,5 +1,6 @@
 import './styles.css'
 
+import { StockfishEngineAdapter } from './adapters/stockfish-engine'
 import { TrysteroTransportAdapter } from './adapters/trystero-transport'
 import {
   type AppCmd,
@@ -20,6 +21,7 @@ import {
   squareName,
   toCanonicalSquare,
 } from './core/match/render'
+import { ENGINE_DEPTH } from './core/match/resolve'
 import type { ParseResult } from './core/parsing/types'
 import { assertNever } from './core/update'
 import type {
@@ -129,6 +131,7 @@ const chatTransport = new TrysteroTransportAdapter()
 const centurionTransport = new TrysteroTransportAdapter(
   'centurion-chess-match-v1',
 )
+const centurionEngine = new StockfishEngineAdapter()
 
 let state: AppState = initAppState()
 
@@ -241,6 +244,19 @@ function runCommand(command: AppCmd): void {
           return
         case 'transport-send':
           centurionTransport.send(command.cmd.payload)
+          return
+        case 'compute-engine-moves':
+          centurionEngine.bestMoves(command.cmd.fens, ENGINE_DEPTH).then(
+            (moves) => {
+              dispatchCenturion({ tag: 'engine-moves-computed', moves })
+            },
+            (error: unknown) => {
+              dispatchCenturion({
+                tag: 'engine-moves-failed',
+                message: error instanceof Error ? error.message : String(error),
+              })
+            },
+          )
           return
         default:
           assertNever(command.cmd)
@@ -389,6 +405,9 @@ function playerLabel(session: MatchSession, player: PlayerId): string {
 
 function describePlacer(session: MatchSession): string {
   const match = session.match
+  if (session.resolving !== null) {
+    return `Turn ${match.turn}: Stockfish (depth ${ENGINE_DEPTH}) is resolving ${session.resolving.pending.length} game(s)...`
+  }
   const placer = activePlacer(match)
   const color = sideToMove(match)
   const who =
@@ -452,7 +471,7 @@ function renderCenturionSession(session: MatchSession): void {
   const yourTurn =
     session.mode.tag !== 'remote' || activePlacer(match) === session.mode.you
   centurionSubmitArrowButton.disabled =
-    match.phase.tag === 'finished' || !yourTurn
+    match.phase.tag === 'finished' || !yourTurn || session.resolving !== null
 
   centurionResolutionSummary.textContent = resolutionSummaryText(match)
 

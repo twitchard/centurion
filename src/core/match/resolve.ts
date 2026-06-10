@@ -1,8 +1,8 @@
 import type { Chess } from 'chessops/chess'
-import type { NormalMove } from 'chessops/types'
-import { squareRank } from 'chessops/util'
-import { pickIndex } from '../rng'
-import { chooseEngineMove } from './engine'
+import { makeFen } from 'chessops/fen'
+import { type NormalMove, isNormal } from 'chessops/types'
+import { parseUci, squareRank } from 'chessops/util'
+import { type RngState, pickIndex } from '../rng'
 import {
   type Arrow,
   type GameStatus,
@@ -109,21 +109,46 @@ function matchPhaseFor(
   return { tag: 'active' }
 }
 
+/** Search depth for the Stockfish fallback, per the game spec. */
+export const ENGINE_DEPTH = 5
+
+export interface PendingEngineGame {
+  readonly gameId: number
+  readonly fen: string
+}
+
 /**
- * The core turn of Centurion Chess: append the placed arrow, then advance
- * every active game by one ply. Arrows are processed newest-first and each
- * arrow instance moves at most one randomly chosen matching game; every
- * remaining game falls back to an engine move.
- *
- * Deterministic given the match's rng state, so two peers replaying the
- * same arrows reach identical states.
+ * The state of a turn between the (synchronous, deterministic) arrow
+ * phase and the (asynchronous) engine phase. `base` is the match as it
+ * was before the arrow was placed, so a failed engine run can be
+ * abandoned without committing anything.
  */
-export function placeArrowAndResolve(
+export interface PendingResolution {
+  readonly base: MatchState
+  readonly arrows: readonly PlacedArrow[]
+  readonly games: readonly MatchGame[]
+  readonly rng: RngState
+  readonly arrowMoves: number
+  readonly pending: readonly PendingEngineGame[]
+}
+
+/**
+ * Phase one of a turn: append the placed arrow, then process all arrows
+ * newest-first, each instance advancing at most one randomly chosen game
+ * for which it is a legal move (interpreted through the vertical flip).
+ * Games left over are listed in `pending` and must advance by a Stockfish
+ * move supplied to `completeResolution`.
+ *
+ * This phase is deterministic given the match rng state, so two peers
+ * replay it identically; the engine moves themselves travel over the
+ * wire, computed once by the player who placed the arrow.
+ */
+export function beginResolution(
   match: MatchState,
   arrow: Arrow,
-): MatchState {
+): PendingResolution | null {
   if (match.phase.tag === 'finished') {
-    return match
+    return null
   }
 
   const placed: PlacedArrow = {
@@ -137,7 +162,6 @@ export function placeArrowAndResolve(
   const advanced = new Set<number>()
   let rng = match.rng
   let arrowMoves = 0
-  let engineMoves = 0
 
   for (let index = arrows.length - 1; index >= 0; index--) {
     const entry = arrows[index]
@@ -180,6 +204,7 @@ export function placeArrowAndResolve(
     arrowMoves += 1
   }
 
+  const pending: PendingEngineGame[] = []
   for (let gameIndex = 0; gameIndex < games.length; gameIndex++) {
     const game = games[gameIndex]
     if (
@@ -189,17 +214,57 @@ export function placeArrowAndResolve(
     ) {
       continue
     }
-    const [move, nextRng] = chooseEngineMove(game, rng)
-    rng = nextRng
-    games[gameIndex] = applyMoveToGame(game, move)
-    engineMoves += 1
+    pending.push({
+      gameId: game.id,
+      fen: makeFen(game.position.toSetup()),
+    })
   }
 
+  return { base: match, arrows, games, rng, arrowMoves, pending }
+}
+
+/**
+ * Phase two of a turn: apply one engine move (UCI, aligned with
+ * `resolution.pending`) to each game the arrows did not reach, then score
+ * newly decided games and check the match end conditions.
+ *
+ * Returns null if the supplied moves do not fit (wrong count or an
+ * illegal move) — the caller treats that as an engine failure or an
+ * out-of-sync peer and keeps the pre-arrow state.
+ */
+export function completeResolution(
+  resolution: PendingResolution,
+  engineMoves: readonly string[],
+): MatchState | null {
+  if (engineMoves.length !== resolution.pending.length) {
+    return null
+  }
+
+  const games = [...resolution.games]
+  for (let index = 0; index < resolution.pending.length; index++) {
+    const entry = resolution.pending[index]
+    const uci = engineMoves[index]
+    if (entry === undefined || uci === undefined) {
+      return null
+    }
+    const gameIndex = games.findIndex((game) => game.id === entry.gameId)
+    const game = games[gameIndex]
+    if (game === undefined) {
+      return null
+    }
+    const move = parseUci(uci)
+    if (move === undefined || !isNormal(move) || !game.position.isLegal(move)) {
+      return null
+    }
+    games[gameIndex] = applyMoveToGame(game, move)
+  }
+
+  const base = resolution.base
   let p1Wins = 0
   let p2Wins = 0
   let draws = 0
   for (let gameIndex = 0; gameIndex < games.length; gameIndex++) {
-    const before = match.games[gameIndex]
+    const before = base.games[gameIndex]
     const after = games[gameIndex]
     if (
       before === undefined ||
@@ -221,22 +286,22 @@ export function placeArrowAndResolve(
   }
 
   const scores = {
-    p1: match.scores.p1 + p1Wins,
-    p2: match.scores.p2 + p2Wins,
+    p1: base.scores.p1 + p1Wins,
+    p2: base.scores.p2 + p2Wins,
   }
 
   return {
-    ...match,
+    ...base,
     games,
-    arrows,
-    turn: match.turn + 1,
+    arrows: resolution.arrows,
+    turn: base.turn + 1,
     scores,
-    rng,
+    rng: resolution.rng,
     phase: matchPhaseFor(games, scores),
     lastResolution: {
-      turn: match.turn,
-      arrowMoves,
-      engineMoves,
+      turn: base.turn,
+      arrowMoves: resolution.arrowMoves,
+      engineMoves: resolution.pending.length,
       p1Wins,
       p2Wins,
       draws,

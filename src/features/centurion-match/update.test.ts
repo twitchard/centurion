@@ -1,4 +1,6 @@
-import { parseSquare } from 'chessops/util'
+import { Chess } from 'chessops/chess'
+import { makeFen, parseFen } from 'chessops/fen'
+import { makeUci, parseSquare, squareRank } from 'chessops/util'
 import { describe, expect, it } from 'vitest'
 import { activePlacer, otherPlayer } from '../../core/match/model'
 import { type CenturionModel, initCenturionModel } from './model'
@@ -10,6 +12,40 @@ function sq(name: string): number {
     throw new Error(`Bad square: ${name}`)
   }
   return square
+}
+
+/** Stand-in for Stockfish in tests: the first legal move per position. */
+function firstLegalUci(fen: string): string {
+  const position = Chess.fromSetup(parseFen(fen).unwrap()).unwrap()
+  for (const [from, dests] of position.allDests()) {
+    for (const to of dests) {
+      const isPawn = position.board.getRole(from) === 'pawn'
+      const toRank = squareRank(to)
+      if (isPawn && (toRank === 0 || toRank === 7)) {
+        return makeUci({ from, to, promotion: 'queen' })
+      }
+      return makeUci({ from, to })
+    }
+  }
+  throw new Error(`No legal move in ${fen}`)
+}
+
+/**
+ * Run the async half of a turn: take the compute-engine-moves command
+ * issued by the reducer, answer it with first-legal moves, and return
+ * the follow-up message.
+ */
+function engineAnswer(
+  commands: ReturnType<typeof updateCenturion>[1],
+): CenturionMsg {
+  const compute = commands.find((cmd) => cmd.tag === 'compute-engine-moves')
+  if (compute === undefined || compute.tag !== 'compute-engine-moves') {
+    throw new Error('expected a compute-engine-moves command')
+  }
+  return {
+    tag: 'engine-moves-computed',
+    moves: compute.fens.map(firstLegalUci),
+  }
 }
 
 function apply(
@@ -41,18 +77,68 @@ describe('pass and play', () => {
   })
 
   it('places an arrow via two board clicks and resolves the turn', () => {
-    const [model] = apply(
+    const [pendingModel, commands] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
       { tag: 'board-square-clicked', square: sq('e2') },
       { tag: 'board-square-clicked', square: sq('e4') },
     )
+    if (pendingModel.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    // The arrow phase ran synchronously; Stockfish moves are now pending.
+    expect(pendingModel.session.resolving).not.toBeNull()
+    expect(pendingModel.session.match.turn).toBe(1)
+
+    const [model] = apply(pendingModel, engineAnswer(commands))
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
     }
+    expect(model.session.resolving).toBeNull()
     expect(model.session.match.turn).toBe(2)
     expect(model.session.match.arrows).toHaveLength(1)
     expect(model.session.selectedSquare).toBeNull()
+  })
+
+  it('ignores board clicks and rejects submits while resolving', () => {
+    const [pendingModel] = apply(
+      initCenturionModel(),
+      { tag: 'pass-and-play-requested', seed: 11 },
+      { tag: 'board-square-clicked', square: sq('e2') },
+      { tag: 'board-square-clicked', square: sq('e4') },
+    )
+    if (pendingModel.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    const [clicked, clickCommands] = apply(pendingModel, {
+      tag: 'board-square-clicked',
+      square: sq('d2'),
+    })
+    if (clicked.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(clicked.session.selectedSquare).toBeNull()
+    expect(clickCommands).toEqual([])
+  })
+
+  it('abandons the turn when the engine fails', () => {
+    const [pendingModel] = apply(
+      initCenturionModel(),
+      { tag: 'pass-and-play-requested', seed: 11 },
+      { tag: 'board-square-clicked', square: sq('e2') },
+      { tag: 'board-square-clicked', square: sq('e4') },
+    )
+    const [model] = apply(pendingModel, {
+      tag: 'engine-moves-failed',
+      message: 'worker crashed.',
+    })
+    if (model.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(model.session.resolving).toBeNull()
+    expect(model.session.match.turn).toBe(1)
+    expect(model.session.match.arrows).toHaveLength(0)
+    expect(model.session.notice).toContain('worker crashed')
   })
 
   it('toggles square selection off when re-clicked', () => {
@@ -70,12 +156,13 @@ describe('pass and play', () => {
   })
 
   it('places an arrow from text notation', () => {
-    const [model] = apply(
+    const [pendingModel, commands] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
       { tag: 'arrow-input-updated', value: 'e2->e4' },
       { tag: 'arrow-submit-requested' },
     )
+    const [model] = apply(pendingModel, engineAnswer(commands))
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
     }
@@ -187,17 +274,24 @@ describe('multiplayer flow', () => {
     const [mover, receiver] = placer === 1 ? [host, guest] : [guest, host]
 
     // The mover clicks in their own visual frame; player 2's view is
-    // rank-flipped, so both pick the square they see as e2/e4.
-    const [movedModel, commands] = apply(
+    // rank-flipped, so both pick the square they see as e2/e4. The arrow
+    // phase runs, then Stockfish moves arrive, then the turn is sent.
+    const [pendingModel, pendingCommands] = apply(
       mover,
       { tag: 'board-square-clicked', square: sq('e2') },
       { tag: 'board-square-clicked', square: sq('e4') },
+    )
+    const [movedModel, commands] = apply(
+      pendingModel,
+      engineAnswer(pendingCommands),
     )
     expect(commands).toHaveLength(1)
     const sent = commands[0]
     if (sent?.tag !== 'transport-send') {
       throw new Error('expected a transport-send command')
     }
+    const payload = sent.payload as { moves: readonly string[] }
+    expect(payload.moves.length).toBeGreaterThan(0)
 
     const [receivedModel] = apply(receiver, {
       tag: 'transport-message-received',
@@ -211,6 +305,13 @@ describe('multiplayer flow', () => {
     expect(receivedModel.session.match.arrows).toEqual(
       movedModel.session.match.arrows,
     )
+    const moverFens = movedModel.session.match.games.map((game) =>
+      makeFen(game.position.toSetup()),
+    )
+    const receiverFens = receivedModel.session.match.games.map((game) =>
+      makeFen(game.position.toSetup()),
+    )
+    expect(receiverFens).toEqual(moverFens)
   })
 
   it('rejects arrow placement when it is not your turn', () => {
@@ -242,7 +343,13 @@ describe('multiplayer flow', () => {
     }
     const [model] = apply(host, {
       tag: 'transport-message-received',
-      payload: { type: 'centurion:arrow', from: 12, to: 28, turn: 99 },
+      payload: {
+        type: 'centurion:arrow',
+        from: 12,
+        to: 28,
+        turn: 99,
+        moves: [],
+      },
     })
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
