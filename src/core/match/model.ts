@@ -144,6 +144,8 @@ export interface MatchOptions {
   readonly gameCount?: number
   /** Custom starting FENs, mainly for tests. Length overrides gameCount. */
   readonly fens?: readonly string[]
+  /** Fix who owns white instead of drawing it from the seed. */
+  readonly whitePlayer?: PlayerId
   /** Fix who places first instead of drawing it from the seed. */
   readonly firstPlacer?: PlayerId
 }
@@ -185,7 +187,16 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     throw new Error('A match needs at least one game')
   }
 
-  const p1WhiteCount = Math.ceil(gameCount / 2)
+  let rng = seedRng(seed)
+  let whitePlayer: PlayerId
+  if (options?.whitePlayer !== undefined) {
+    whitePlayer = options.whitePlayer
+  } else {
+    const [pick, nextRng] = pickIndex(rng, 2)
+    rng = nextRng
+    whitePlayer = pick === 0 ? 1 : 2
+  }
+
   const games: MatchGame[] = []
   for (let id = 0; id < gameCount; id++) {
     const fen = fens?.[id]
@@ -194,19 +205,16 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     repetition.set(positionKey(position), 1)
     games.push({
       id,
-      whiteOwner: id < p1WhiteCount ? 1 : 2,
+      whiteOwner: whitePlayer,
       position,
       repetition,
       status: { tag: 'active' },
     })
   }
 
-  let rng = seedRng(seed)
   let firstPlacer: PlayerId
   if (options?.firstPlacer !== undefined) {
     firstPlacer = options.firstPlacer
-  } else if (p1WhiteCount * 2 > gameCount) {
-    firstPlacer = 1
   } else {
     const [pick, nextRng] = pickIndex(rng, 2)
     rng = nextRng
