@@ -45,7 +45,10 @@ import type {
   ChatLine,
 } from './features/chat-lab/model'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
-import { SuperpositionRenderer } from './features/superposition-lab/render-superposition'
+import {
+  type PieceDisplayMode,
+  SuperpositionRenderer,
+} from './features/superposition-lab/render-superposition'
 import {
   type AppRoute,
   inviteUrl,
@@ -146,6 +149,25 @@ const centurionConnectionLogList = element(
   'centurion-connection-log-list',
 ) as HTMLOListElement
 const centurionConnectionLogClear = button('centurion-connection-log-clear')
+
+// Pieces/Letters is a pure view preference shared by every board.
+const displayModeButtons: ReadonlyArray<{
+  readonly button: HTMLButtonElement
+  readonly mode: PieceDisplayMode
+}> = [
+  { button: button('superposition-mode-pieces'), mode: 'pieces' },
+  { button: button('superposition-mode-letters'), mode: 'letters' },
+  { button: button('centurion-mode-pieces'), mode: 'pieces' },
+  { button: button('centurion-mode-letters'), mode: 'letters' },
+]
+
+function applyPieceDisplayMode(mode: PieceDisplayMode): void {
+  superpositionRenderer.displayMode = mode
+  centurionRenderer.displayMode = mode
+  for (const entry of displayModeButtons) {
+    entry.button.classList.toggle('active', entry.mode === mode)
+  }
+}
 
 const CENTURION_TRANSPORT_APP_ID = 'centurion-chess-match-v1'
 
@@ -900,6 +922,13 @@ function bindEvents(): void {
     dispatchCenturion({ tag: 'board-square-clicked', square })
   })
 
+  for (const entry of displayModeButtons) {
+    entry.button.addEventListener('click', () => {
+      applyPieceDisplayMode(entry.mode)
+      render()
+    })
+  }
+
   window.addEventListener('popstate', () => {
     navigate(pathnameToAppRoute(window.location.pathname), false)
   })
@@ -929,6 +958,7 @@ function autoJoinFromUrl(): void {
 }
 
 bindEvents()
+applyPieceDisplayMode('pieces')
 logConnection(`Loaded at ${window.location.href}`)
 logConnection(
   `Multiplayer signaling uses Trystero/Nostr (app id ${CENTURION_TRANSPORT_APP_ID}).`,

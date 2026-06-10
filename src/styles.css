@@ -208,6 +208,37 @@ canvas {
   display: block;
 }
 
+.board-mode-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid #4f4f4f;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.board-mode-toggle--centered {
+  align-self: center;
+}
+
+.board-mode-toggle button {
+  border: none;
+  background: transparent;
+  color: #b0b0b0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+
+.board-mode-toggle button + button {
+  border-left: 1px solid #4f4f4f;
+}
+
+.board-mode-toggle button.active {
+  background: #629924;
+  color: #ffffff;
+}
+
 .chat-layout {
   grid-template-columns: minmax(260px, 32%) minmax(360px, 1fr);
 }

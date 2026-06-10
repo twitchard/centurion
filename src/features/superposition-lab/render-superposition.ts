@@ -16,15 +16,22 @@ const WHITE_CHIP_BORDER = 'rgba(0, 0, 0, 0.45)'
 const BLACK_CHIP_BG = '#13110e'
 const BLACK_CHIP_FG = '#efe9dd'
 const BLACK_CHIP_BORDER = 'rgba(255, 255, 255, 0.35)'
-const OVERFLOW_CHIP_BG = 'rgba(150, 150, 150, 0.22)'
-const OVERFLOW_CHIP_FG = '#cccccc'
-const OVERFLOW_CHIP_BORDER = 'rgba(255, 255, 255, 0.18)'
+
+// Black pieces are darker than the board itself, so their light rim is
+// what carries the silhouette; keep it strong or the two sides blur
+// together at small tile sizes.
+const WHITE_GLYPH_FILL = '#f3ecdd'
+const WHITE_GLYPH_OUTLINE = 'rgba(18, 14, 9, 0.9)'
+const BLACK_GLYPH_FILL = '#16130f'
+const BLACK_GLYPH_OUTLINE = 'rgba(243, 236, 221, 0.9)'
 
 const CHIP_FONT_FAMILY =
   'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+const GLYPH_FONT_FAMILY =
+  '"DejaVu Sans", "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", sans-serif'
 
-/** Most piece-type chips a square will show before collapsing into "+N". */
-const MAX_CHIPS = 6
+/** How a square's piece distribution is depicted. */
+export type PieceDisplayMode = 'pieces' | 'letters'
 
 const PIECE_LETTERS: Record<FenPieceSymbol, string> = {
   P: 'P',
@@ -39,6 +46,23 @@ const PIECE_LETTERS: Record<FenPieceSymbol, string> = {
   r: 'R',
   q: 'Q',
   k: 'K',
+}
+
+// Both colors use the filled glyph forms; the outline forms render too
+// thin on a canvas, so color comes from fill/stroke instead.
+const PIECE_GLYPHS: Record<FenPieceSymbol, string> = {
+  P: '♟',
+  N: '♞',
+  B: '♝',
+  R: '♜',
+  Q: '♛',
+  K: '♚',
+  p: '♟',
+  n: '♞',
+  b: '♝',
+  r: '♜',
+  q: '♛',
+  k: '♚',
 }
 
 function isWhitePiece(piece: FenPieceSymbol): boolean {
@@ -59,17 +83,16 @@ interface Chip {
 /**
  * Turn one square's piece distribution into display chips: per piece
  * type a letter plus how many games hold that piece here, ordered by
- * count. Counts are omitted when only a single position is shown.
+ * count. Counts are omitted when only a single position is shown. A
+ * square holds at most 12 distinct piece types, and the grid layout
+ * fits them all, so nothing is ever collapsed away.
  */
 function squareChips(
   stacks: readonly PieceStack[],
   positionCount: number,
 ): Chip[] {
   const sorted = [...stacks].sort((left, right) => right.count - left.count)
-  const overflowing = sorted.length > MAX_CHIPS
-  const visible = overflowing ? sorted.slice(0, MAX_CHIPS - 1) : sorted
-
-  const chips: Chip[] = visible.map((stack) => {
+  return sorted.map((stack) => {
     const letter = PIECE_LETTERS[stack.piece]
     const white = isWhitePiece(stack.piece)
     return {
@@ -80,19 +103,11 @@ function squareChips(
       border: white ? WHITE_CHIP_BORDER : BLACK_CHIP_BORDER,
     }
   })
-
-  if (overflowing) {
-    chips.push({
-      text: `+${sorted.length - visible.length}`,
-      bg: OVERFLOW_CHIP_BG,
-      fg: OVERFLOW_CHIP_FG,
-      border: OVERFLOW_CHIP_BORDER,
-    })
-  }
-  return chips
 }
 
 export class SuperpositionRenderer {
+  displayMode: PieceDisplayMode = 'pieces'
+
   private readonly canvas: HTMLCanvasElement
   private readonly context: CanvasRenderingContext2D
   private boardWidth = 0
@@ -197,17 +212,24 @@ export class SuperpositionRenderer {
     for (const layer of model.squareLayers) {
       const col = layer.square & 7
       const row = layer.square >> 3
-      this.drawSquareHistogram(
-        squareChips(layer.stacks, model.positionCount),
-        col * square,
-        (7 - row) * square,
-      )
+      const x = col * square
+      const y = (7 - row) * square
+      if (this.displayMode === 'pieces') {
+        this.drawSquarePieces(layer.stacks, model.positionCount, x, y)
+      } else {
+        this.drawSquareHistogram(
+          squareChips(layer.stacks, model.positionCount),
+          x,
+          y,
+        )
+      }
     }
   }
 
   /**
    * Lay the square's chips out in a small grid: a single column for one
-   * or two entries, two columns beyond that.
+   * or two entries, two columns up to six, three beyond that (a square
+   * holds at most 12 distinct piece types).
    */
   private drawSquareHistogram(
     chips: readonly Chip[],
@@ -221,10 +243,11 @@ export class SuperpositionRenderer {
     const square = this.squareSize
     const pad = square * 0.08
     const gap = square * 0.045
-    const cols = chips.length <= 2 ? 1 : 2
+    const cols = chips.length <= 2 ? 1 : chips.length <= 6 ? 2 : 3
     const rows = Math.ceil(chips.length / cols)
     const cellWidth = (square - 2 * pad - (cols - 1) * gap) / cols
     const cellHeight = (square - 2 * pad - (rows - 1) * gap) / rows
+    const lastRowCount = chips.length - (rows - 1) * cols
 
     for (let index = 0; index < chips.length; index++) {
       const chip = chips[index]
@@ -233,14 +256,110 @@ export class SuperpositionRenderer {
       }
       const col = index % cols
       const row = Math.floor(index / cols)
-      // Center a final odd chip that has its row to itself.
-      const lonelyLastRow =
-        cols === 2 && row === rows - 1 && chips.length % 2 === 1
-      const x = lonelyLastRow
-        ? squareX + pad + (cellWidth + gap) / 2
-        : squareX + pad + col * (cellWidth + gap)
+      // Center a partially filled final row.
+      const lastRowShift =
+        row === rows - 1 ? ((cols - lastRowCount) * (cellWidth + gap)) / 2 : 0
+      const x = squareX + pad + col * (cellWidth + gap) + lastRowShift
       const y = squareY + pad + row * (cellHeight + gap)
       this.drawChip(chip, x, y, cellWidth, cellHeight)
+    }
+  }
+
+  /**
+   * Piece mode: tile the square into a near-square grid, one cell per
+   * piece type, and draw the piece glyph in each cell. Multiplicity
+   * shows as a fanned stack of glyphs plus a count in the cell corner.
+   */
+  private drawSquarePieces(
+    stacks: readonly PieceStack[],
+    positionCount: number,
+    squareX: number,
+    squareY: number,
+  ): void {
+    if (stacks.length === 0) {
+      return
+    }
+
+    const sorted = [...stacks].sort((left, right) => right.count - left.count)
+    const square = this.squareSize
+    const pad = square * 0.03
+    const cols = Math.ceil(Math.sqrt(sorted.length))
+    const rows = Math.ceil(sorted.length / cols)
+    const cellWidth = (square - 2 * pad) / cols
+    const cellHeight = (square - 2 * pad) / rows
+    const lastRowCount = sorted.length - (rows - 1) * cols
+
+    for (let index = 0; index < sorted.length; index++) {
+      const stack = sorted[index]
+      if (stack === undefined) {
+        continue
+      }
+      const col = index % cols
+      const row = Math.floor(index / cols)
+      // Center a partially filled final row.
+      const lastRowShift =
+        row === rows - 1 ? ((cols - lastRowCount) * cellWidth) / 2 : 0
+      this.drawGlyphStack(
+        stack,
+        positionCount,
+        squareX + pad + col * cellWidth + lastRowShift,
+        squareY + pad + row * cellHeight,
+        cellWidth,
+        cellHeight,
+      )
+    }
+  }
+
+  private drawGlyphStack(
+    stack: PieceStack,
+    positionCount: number,
+    cellX: number,
+    cellY: number,
+    cellWidth: number,
+    cellHeight: number,
+  ): void {
+    const ctx = this.context
+    const white = isWhitePiece(stack.piece)
+    const glyph = PIECE_GLYPHS[stack.piece]
+    const size = Math.min(cellWidth, cellHeight)
+    // Fan duplicates diagonally behind the front glyph so a pile of ten
+    // pawns visibly reads as a pile, capped so it stays in its cell.
+    const depth = Math.min(stack.count, 4)
+    const step = size * 0.07
+    const fan = (depth - 1) * step
+    const fontSize = Math.max(8, (size - fan) * 0.82)
+    const frontX = cellX + cellWidth / 2 - fan / 2
+    const frontY = cellY + cellHeight / 2 + fan / 2 + fontSize * 0.06
+
+    ctx.font = `${fontSize}px ${GLYPH_FONT_FAMILY}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineWidth = Math.max(1.2, fontSize * 0.06)
+    ctx.lineJoin = 'round'
+    ctx.fillStyle = white ? WHITE_GLYPH_FILL : BLACK_GLYPH_FILL
+    ctx.strokeStyle = white ? WHITE_GLYPH_OUTLINE : BLACK_GLYPH_OUTLINE
+
+    for (let layer = depth - 1; layer >= 0; layer--) {
+      const x = frontX + layer * step
+      const y = frontY - layer * step
+      ctx.globalAlpha = layer === 0 ? 1 : 0.55 - layer * 0.08
+      ctx.strokeText(glyph, x, y)
+      ctx.fillText(glyph, x, y)
+    }
+    ctx.globalAlpha = 1
+
+    if (positionCount > 1 && stack.count > 1) {
+      const countSize = Math.max(8, size * 0.3)
+      const countX = cellX + cellWidth - countSize * 0.2
+      const countY = cellY + cellHeight - countSize * 0.45
+      ctx.font = `700 ${countSize}px ${CHIP_FONT_FAMILY}`
+      ctx.textAlign = 'right'
+      ctx.textBaseline = 'middle'
+      ctx.lineWidth = Math.max(2, countSize * 0.22)
+      ctx.strokeStyle = 'rgba(12, 11, 9, 0.85)'
+      ctx.strokeText(formatCount(stack.count), countX, countY)
+      ctx.fillStyle = '#ffd97d'
+      ctx.fillText(formatCount(stack.count), countX, countY)
     }
   }
 

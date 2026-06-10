@@ -32,6 +32,16 @@
       min-height: 110px; resize: vertical;
     }
     ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .mode-toggle {
+      display: inline-flex; align-self: flex-start;
+      border: 1px solid #4f4f4f; border-radius: 8px; overflow: hidden;
+    }
+    .mode-toggle button {
+      border: none; background: transparent; color: #b0b0b0;
+      font-size: 0.78rem; font-weight: 600; padding: 5px 14px; cursor: pointer;
+    }
+    .mode-toggle button + button { border-left: 1px solid #4f4f4f; }
+    .mode-toggle button.active { background: #629924; color: #ffffff; }
     .ok  { color: #7db95b; font-size: 0.78rem; }
     .err { color: #e28787; font-size: 0.78rem; }
     .board-wrap {
@@ -57,6 +67,12 @@
       <label for="board-arrow-input">Arrows (e.g. e2-&gt;e4, one per line)</label>
       <textarea id="board-arrow-input" spellcheck="false"></textarea>
       <ul id="board-arrow-diagnostics"></ul>
+
+      <label>Piece display</label>
+      <div class="mode-toggle" role="group" aria-label="Piece display mode">
+        <button type="button" id="board-mode-pieces">Pieces</button>
+        <button type="button" id="board-mode-letters">Letters</button>
+      </div>
     </div>
     <div class="board-wrap" id="board-wrap">
       <canvas id="board-canvas"></canvas>
