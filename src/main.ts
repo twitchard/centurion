@@ -107,6 +107,7 @@ const chatSendButton = button('chat-send-btn')
 const centurionLobby = element('centurion-lobby')
 const centurionSession = element('centurion-session')
 const centurionStatusCopy = element('centurion-status-copy')
+const centurionSoloButton = button('centurion-solo-btn')
 const centurionPassAndPlayButton = button('centurion-pass-and-play-btn')
 const centurionNewMatchButton = button('centurion-new-match-btn')
 const centurionJoinCodeInput = input('centurion-join-code-input')
@@ -449,6 +450,9 @@ function playerColorName(player: PlayerId): string {
 }
 
 function playerLabel(session: MatchSession, player: PlayerId): string {
+  if (session.mode.tag === 'solo') {
+    return player === 1 ? 'You (green)' : 'The field'
+  }
   const base = `Player ${player} (${playerColorName(player)})`
   if (session.mode.tag === 'remote' && session.mode.you === player) {
     return `${base} (you)`
@@ -460,6 +464,9 @@ function describePlacer(session: MatchSession): string {
   const match = session.match
   if (session.resolving !== null) {
     return `Turn ${match.turn}: Stockfish (depth ${ENGINE_DEPTH}) is resolving ${session.resolving.pending.length} game(s)...`
+  }
+  if (session.mode.tag === 'solo') {
+    return `Turn ${match.turn}: place an arrow, then both half-moves play out.`
   }
   const placer = activePlacer(match)
   const color = sideToMove(match)
@@ -522,9 +529,9 @@ function boardHintText(session: MatchSession): string {
     return `From ${squareName(session.selectedSquare)} - now tap the destination.`
   }
   const placer =
-    session.mode.tag === 'remote'
-      ? 'You'
-      : `Player ${activePlacer(match)} (${playerColorName(activePlacer(match))})`
+    session.mode.tag === 'local'
+      ? `Player ${activePlacer(match)} (${playerColorName(activePlacer(match))})`
+      : 'You'
   return `${placer}: tap the origin square of your arrow.`
 }
 
@@ -582,6 +589,7 @@ function renderCenturion(model: CenturionModel): void {
   }
 
   const idle = model.tag === 'lobby'
+  centurionSoloButton.disabled = !idle
   centurionPassAndPlayButton.disabled = !idle
   centurionNewMatchButton.disabled = !idle
   centurionJoinMatchButton.disabled = !idle || model.joinCodeInput.length !== 6
@@ -749,6 +757,9 @@ function bindEvents(): void {
 
   button('centurion-back-btn').addEventListener('click', () => {
     navigate('/labs')
+  })
+  centurionSoloButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'solo-requested', seed: newSeed() })
   })
   centurionPassAndPlayButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'pass-and-play-requested', seed: newSeed() })

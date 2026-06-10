@@ -13,6 +13,7 @@ import {
 import { toCanonicalSquare } from '../../core/match/render'
 import {
   type PendingResolution,
+  beginAutoResolution,
   beginResolution,
   completeResolution,
 } from '../../core/match/resolve'
@@ -31,6 +32,7 @@ export type CenturionMsg =
   | { readonly tag: 'new-match-requested' }
   | { readonly tag: 'join-match-requested' }
   | { readonly tag: 'pass-and-play-requested'; readonly seed: number }
+  | { readonly tag: 'solo-requested'; readonly seed: number }
   | { readonly tag: 'share-invite-requested' }
   | { readonly tag: 'copy-invite-requested' }
   | { readonly tag: 'invite-copy-succeeded' }
@@ -133,10 +135,50 @@ function arrowSendCommands(
 }
 
 function placerIsYou(session: MatchSession): boolean {
-  if (session.mode.tag === 'local') {
+  if (session.mode.tag !== 'remote') {
     return true
   }
   return activePlacer(session.match) === session.mode.you
+}
+
+/**
+ * Solo mode: after the player's arrow resolves the white half-turn, the
+ * black half-turn plays out immediately with no new arrow. Returns the
+ * settled session, or a new resolving state plus the engine command for
+ * the second ply.
+ */
+function continueAfterResolution(
+  session: MatchSession,
+  match: MatchState,
+): UpdateResult<CenturionModel, CenturionCmd> {
+  const settled: MatchSession = { ...session, match, resolving: null }
+  if (
+    session.mode.tag !== 'solo' ||
+    match.phase.tag === 'finished' ||
+    match.turn % 2 !== 0
+  ) {
+    return noCmd(playing(settled))
+  }
+  const resolution = beginAutoResolution(match)
+  if (resolution === null) {
+    return noCmd(playing(settled))
+  }
+  if (resolution.pending.length === 0) {
+    const next = completeResolution(resolution, [])
+    if (next === null) {
+      return noCmd(playing(settled))
+    }
+    return noCmd(playing({ ...settled, match: next }))
+  }
+  return [
+    playing({ ...settled, resolving: resolution }),
+    [
+      {
+        tag: 'compute-engine-moves',
+        fens: resolution.pending.map((entry) => entry.fen),
+      },
+    ],
+  ]
 }
 
 function submitArrow(
@@ -179,10 +221,8 @@ function submitArrow(
     if (match === null) {
       return noCmd(playing(session))
     }
-    return [
-      playing({ ...cleared, match }),
-      arrowSendCommands(session, resolution, []),
-    ]
+    const [model, commands] = continueAfterResolution(cleared, match)
+    return [model, [...arrowSendCommands(session, resolution, []), ...commands]]
   }
 
   return [
@@ -237,6 +277,15 @@ export function updateCenturion(
         return noCmd(model)
       }
       return noCmd(playing(startSession(initMatch(msg.seed), { tag: 'local' })))
+    }
+
+    case 'solo-requested': {
+      if (model.tag !== 'lobby') {
+        return noCmd(model)
+      }
+      // You are always player 1 (green); every arrow is yours.
+      const match = initMatch(msg.seed, { firstPlacer: 1 })
+      return noCmd(playing(startSession(match, { tag: 'solo' })))
     }
 
     case 'share-invite-requested': {
@@ -357,9 +406,10 @@ export function updateCenturion(
           }),
         )
       }
+      const [nextModel, commands] = continueAfterResolution(session, match)
       return [
-        withSession(model, { match, resolving: null }),
-        arrowSendCommands(session, resolution, msg.moves),
+        nextModel,
+        [...arrowSendCommands(session, resolution, msg.moves), ...commands],
       ]
     }
 

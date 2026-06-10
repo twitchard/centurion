@@ -3,6 +3,7 @@ import type { PendingResolution } from '../../core/match/resolve'
 
 export type SessionMode =
   | { readonly tag: 'local' }
+  | { readonly tag: 'solo' }
   | {
       readonly tag: 'remote'
       readonly you: PlayerId

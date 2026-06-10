@@ -496,6 +496,7 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-lobby', 'element'],
     ['centurion-session', 'element'],
     ['centurion-status-copy', 'element'],
+    ['centurion-solo-btn', 'button'],
     ['centurion-pass-and-play-btn', 'button'],
     ['centurion-new-match-btn', 'button'],
     ['centurion-join-code-input', 'input'],

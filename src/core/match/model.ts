@@ -73,6 +73,8 @@ export interface MatchOptions {
   readonly gameCount?: number
   /** Custom starting FENs, mainly for tests. Length overrides gameCount. */
   readonly fens?: readonly string[]
+  /** Fix who places first instead of drawing it from the seed. */
+  readonly firstPlacer?: PlayerId
 }
 
 export function otherPlayer(player: PlayerId): PlayerId {
@@ -130,7 +132,9 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
 
   let rng = seedRng(seed)
   let firstPlacer: PlayerId
-  if (p1WhiteCount * 2 > gameCount) {
+  if (options?.firstPlacer !== undefined) {
+    firstPlacer = options.firstPlacer
+  } else if (p1WhiteCount * 2 > gameCount) {
     firstPlacer = 1
   } else {
     const [pick, nextRng] = pickIndex(rng, 2)

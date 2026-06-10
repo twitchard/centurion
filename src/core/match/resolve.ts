@@ -150,14 +150,32 @@ export function beginResolution(
   if (match.phase.tag === 'finished') {
     return null
   }
-
   const placed: PlacedArrow = {
     arrow,
     placedBy: activePlacer(match),
     turn: match.turn,
   }
-  const arrows = [...match.arrows, placed]
+  return beginResolutionPhase(match, [...match.arrows, placed])
+}
 
+/**
+ * Advance one ply without placing a new arrow: the existing arrow pool
+ * still applies, everything else falls to the engine. Used by solo mode,
+ * where the "opponent" half-turn plays out arrow-free.
+ */
+export function beginAutoResolution(
+  match: MatchState,
+): PendingResolution | null {
+  if (match.phase.tag === 'finished') {
+    return null
+  }
+  return beginResolutionPhase(match, [...match.arrows])
+}
+
+function beginResolutionPhase(
+  match: MatchState,
+  arrows: readonly PlacedArrow[],
+): PendingResolution {
   const games = [...match.games]
   const advanced = new Set<number>()
   let rng = match.rng

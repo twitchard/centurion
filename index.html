@@ -83,7 +83,8 @@
     <div id="centurion-lobby" class="centurion-shell panel">
       <p id="centurion-status-copy"></p>
       <div class="centurion-controls">
-        <button class="btn btn-primary" id="centurion-pass-and-play-btn">Pass &amp; Play (one device)</button>
+        <button class="btn btn-primary" id="centurion-solo-btn">Solo (just place arrows)</button>
+        <button class="btn btn-secondary" id="centurion-pass-and-play-btn">Pass &amp; Play (one device)</button>
         <button class="btn btn-secondary" id="centurion-new-match-btn">New Multiplayer Match</button>
         <div class="centurion-join-row">
           <input
@@ -111,6 +112,7 @@
           <li>After each arrow, <strong>every game advances one half-move</strong>. Each arrow ever placed (newest first) moves one random game where it is a legal move; every other game plays Stockfish's best move. Placing the same arrow again stacks it, doubling its pull.</li>
           <li><strong>Checkmate scores a point</strong> for the player whose side delivered it. Draws score nothing. Finished games leave the board.</li>
           <li>You win when your lead is bigger than the number of games still running. If everything finishes level, the match is a draw.</li>
+          <li><strong>Solo mode:</strong> you place every arrow. After each one, both half-moves play out back to back &mdash; no opponent arrows, just you steering 100 Stockfish games.</li>
         </ul>
       </details>
     </div>

@@ -13,6 +13,7 @@ import {
 import {
   type PendingResolution,
   arrowMoveForGame,
+  beginAutoResolution,
   beginResolution,
   completeResolution,
   flipSquare,
@@ -165,6 +166,33 @@ describe('beginResolution', () => {
     expect(first.pending).toEqual(second.pending)
     expect(first.rng).toBe(second.rng)
     expect(first.arrowMoves).toBe(second.arrowMoves)
+  })
+})
+
+describe('beginAutoResolution', () => {
+  it('advances a ply from the existing arrow pool without adding arrows', () => {
+    const match = resolveTurn(initMatch(3, { gameCount: 4 }), {
+      from: sq('e2'),
+      to: sq('e4'),
+    })
+    expect(match.arrows).toHaveLength(1)
+
+    const resolution = beginAutoResolution(match)
+    if (resolution === null) {
+      throw new Error('expected a resolution')
+    }
+    expect(resolution.arrows).toHaveLength(1)
+
+    const next = completeResolution(resolution, engineMovesFor(resolution))
+    if (next === null) {
+      throw new Error('resolution rejected its own engine moves')
+    }
+    expect(next.turn).toBe(3)
+    expect(next.arrows).toHaveLength(1)
+    for (const game of next.games) {
+      expect(game.position.turn).toBe('white')
+      expect(game.position.fullmoves).toBe(2)
+    }
   })
 })
 

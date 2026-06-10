@@ -185,6 +185,51 @@ describe('pass and play', () => {
   })
 })
 
+describe('solo mode', () => {
+  it('plays two half-turns per arrow with no opponent arrow', () => {
+    const [pendingFirst, firstCommands] = apply(
+      initCenturionModel(),
+      { tag: 'solo-requested', seed: 21 },
+      { tag: 'board-square-clicked', square: sq('e2') },
+      { tag: 'board-square-clicked', square: sq('e4') },
+    )
+    if (pendingFirst.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(pendingFirst.session.mode).toEqual({ tag: 'solo' })
+
+    // First engine answer settles the white ply, then the black ply
+    // begins automatically with another engine command.
+    const [pendingSecond, secondCommands] = apply(
+      pendingFirst,
+      engineAnswer(firstCommands),
+    )
+    if (pendingSecond.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(pendingSecond.session.match.turn).toBe(2)
+    expect(pendingSecond.session.resolving).not.toBeNull()
+
+    const [model, finalCommands] = apply(
+      pendingSecond,
+      engineAnswer(secondCommands),
+    )
+    if (model.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(finalCommands).toEqual([])
+    expect(model.session.match.turn).toBe(3)
+    expect(model.session.resolving).toBeNull()
+    // One arrow total, every arrow yours, both plies played everywhere.
+    expect(model.session.match.arrows).toHaveLength(1)
+    expect(model.session.match.arrows[0]?.placedBy).toBe(1)
+    for (const game of model.session.match.games) {
+      expect(game.position.fullmoves).toBe(2)
+      expect(game.position.turn).toBe('white')
+    }
+  })
+})
+
 describe('multiplayer flow', () => {
   function hostToPlaying(): ReturnType<typeof updateCenturion> {
     return apply(
