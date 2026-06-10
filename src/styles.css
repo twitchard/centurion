@@ -312,6 +312,12 @@ canvas {
   white-space: nowrap;
 }
 
+.centurion-share-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .centurion-session {
   grid-template-columns: minmax(300px, 1fr) minmax(280px, 380px);
 }

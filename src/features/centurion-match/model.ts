@@ -32,7 +32,11 @@ export type CenturionModel =
       readonly role: 'host' | 'guest'
       readonly code: string
     }
-  | { readonly tag: 'waiting'; readonly code: string }
+  | {
+      readonly tag: 'waiting'
+      readonly code: string
+      readonly notice: string | null
+    }
   | { readonly tag: 'syncing'; readonly code: string }
   | { readonly tag: 'playing'; readonly session: MatchSession }
 

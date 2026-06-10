@@ -31,6 +31,10 @@ export type CenturionMsg =
   | { readonly tag: 'new-match-requested' }
   | { readonly tag: 'join-match-requested' }
   | { readonly tag: 'pass-and-play-requested'; readonly seed: number }
+  | { readonly tag: 'share-invite-requested' }
+  | { readonly tag: 'copy-invite-requested' }
+  | { readonly tag: 'invite-copy-succeeded' }
+  | { readonly tag: 'invite-copy-failed' }
   | { readonly tag: 'board-square-clicked'; readonly square: BoardSquare }
   | { readonly tag: 'arrow-input-updated'; readonly value: string }
   | { readonly tag: 'arrow-submit-requested' }
@@ -59,6 +63,8 @@ export type CenturionCmd =
       readonly tag: 'compute-engine-moves'
       readonly fens: readonly string[]
     }
+  | { readonly tag: 'share-invite'; readonly code: string }
+  | { readonly tag: 'copy-invite'; readonly code: string }
 
 export const LOBBY_COPY =
   'Play both seats at one device, or start a multiplayer match and share the code.'
@@ -233,6 +239,37 @@ export function updateCenturion(
       return noCmd(playing(startSession(initMatch(msg.seed), { tag: 'local' })))
     }
 
+    case 'share-invite-requested': {
+      if (model.tag !== 'waiting') {
+        return noCmd(model)
+      }
+      return [model, [{ tag: 'share-invite', code: model.code }]]
+    }
+
+    case 'copy-invite-requested': {
+      if (model.tag !== 'waiting') {
+        return noCmd(model)
+      }
+      return [model, [{ tag: 'copy-invite', code: model.code }]]
+    }
+
+    case 'invite-copy-succeeded': {
+      if (model.tag !== 'waiting') {
+        return noCmd(model)
+      }
+      return noCmd({ ...model, notice: 'Invite link copied.' })
+    }
+
+    case 'invite-copy-failed': {
+      if (model.tag !== 'waiting') {
+        return noCmd(model)
+      }
+      return noCmd({
+        ...model,
+        notice: 'Could not copy the link - share the code instead.',
+      })
+    }
+
     case 'board-square-clicked': {
       if (model.tag !== 'playing') {
         return noCmd(model)
@@ -354,7 +391,7 @@ export function updateCenturion(
       switch (msg.status) {
         case 'waiting': {
           if (model.tag === 'connecting' && model.role === 'host') {
-            return noCmd({ tag: 'waiting', code: msg.code })
+            return noCmd({ tag: 'waiting', code: msg.code, notice: null })
           }
           if (model.tag === 'playing' && model.session.mode.tag === 'remote') {
             return noCmd(

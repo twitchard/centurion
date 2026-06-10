@@ -200,6 +200,33 @@ describe('multiplayer flow', () => {
     )
   }
 
+  it('offers share and copy commands while waiting for an opponent', () => {
+    const [waiting] = apply(
+      initCenturionModel(),
+      { tag: 'new-match-requested' },
+      {
+        tag: 'transport-status-changed',
+        status: 'waiting',
+        code: '123456',
+        isHost: true,
+      },
+    )
+    expect(waiting).toEqual({ tag: 'waiting', code: '123456', notice: null })
+
+    const [, shareCommands] = apply(waiting, { tag: 'share-invite-requested' })
+    expect(shareCommands).toEqual([{ tag: 'share-invite', code: '123456' }])
+
+    const [, copyCommands] = apply(waiting, { tag: 'copy-invite-requested' })
+    expect(copyCommands).toEqual([{ tag: 'copy-invite', code: '123456' }])
+
+    const [copied] = apply(waiting, { tag: 'invite-copy-succeeded' })
+    expect(copied).toEqual({
+      tag: 'waiting',
+      code: '123456',
+      notice: 'Invite link copied.',
+    })
+  })
+
   it('host starts the match and broadcasts the seed when a peer joins', () => {
     const [model, commands] = hostToPlaying()
     if (model.tag !== 'playing') {

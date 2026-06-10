@@ -112,6 +112,9 @@ const centurionNewMatchButton = button('centurion-new-match-btn')
 const centurionJoinCodeInput = input('centurion-join-code-input')
 const centurionJoinMatchButton = button('centurion-join-match-btn')
 const centurionCancelButton = button('centurion-cancel-btn')
+const centurionShareRow = element('centurion-share-row')
+const centurionShareButton = button('centurion-share-btn')
+const centurionCopyLinkButton = button('centurion-copy-link-btn')
 const centurionScoreLine = element('centurion-score-line')
 const centurionActiveLine = element('centurion-active-line')
 const centurionTurnLine = element('centurion-turn-line')
@@ -157,6 +160,47 @@ function navigate(path: string, pushState = true): void {
 
 function newSeed(): number {
   return Math.floor(Math.random() * 0x100000000) >>> 0
+}
+
+function inviteUrl(code: string): string {
+  return `${window.location.origin}/?join=${code}`
+}
+
+function canShareInvites(): boolean {
+  return (
+    typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+  )
+}
+
+function shareInvite(code: string): void {
+  if (!canShareInvites()) {
+    copyInvite(code)
+    return
+  }
+  navigator
+    .share({
+      title: 'Centurion Chess',
+      text: `Join my Centurion Chess match - code ${code}`,
+      url: inviteUrl(code),
+    })
+    .catch(() => {
+      // Cancelled share sheets are not an error worth surfacing.
+    })
+}
+
+function copyInvite(code: string): void {
+  if (typeof navigator === 'undefined' || navigator.clipboard === undefined) {
+    dispatchCenturion({ tag: 'invite-copy-failed' })
+    return
+  }
+  navigator.clipboard.writeText(inviteUrl(code)).then(
+    () => {
+      dispatchCenturion({ tag: 'invite-copy-succeeded' })
+    },
+    () => {
+      dispatchCenturion({ tag: 'invite-copy-failed' })
+    },
+  )
 }
 
 chatTransport.setCallbacks({
@@ -244,6 +288,12 @@ function runCommand(command: AppCmd): void {
           return
         case 'transport-send':
           centurionTransport.send(command.cmd.payload)
+          return
+        case 'share-invite':
+          shareInvite(command.cmd.code)
+          return
+        case 'copy-invite':
+          copyInvite(command.cmd.code)
           return
         case 'compute-engine-moves':
           centurionEngine.bestMoves(command.cmd.fens, ENGINE_DEPTH).then(
@@ -531,6 +581,8 @@ function renderCenturion(model: CenturionModel): void {
   centurionNewMatchButton.disabled = !idle
   centurionJoinMatchButton.disabled = !idle || model.joinCodeInput.length !== 6
   centurionCancelButton.style.display = idle ? 'none' : 'block'
+  centurionShareRow.style.display = model.tag === 'waiting' ? 'grid' : 'none'
+  centurionShareButton.style.display = canShareInvites() ? 'block' : 'none'
 
   switch (model.tag) {
     case 'lobby':
@@ -545,9 +597,12 @@ function renderCenturion(model: CenturionModel): void {
           ? 'Creating match...'
           : `Joining match ${model.code}...`
       return
-    case 'waiting':
-      centurionStatusCopy.textContent = `New match created. Share code ${model.code} to invite your opponent.`
+    case 'waiting': {
+      const base = `New match created. Share code ${model.code} to invite your opponent.`
+      centurionStatusCopy.textContent =
+        model.notice === null ? base : `${base} ${model.notice}`
       return
+    }
     case 'syncing':
       centurionStatusCopy.textContent =
         'Connected. Waiting for the host to start the match...'
@@ -702,6 +757,12 @@ function bindEvents(): void {
   centurionCancelButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'leave-session-requested' })
   })
+  centurionShareButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'share-invite-requested' })
+  })
+  centurionCopyLinkButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'copy-invite-requested' })
+  })
   centurionJoinCodeInput.addEventListener('input', (event) => {
     dispatchCenturion({
       tag: 'join-code-updated',
@@ -744,5 +805,22 @@ function bindEvents(): void {
   })
 }
 
+function autoJoinFromUrl(): void {
+  const search: string | undefined = window.location.search
+  if (search === undefined || search.length === 0) {
+    return
+  }
+  const code = (new URLSearchParams(search).get('join') ?? '')
+    .replace(/\D/g, '')
+    .slice(0, 6)
+  if (code.length !== 6) {
+    return
+  }
+  window.history.replaceState({}, '', window.location.pathname)
+  dispatchCenturion({ tag: 'join-code-updated', value: code })
+  dispatchCenturion({ tag: 'join-match-requested' })
+}
+
 bindEvents()
 navigate(window.location.pathname, false)
+autoJoinFromUrl()
