@@ -8,7 +8,12 @@ import type {
   PiecePlacement,
   SuperpositionRenderModel,
 } from '../superposition/types'
-import type { BoardSquare, MatchState, PlayerId } from './model'
+import {
+  type BoardSquare,
+  type MatchState,
+  type PlayerId,
+  otherPlayer,
+} from './model'
 import { type PendingResolution, flipSquare } from './resolve'
 
 const WHITE_SYMBOLS: Record<Role, FenPieceSymbol> = {
@@ -63,6 +68,11 @@ function visualSquare(
  * one player: their white games render as-is and their black games render
  * rank-flipped, so their own pieces are always closest to them.
  *
+ * Pieces are colored by ownership, not by each game's chess color: the
+ * viewer's pieces always render white and the opponent's black. Without
+ * this, a board that mixes the viewer's white and black games would make
+ * ownership invisible.
+ *
  * While a turn is mid-resolution (Stockfish still computing), pass the
  * pending resolution so the just-placed arrow and any games it already
  * moved appear immediately instead of after the engine finishes.
@@ -83,10 +93,12 @@ export function matchRenderModel(
     }
     const pieces: PiecePlacement[] = []
     for (const [square, piece] of game.position.board) {
+      const owner =
+        piece.color === 'white' ? game.whiteOwner : otherPlayer(game.whiteOwner)
       pieces.push({
         square: visualSquare(square, game.whiteOwner, viewer),
         piece:
-          piece.color === 'white'
+          owner === viewer
             ? WHITE_SYMBOLS[piece.role]
             : BLACK_SYMBOLS[piece.role],
       })

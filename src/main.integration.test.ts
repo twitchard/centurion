@@ -214,6 +214,19 @@ class FakeElement {
   private readonly attributes = new Map<string, string>()
   private readonly listeners = new Map<string, Listener[]>()
   private readonly children: FakeElement[] = []
+  private readonly classes = new Set<string>()
+  readonly classList = {
+    toggle: (name: string, force?: boolean): boolean => {
+      const next = force ?? !this.classes.has(name)
+      if (next) {
+        this.classes.add(name)
+      } else {
+        this.classes.delete(name)
+      }
+      return next
+    },
+    contains: (name: string): boolean => this.classes.has(name),
+  }
 
   constructor(
     readonly id: string,
@@ -434,6 +447,16 @@ function setupDom(pathname = '/labs'): TestDom {
     'superposition-arrow-diagnostics',
     (id, owner) => new FakeHTMLElement(id, owner),
   )
+  registerById(
+    documentRef,
+    'superposition-mode-pieces',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'superposition-mode-letters',
+    (id, owner) => new FakeButtonElement(id, owner),
+  )
 
   const boardPanel = registerById(
     documentRef,
@@ -531,6 +554,8 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-resolution-summary', 'element'],
     ['centurion-arrow-history', 'element'],
     ['centurion-leave-btn', 'button'],
+    ['centurion-mode-pieces', 'button'],
+    ['centurion-mode-letters', 'button'],
     ['centurion-connection-log-list', 'element'],
     ['centurion-connection-log-clear', 'button'],
   ]

@@ -32,6 +32,12 @@
         <label for="superposition-arrow-input">Arrow coordinates (e.g. e2->e4)</label>
         <textarea id="superposition-arrow-input" spellcheck="false"></textarea>
         <ul id="superposition-arrow-diagnostics" class="diagnostics"></ul>
+
+        <label>Piece display</label>
+        <div class="board-mode-toggle" role="group" aria-label="Piece display mode">
+          <button type="button" id="superposition-mode-pieces">Pieces</button>
+          <button type="button" id="superposition-mode-letters">Letters</button>
+        </div>
       </div>
 
       <div class="panel board-panel" id="superposition-board-panel">
@@ -106,7 +112,7 @@
         <summary>How to play</summary>
         <ul>
           <li>You and your opponent are playing <strong>100 games of chess at once</strong>: you are white in 50 and black in 50.</li>
-          <li>All games appear stacked on one board. Each chip shows a piece and how many games have it on that square &mdash; a light chip <strong>P&nbsp;34</strong> means a white pawn sits there in 34 games.</li>
+          <li>All games appear stacked on one board. <strong>Your pieces are drawn white, your opponent's black</strong> &mdash; whichever color each of you plays in the underlying games. The number next to a piece shows how many games have it on that square.</li>
           <li>Your black games are shown flipped so your pieces always start nearest you. One arrow speaks for both colors: e2&rarr;e4 also means e7&rarr;e5 in your black games.</li>
           <li>On your turn, place <strong>one arrow</strong>: tap its start square, then its end square. Arrows are permanent and shared &mdash; they can move your opponent's games too.</li>
           <li>After each arrow, <strong>every game advances one half-move</strong>. Each arrow ever placed (newest first) moves one random game where it is a legal move; every other game plays Stockfish's best move. Placing the same arrow again stacks it, doubling its pull.</li>
@@ -122,6 +128,10 @@
         <p id="centurion-board-hint" class="centurion-board-hint"></p>
         <div class="panel board-panel" id="centurion-board-panel">
           <canvas id="centurion-canvas"></canvas>
+        </div>
+        <div class="board-mode-toggle board-mode-toggle--centered" role="group" aria-label="Piece display mode">
+          <button type="button" id="centurion-mode-pieces">Pieces</button>
+          <button type="button" id="centurion-mode-letters">Letters</button>
         </div>
       </div>
       <div class="panel controls-panel">

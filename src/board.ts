@@ -4,7 +4,10 @@ import {
   buildSuperpositionLabModel,
 } from './features/superposition-lab/model'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
-import { SuperpositionRenderer } from './features/superposition-lab/render-superposition'
+import {
+  type PieceDisplayMode,
+  SuperpositionRenderer,
+} from './features/superposition-lab/render-superposition'
 
 function el<T extends HTMLElement>(id: string, Type: new () => T): T {
   const node = document.getElementById(id)
@@ -20,6 +23,13 @@ const fenDiagnostics = el('board-fen-diagnostics', HTMLUListElement)
 const arrowDiagnostics = el('board-arrow-diagnostics', HTMLUListElement)
 const boardWrap = el('board-wrap', HTMLDivElement)
 const boardCanvas = el('board-canvas', HTMLCanvasElement)
+const modeButtons: ReadonlyArray<{
+  readonly button: HTMLButtonElement
+  readonly mode: PieceDisplayMode
+}> = [
+  { button: el('board-mode-pieces', HTMLButtonElement), mode: 'pieces' },
+  { button: el('board-mode-letters', HTMLButtonElement), mode: 'letters' },
+]
 
 const renderer = new SuperpositionRenderer(boardCanvas)
 
@@ -99,6 +109,21 @@ arrowInput.addEventListener('input', () => {
   render()
 })
 
+function applyDisplayMode(mode: PieceDisplayMode): void {
+  renderer.displayMode = mode
+  for (const entry of modeButtons) {
+    entry.button.classList.toggle('active', entry.mode === mode)
+  }
+}
+
+for (const entry of modeButtons) {
+  entry.button.addEventListener('click', () => {
+    applyDisplayMode(entry.mode)
+    resizeAndRender()
+  })
+}
+
 window.addEventListener('resize', () => resizeAndRender())
 
+applyDisplayMode('pieces')
 render()
