@@ -504,7 +504,7 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-session-notice', 'element'],
     ['centurion-result-banner', 'element'],
     ['centurion-arrow-input', 'input'],
-    ['centurion-arrow-error', 'element'],
+    ['centurion-board-hint', 'element'],
     ['centurion-submit-arrow-btn', 'button'],
     ['centurion-resolution-summary', 'element'],
     ['centurion-arrow-history', 'element'],

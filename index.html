@@ -100,6 +100,12 @@
     </div>
 
     <div id="centurion-session" class="feature-layout centurion-session">
+      <div class="centurion-board-area">
+        <p id="centurion-board-hint" class="centurion-board-hint"></p>
+        <div class="panel board-panel" id="centurion-board-panel">
+          <canvas id="centurion-canvas"></canvas>
+        </div>
+      </div>
       <div class="panel controls-panel">
         <div id="centurion-scoreboard" class="centurion-scoreboard">
           <div id="centurion-score-line" class="centurion-score-line"></div>
@@ -108,25 +114,23 @@
         </div>
         <p id="centurion-session-notice" class="centurion-session-notice"></p>
         <div id="centurion-result-banner" class="centurion-result-banner"></div>
-        <div class="centurion-compose">
-          <label for="centurion-arrow-input">Place an arrow: click two squares, or type e2-&gt;e4</label>
-          <input
-            id="centurion-arrow-input"
-            type="text"
-            placeholder="e2->e4"
-            spellcheck="false"
-            autocomplete="off"
-          >
-          <p id="centurion-arrow-error" class="centurion-arrow-error"></p>
-          <button class="btn btn-primary" id="centurion-submit-arrow-btn">Place Arrow</button>
-        </div>
         <div id="centurion-resolution-summary" class="centurion-meta-line"></div>
+        <details class="centurion-type-move">
+          <summary>Type a move instead (e.g. e2-&gt;e4)</summary>
+          <div class="centurion-type-move-row">
+            <input
+              id="centurion-arrow-input"
+              type="text"
+              placeholder="e2->e4"
+              spellcheck="false"
+              autocomplete="off"
+            >
+            <button class="btn btn-secondary" id="centurion-submit-arrow-btn">Place Arrow</button>
+          </div>
+        </details>
         <div class="centurion-section-label">Arrow history</div>
         <ul id="centurion-arrow-history" class="centurion-arrow-history"></ul>
         <button class="btn btn-outline" id="centurion-leave-btn">Leave match</button>
-      </div>
-      <div class="panel board-panel" id="centurion-board-panel">
-        <canvas id="centurion-canvas"></canvas>
       </div>
     </div>
   </section>

@@ -118,7 +118,7 @@ const centurionTurnLine = element('centurion-turn-line')
 const centurionSessionNotice = element('centurion-session-notice')
 const centurionResultBanner = element('centurion-result-banner')
 const centurionArrowInput = input('centurion-arrow-input')
-const centurionArrowError = element('centurion-arrow-error')
+const centurionBoardHint = element('centurion-board-hint')
 const centurionSubmitArrowButton = button('centurion-submit-arrow-btn')
 const centurionResolutionSummary = element('centurion-resolution-summary')
 const centurionArrowHistory = element('centurion-arrow-history')
@@ -448,6 +448,31 @@ function resolutionSummaryText(match: MatchState): string {
   return `${base} Decided: P1 +${summary.p1Wins}, P2 +${summary.p2Wins}, draws +${summary.draws}.`
 }
 
+function boardHintText(session: MatchSession): string {
+  const match = session.match
+  if (match.phase.tag === 'finished') {
+    return 'Match over.'
+  }
+  if (session.inputError !== null) {
+    return session.inputError
+  }
+  if (session.resolving !== null) {
+    return `Stockfish is resolving ${session.resolving.pending.length} game(s)...`
+  }
+  if (
+    session.mode.tag === 'remote' &&
+    activePlacer(match) !== session.mode.you
+  ) {
+    return 'Waiting for your opponent...'
+  }
+  if (session.selectedSquare !== null) {
+    return `From ${squareName(session.selectedSquare)} - now tap the destination.`
+  }
+  const placer =
+    session.mode.tag === 'remote' ? 'You' : `Player ${activePlacer(match)}`
+  return `${placer}: tap the origin square of your arrow.`
+}
+
 function renderCenturionSession(session: MatchSession): void {
   const match = session.match
   const viewer = sessionViewer(session)
@@ -458,7 +483,7 @@ function renderCenturionSession(session: MatchSession): void {
     match.phase.tag === 'finished' ? 'Match over.' : describePlacer(session)
 
   centurionSessionNotice.textContent = session.notice ?? ''
-  centurionArrowError.textContent = session.inputError ?? ''
+  centurionBoardHint.textContent = boardHintText(session)
 
   const result = describeResult(session, match)
   centurionResultBanner.textContent = result

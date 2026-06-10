@@ -313,7 +313,40 @@ canvas {
 }
 
 .centurion-session {
-  grid-template-columns: minmax(280px, 36%) minmax(300px, 1fr);
+  grid-template-columns: minmax(300px, 1fr) minmax(280px, 380px);
+}
+
+.centurion-board-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.centurion-board-area .board-panel {
+  flex: 1;
+}
+
+.centurion-board-hint {
+  margin: 0;
+  min-height: 1.25em;
+  text-align: center;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #cfe7ff;
+}
+
+.centurion-type-move summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: #9b9b9b;
+}
+
+.centurion-type-move-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .centurion-scoreboard {
@@ -395,21 +428,9 @@ canvas {
   align-self: flex-start;
 }
 
-.centurion-compose {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.centurion-arrow-error {
-  margin: 0;
-  font-size: 0.8rem;
-  color: #e28787;
-  min-height: 1.1em;
-}
-
 #centurion-canvas {
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 @media (max-width: 980px) {
@@ -421,6 +442,15 @@ canvas {
 
   .feature-header {
     grid-template-columns: 90px 1fr 90px;
+  }
+
+  /* Board first and square on small screens; tapping is the primary
+     input, so it gets the full viewport width. */
+  .centurion-board-area .board-panel {
+    flex: initial;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 0;
   }
 }
 
