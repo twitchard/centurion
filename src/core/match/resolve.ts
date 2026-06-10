@@ -26,10 +26,9 @@ export function flipSquare(square: number): number {
 
 /**
  * Translate an arrow from the canonical (player 1) frame into an actual
- * move for one game. Games where player 1 plays black are displayed
- * rank-flipped, so the arrow is rank-flipped back into board coordinates:
- * the same visual arrow means e2->e4 in your white games and e7->e5 in
- * your black games.
+ * move for one game. When player 1 owns black, the board is displayed
+ * rank-flipped from their perspective, so the arrow is rank-flipped back
+ * into board coordinates.
  */
 export function arrowMoveForGame(
   game: MatchGame,

@@ -66,26 +66,30 @@ function fens(match: MatchState): readonly string[] {
 }
 
 describe('initMatch', () => {
-  it('creates the configured number of games with colors split evenly', () => {
+  it('assigns one player white and the other black across all games', () => {
     const match = initMatch(42)
     expect(match.games).toHaveLength(100)
-    expect(match.games.filter((g) => g.whiteOwner === 1)).toHaveLength(50)
-    expect(match.games.filter((g) => g.whiteOwner === 2)).toHaveLength(50)
+    const whiteOwners = new Set(match.games.map((g) => g.whiteOwner))
+    expect(whiteOwners.size).toBe(1)
+    expect([1, 2]).toContain([...whiteOwners][0])
     expect(match.turn).toBe(1)
     expect(sideToMove(match)).toBe('white')
     expect(match.phase).toEqual({ tag: 'active' })
   })
 
-  it('derives the first placer from the seed', () => {
-    const match = initMatch(7)
-    expect([1, 2]).toContain(match.firstPlacer)
-    expect(activePlacer(match)).toBe(match.firstPlacer)
+  it('derives colors and first placer deterministically from the seed', () => {
+    const first = initMatch(7)
+    const second = initMatch(7)
+    expect(first.games[0]?.whiteOwner).toBe(second.games[0]?.whiteOwner)
+    expect(first.firstPlacer).toBe(second.firstPlacer)
+    expect([1, 2]).toContain(first.firstPlacer)
+    expect(activePlacer(first)).toBe(first.firstPlacer)
   })
 })
 
 describe('arrowMoveForGame', () => {
   it('interprets arrows literally in games where player 1 is white', () => {
-    const match = initMatch(1, { gameCount: 2 })
+    const match = initMatch(1, { gameCount: 2, whitePlayer: 1 })
     const game = match.games[0]
     if (game === undefined) {
       throw new Error('missing game')
@@ -96,8 +100,8 @@ describe('arrowMoveForGame', () => {
   })
 
   it('rank-flips arrows in games where player 1 is black', () => {
-    const match = initMatch(1, { gameCount: 2 })
-    const game = match.games[1]
+    const match = initMatch(1, { gameCount: 2, whitePlayer: 2 })
+    const game = match.games[0]
     if (game === undefined) {
       throw new Error('missing game')
     }
@@ -144,7 +148,7 @@ describe('beginResolution', () => {
       throw new Error('expected a resolution')
     }
     expect(resolution.arrowMoves).toBeLessThanOrEqual(8)
-    expect(resolution.arrowMoves).toBe(5)
+    expect(resolution.arrowMoves).toBe(8)
     expect(resolution.arrowMoves + resolution.pending.length).toBe(10)
   })
 
@@ -269,7 +273,7 @@ describe('completeResolution', () => {
   })
 
   it('rejects a move list of the wrong length', () => {
-    const match = initMatch(3, { gameCount: 4 })
+    const match = initMatch(3, { gameCount: 4, whitePlayer: 2 })
     const resolution = beginResolution(match, {
       from: sq('e2'),
       to: sq('e4'),
@@ -296,7 +300,10 @@ describe('completeResolution', () => {
 
   it('scores checkmate for the side that delivered it and ends the match', () => {
     // One game, white mates in one with Ra8#. Player 1 owns white.
-    const match = initMatch(5, { fens: ['6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1'] })
+    const match = initMatch(5, {
+      fens: ['6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1'],
+      whitePlayer: 1,
+    })
     const next = resolveTurn(match, { from: sq('a1'), to: sq('a8') })
     const game = next.games[0]
     expect(game?.status).toEqual({ tag: 'won', by: 1 })
@@ -325,6 +332,7 @@ describe('completeResolution', () => {
         '6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1',
         'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       ],
+      whitePlayer: 1,
     })
     const next = resolveTurn(match, { from: sq('a1'), to: sq('a8') })
     expect(next.scores.p1).toBe(1)
