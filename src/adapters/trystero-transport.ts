@@ -95,6 +95,14 @@ export class TrysteroTransportAdapter implements TransportPort {
     return this.code
   }
 
+  hostRoom(code: string): void {
+    this.disconnect()
+    this.code = code
+    this.isHost = true
+    this.setStatus('connecting')
+    this.connect()
+  }
+
   joinRoom(code: string): void {
     this.disconnect()
     this.code = code

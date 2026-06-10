@@ -17,6 +17,7 @@
     "ci:all": "bun run check && bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
+    "chessground": "^9.2.1",
     "chessops": "^0.15.0",
     "stockfish": "^18.0.7",
     "trystero": "^0.21.0"

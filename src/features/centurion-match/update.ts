@@ -12,6 +12,7 @@ import {
   initMatch,
   otherPlayer,
 } from '../../core/match/model'
+import { defaultReplayGameId } from '../../core/match/pgn'
 import { toCanonicalSquare } from '../../core/match/render'
 import {
   type PendingResolution,
@@ -19,6 +20,10 @@ import {
   beginResolution,
   completeResolution,
 } from '../../core/match/resolve'
+import {
+  decodeMatchSnapshot,
+  encodeMatchState,
+} from '../../core/match/snapshot'
 import { parseArrowList } from '../../core/superposition/parse-arrow-list'
 import { type UpdateResult, assertNever, noCmd } from '../../core/update'
 import type { TransportStatus } from '../../ports/transport'
@@ -28,6 +33,10 @@ import {
   initCenturionModel,
   sessionViewer,
 } from './model'
+import {
+  type PersistedCenturion,
+  centurionModelFromPersistence,
+} from './persistence'
 
 export type CenturionMsg =
   | { readonly tag: 'join-code-updated'; readonly value: string }
@@ -53,13 +62,24 @@ export type CenturionMsg =
       readonly status: TransportStatus
       readonly code: string
       readonly isHost: boolean
+      readonly pendingSeed?: number
     }
-  | { readonly tag: 'transport-peer-joined'; readonly seed: number }
+  | { readonly tag: 'transport-peer-joined' }
+  | {
+      readonly tag: 'restore-session-requested'
+      readonly persisted: PersistedCenturion
+    }
   | { readonly tag: 'transport-peer-left' }
   | { readonly tag: 'transport-message-received'; readonly payload: unknown }
+  | { readonly tag: 'game-replay-game-selected'; readonly gameId: number }
+  | {
+      readonly tag: 'game-replay-step'
+      readonly step: 'start' | 'prev' | 'next' | 'end'
+    }
 
 export type CenturionCmd =
   | { readonly tag: 'transport-create-room' }
+  | { readonly tag: 'transport-host-room'; readonly code: string }
   | { readonly tag: 'transport-join-room'; readonly code: string }
   | { readonly tag: 'transport-disconnect' }
   | { readonly tag: 'transport-send'; readonly payload: unknown }
@@ -109,6 +129,48 @@ function startSession(
     arrowInput: '',
     inputError: null,
     notice: null,
+    gameReplay: null,
+  }
+}
+
+function withFinishedReplay(
+  session: MatchSession,
+  match: MatchState,
+): MatchSession {
+  const next = { ...session, match, resolving: null }
+  if (match.phase.tag !== 'finished' || next.gameReplay !== null) {
+    return next
+  }
+  return {
+    ...next,
+    gameReplay: { gameId: defaultReplayGameId(match.games), ply: 0 },
+  }
+}
+
+function clampReplayPly(moveCount: number, ply: number): number {
+  return Math.max(0, Math.min(ply, moveCount))
+}
+
+function transportRejoinCommands(
+  model: CenturionModel,
+): readonly CenturionCmd[] {
+  switch (model.tag) {
+    case 'waiting':
+      return [{ tag: 'transport-host-room', code: model.code }]
+    case 'syncing':
+      return [{ tag: 'transport-join-room', code: model.code }]
+    case 'playing': {
+      const mode = model.session.mode
+      if (mode.tag !== 'remote') {
+        return []
+      }
+      if (mode.you === 1) {
+        return [{ tag: 'transport-host-room', code: mode.code }]
+      }
+      return [{ tag: 'transport-join-room', code: mode.code }]
+    }
+    default:
+      return []
   }
 }
 
@@ -234,7 +296,7 @@ function continueAfterResolution(
   session: MatchSession,
   match: MatchState,
 ): UpdateResult<CenturionModel, CenturionCmd> {
-  const settled: MatchSession = { ...session, match, resolving: null }
+  const settled = withFinishedReplay(session, match)
   if (!shouldChainAutoResolution(session, match)) {
     return noCmd(playing(settled))
   }
@@ -529,7 +591,15 @@ export function updateCenturion(
       switch (msg.status) {
         case 'waiting': {
           if (model.tag === 'connecting' && model.role === 'host') {
-            return noCmd({ tag: 'waiting', code: msg.code, notice: null })
+            if (msg.pendingSeed === undefined) {
+              return noCmd(model)
+            }
+            return noCmd({
+              tag: 'waiting',
+              code: msg.code,
+              pendingSeed: msg.pendingSeed >>> 0,
+              notice: null,
+            })
           }
           if (model.tag === 'playing' && model.session.mode.tag === 'remote') {
             return noCmd(
@@ -578,7 +648,7 @@ export function updateCenturion(
 
     case 'transport-peer-joined': {
       if (model.tag === 'waiting') {
-        const match = initMatch(msg.seed)
+        const match = initMatch(model.pendingSeed)
         const session = startSession(match, {
           tag: 'remote',
           you: 1,
@@ -592,7 +662,7 @@ export function updateCenturion(
               tag: 'transport-send',
               payload: encodeMatchWireMessage({
                 type: 'centurion:start',
-                seed: msg.seed,
+                seed: model.pendingSeed,
                 gameCount: match.gameCount,
               }),
             },
@@ -600,12 +670,27 @@ export function updateCenturion(
         ]
       }
       if (model.tag === 'playing' && model.session.mode.tag === 'remote') {
-        return noCmd(
-          withSession(model, {
-            mode: { ...model.session.mode, peerConnected: true },
-            notice: 'Opponent reconnected.',
-          }),
-        )
+        const mode = model.session.mode
+        const nextSession = {
+          ...model.session,
+          mode: { ...mode, peerConnected: true },
+          notice: 'Opponent reconnected.',
+        }
+        if (mode.you === 1) {
+          return [
+            playing(nextSession),
+            [
+              {
+                tag: 'transport-send',
+                payload: encodeMatchWireMessage({
+                  type: 'centurion:sync',
+                  snapshot: encodeMatchState(model.session.match),
+                }),
+              },
+            ],
+          ]
+        }
+        return noCmd(playing(nextSession))
       }
       return noCmd(model)
     }
@@ -650,6 +735,44 @@ export function updateCenturion(
           ),
         )
       }
+      if (wire.type === 'centurion:sync') {
+        const match = decodeMatchSnapshot(wire.snapshot)
+        if (match === null) {
+          return noCmd(model)
+        }
+        if (model.tag === 'syncing') {
+          return noCmd(
+            playing(
+              startSession(match, {
+                tag: 'remote',
+                you: 2,
+                code: model.code,
+                peerConnected: true,
+              }),
+            ),
+          )
+        }
+        if (model.tag !== 'playing') {
+          return noCmd(model)
+        }
+        const session = model.session
+        if (session.mode.tag !== 'remote' || session.mode.you !== 2) {
+          return noCmd(model)
+        }
+        return noCmd(
+          playing(
+            withFinishedReplay(
+              {
+                ...session,
+                selectedSquare: null,
+                inputError: null,
+                notice: 'Synced with host.',
+              },
+              match,
+            ),
+          ),
+        )
+      }
       if (model.tag !== 'playing') {
         return noCmd(model)
       }
@@ -679,7 +802,12 @@ export function updateCenturion(
           return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
         }
         return noCmd(
-          withSession(model, { match, selectedSquare: null, inputError: null }),
+          playing(
+            withFinishedReplay(
+              { ...session, selectedSquare: null, inputError: null },
+              match,
+            ),
+          ),
         )
       }
       // The arrow phase replays deterministically from the shared rng;
@@ -694,7 +822,81 @@ export function updateCenturion(
         return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
       }
       return noCmd(
-        withSession(model, { match, selectedSquare: null, inputError: null }),
+        playing(
+          withFinishedReplay(
+            { ...session, selectedSquare: null, inputError: null },
+            match,
+          ),
+        ),
+      )
+    }
+
+    case 'restore-session-requested': {
+      const restored = centurionModelFromPersistence(msg.persisted)
+      if (restored === null) {
+        return noCmd(model)
+      }
+      return [restored, transportRejoinCommands(restored)]
+    }
+
+    case 'game-replay-game-selected': {
+      if (model.tag !== 'playing') {
+        return noCmd(model)
+      }
+      const session = model.session
+      if (session.match.phase.tag !== 'finished') {
+        return noCmd(model)
+      }
+      const game = session.match.games.find((entry) => entry.id === msg.gameId)
+      if (game === undefined) {
+        return noCmd(model)
+      }
+      return noCmd(
+        withSession(model, {
+          gameReplay: { gameId: game.id, ply: 0 },
+        }),
+      )
+    }
+
+    case 'game-replay-step': {
+      if (model.tag !== 'playing') {
+        return noCmd(model)
+      }
+      const session = model.session
+      const replay = session.gameReplay
+      if (replay === null || session.match.phase.tag !== 'finished') {
+        return noCmd(model)
+      }
+      const game = session.match.games.find(
+        (entry) => entry.id === replay.gameId,
+      )
+      if (game === undefined) {
+        return noCmd(model)
+      }
+      let ply = replay.ply
+      switch (msg.step) {
+        case 'start':
+          ply = 0
+          break
+        case 'prev':
+          ply -= 1
+          break
+        case 'next':
+          ply += 1
+          break
+        case 'end':
+          ply = game.moves.length
+          break
+        default:
+          return assertNever(msg.step)
+      }
+      return noCmd(
+        withSession(model, {
+          gameReplay: {
+            gameId: replay.gameId,
+            ply: clampReplayPly(game.moves.length, ply),
+          },
+        }),
       )
     }
 

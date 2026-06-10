@@ -1,5 +1,13 @@
+import 'chessground/assets/chessground.base.css'
+import 'chessground/assets/chessground.brown.css'
+import 'chessground/assets/chessground.cburnett.css'
 import './styles.css'
 
+import {
+  clearCenturionPersistence,
+  loadCenturionPersistence,
+  saveCenturionPersistence,
+} from './adapters/local-storage-centurion-persistence'
 import { StockfishEngineAdapter } from './adapters/stockfish-engine'
 import { TrysteroTransportAdapter } from './adapters/trystero-transport'
 import {
@@ -25,6 +33,13 @@ import {
   sideToMove,
 } from './core/match/model'
 import {
+  describeGameReplayLabel,
+  gameMoveSourceCounts,
+  gamesForReplaySelection,
+  matchGameToPgn,
+  replaySnapshot,
+} from './core/match/pgn'
+import {
   matchRenderModel,
   squareName,
   toCanonicalSquare,
@@ -36,10 +51,14 @@ import type {
   CenturionModel,
   MatchSession,
 } from './features/centurion-match/model'
+import { initCenturionModel } from './features/centurion-match/model'
 import { sessionViewer } from './features/centurion-match/model'
+import { encodeCenturionForPersistence } from './features/centurion-match/persistence'
+import { ReplayBoard } from './features/centurion-match/replay-board'
 import {
   type CenturionMsg,
   LOBBY_COPY,
+  updateCenturion,
 } from './features/centurion-match/update'
 import type {
   ChatConnectionState,
@@ -121,6 +140,8 @@ const chatJoinRoomButton = button('chat-join-room-btn')
 const chatDisconnectButton = button('chat-disconnect-btn')
 const chatSendButton = button('chat-send-btn')
 
+const centurionBackButton = button('centurion-back-btn')
+const centurionLabsFoot = element('centurion-labs-foot')
 const centurionLobby = element('centurion-lobby')
 const centurionSession = element('centurion-session')
 const centurionStatusCopy = element('centurion-status-copy')
@@ -144,6 +165,19 @@ const centurionSubmitArrowButton = button('centurion-submit-arrow-btn')
 const centurionResolutionSummary = element('centurion-resolution-summary')
 const centurionArrowHistory = element('centurion-arrow-history')
 const centurionLeaveButton = button('centurion-leave-btn')
+const centurionGameReplay = element('centurion-game-replay')
+const centurionGameSelect = element(
+  'centurion-game-select',
+) as HTMLSelectElement
+const centurionReplayBoardHost = element('centurion-replay-board')
+const centurionReplayMoveInfo = element('centurion-replay-move-info')
+const centurionReplayPgn = textarea('centurion-replay-pgn')
+const centurionReplayStartButton = button('centurion-replay-start')
+const centurionReplayPrevButton = button('centurion-replay-prev')
+const centurionReplayNextButton = button('centurion-replay-next')
+const centurionReplayEndButton = button('centurion-replay-end')
+const centurionReplayBoard = new ReplayBoard(centurionReplayBoardHost)
+let centurionGameReplayOptionsKey = ''
 const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
@@ -180,6 +214,7 @@ const centurionTransport = new TrysteroTransportAdapter(
 const centurionEngine = new StockfishEngineAdapter()
 
 let state: AppState = initAppState()
+let hostPendingSeed: number | null = null
 
 function centurionRoomId(code: string): string {
   return `${CENTURION_TRANSPORT_APP_ID}-${code}`
@@ -196,6 +231,9 @@ function describeWirePayload(payload: unknown): string {
   if (wire.type === 'centurion:auto') {
     return `centurion:auto turn=${wire.turn} moves=${wire.moves.length}`
   }
+  if (wire.type === 'centurion:sync') {
+    return `centurion:sync turn=${wire.snapshot.turn} games=${wire.snapshot.gameCount}`
+  }
   return `centurion:arrow turn=${wire.turn} ${wire.from}->${wire.to} moves=${wire.moves.length}`
 }
 
@@ -204,7 +242,20 @@ function logConnection(message: string): void {
   renderConnectionLog(centurionConnectionLogList)
 }
 
+function persistCenturionState(): void {
+  if (state.tag !== 'centurion-match') {
+    return
+  }
+  const encoded = encodeCenturionForPersistence(state.model)
+  if (encoded !== null) {
+    saveCenturionPersistence(encoded)
+  }
+}
+
 function dispatch(msg: AppMsg): void {
+  if (state.tag === 'centurion-match') {
+    persistCenturionState()
+  }
   const prevCenturionTag =
     state.tag === 'centurion-match' ? state.model.tag : null
   const [nextState, commands] = updateApp(state, msg)
@@ -215,6 +266,15 @@ function dispatch(msg: AppMsg): void {
     prevCenturionTag !== nextState.model.tag
   ) {
     logConnection(`State: ${prevCenturionTag} -> ${nextState.model.tag}`)
+  }
+  if (
+    msg.tag === 'centurion-msg' &&
+    msg.msg.tag === 'leave-session-requested'
+  ) {
+    hostPendingSeed = null
+    clearCenturionPersistence()
+  } else {
+    persistCenturionState()
   }
   render()
   for (const command of commands) {
@@ -231,7 +291,11 @@ function dispatchCenturion(msg: CenturionMsg): void {
       logConnection('You requested to join a match (guest).')
       break
     case 'leave-session-requested':
+      hostPendingSeed = null
       logConnection('You left the multiplayer session.')
+      break
+    case 'restore-session-requested':
+      logConnection('Restoring in-progress match from local storage.')
       break
     case 'share-invite-requested':
       logConnection('You opened the share sheet for the invite link.')
@@ -337,16 +401,26 @@ centurionTransport.setCallbacks({
     logConnection(
       `Trystero status: ${status} (${role}, code=${code || '—'}, room=${room})`,
     )
+    let pendingSeed: number | undefined
+    if (
+      status === 'waiting' &&
+      centurionTransport.isHost &&
+      hostPendingSeed === null
+    ) {
+      hostPendingSeed = newSeed()
+      pendingSeed = hostPendingSeed
+    }
     dispatchCenturion({
       tag: 'transport-status-changed',
       status,
       code: centurionTransport.code,
       isHost: centurionTransport.isHost,
+      ...(pendingSeed !== undefined && { pendingSeed }),
     })
   },
   onPeerJoin: () => {
     logConnection('Peer joined the Trystero room.')
-    dispatchCenturion({ tag: 'transport-peer-joined', seed: newSeed() })
+    dispatchCenturion({ tag: 'transport-peer-joined' })
   },
   onPeerLeave: () => {
     logConnection('Peer left the Trystero room.')
@@ -381,12 +455,19 @@ function runCommand(command: AppCmd): void {
     case 'centurion':
       switch (command.cmd.tag) {
         case 'transport-create-room': {
+          hostPendingSeed = null
           const code = centurionTransport.createRoom()
           logConnection(
             `Creating room as host (code=${code}, room=${centurionRoomId(code)}).`,
           )
           return
         }
+        case 'transport-host-room':
+          logConnection(
+            `Re-opening room as host (code=${command.cmd.code}, room=${centurionRoomId(command.cmd.code)}).`,
+          )
+          centurionTransport.hostRoom(command.cmd.code)
+          return
         case 'transport-join-room':
           logConnection(
             `Joining room as guest (code=${command.cmd.code}, room=${centurionRoomId(command.cmd.code)}).`,
@@ -625,7 +706,9 @@ function resolutionSummaryText(match: MatchState): string {
 function boardHintText(session: MatchSession): string {
   const match = session.match
   if (match.phase.tag === 'finished') {
-    return 'Match over.'
+    return session.gameReplay === null
+      ? 'Match over.'
+      : 'Match over. Review a finished game below.'
   }
   if (session.inputError !== null) {
     return session.inputError
@@ -650,6 +733,61 @@ function boardHintText(session: MatchSession): string {
       ? `Player ${activePlacer(match)} (${playerColorName(activePlacer(match))})`
       : 'You'
   return `${placer}: tap the origin square of your arrow.`
+}
+
+function renderGameReplay(session: MatchSession): void {
+  const match = session.match
+  const replay = session.gameReplay
+  const showReplay = match.phase.tag === 'finished' && replay !== null
+  centurionGameReplay.hidden = !showReplay
+  if (!showReplay || replay === null) {
+    return
+  }
+
+  const selectedGame = match.games.find((game) => game.id === replay.gameId)
+  if (selectedGame === undefined) {
+    return
+  }
+
+  const sortedGames = gamesForReplaySelection(match.games)
+  const optionsKey = sortedGames
+    .map((game) => {
+      const counts = gameMoveSourceCounts(game)
+      return `${game.id}:${counts.arrow}:${counts.engine}:${game.moves.length}`
+    })
+    .join('|')
+  if (centurionGameReplayOptionsKey !== optionsKey) {
+    centurionGameReplayOptionsKey = optionsKey
+    centurionGameSelect.innerHTML = ''
+    for (const game of sortedGames) {
+      const option = document.createElement('option')
+      option.value = String(game.id)
+      option.textContent = describeGameReplayLabel(game)
+      centurionGameSelect.appendChild(option)
+    }
+  }
+  centurionGameSelect.value = String(replay.gameId)
+
+  const snapshot = replaySnapshot(selectedGame, replay.ply)
+  centurionReplayBoard.setPosition(snapshot.fen, snapshot.lastMove)
+  centurionReplayBoard.redraw()
+
+  const sourceCounts = gameMoveSourceCounts(selectedGame)
+  centurionReplayMoveInfo.textContent =
+    snapshot.moveCount === 0
+      ? 'No moves recorded for this game.'
+      : `Ply ${snapshot.ply} of ${snapshot.moveCount} (${sourceCounts.arrow} arrow, ${sourceCounts.engine} engine)`
+
+  centurionReplayPgn.value = matchGameToPgn(selectedGame, {
+    white: playerLabel(session, selectedGame.whiteOwner),
+    black: playerLabel(session, selectedGame.whiteOwner === 1 ? 2 : 1),
+    round: String(selectedGame.id + 1),
+  })
+
+  centurionReplayStartButton.disabled = snapshot.ply === 0
+  centurionReplayPrevButton.disabled = snapshot.ply === 0
+  centurionReplayNextButton.disabled = snapshot.ply >= snapshot.moveCount
+  centurionReplayEndButton.disabled = snapshot.ply >= snapshot.moveCount
 }
 
 function renderCenturionSession(session: MatchSession): void {
@@ -689,16 +827,36 @@ function renderCenturionSession(session: MatchSession): void {
     centurionArrowHistory.appendChild(item)
   }
 
+  renderGameReplay(session)
+
   centurionRenderer.resize(panelBoardSize(centurionBoardPanel))
   centurionRenderer.render(
     matchRenderModel(match, viewer, session.selectedSquare, session.resolving),
   )
 }
 
+function confirmReturnToLobby(model: CenturionModel): boolean {
+  if (model.tag === 'lobby') {
+    return true
+  }
+  const message =
+    model.tag === 'playing'
+      ? 'Leave this match and return to the lobby?'
+      : 'Cancel and return to the lobby?'
+  return window.confirm(message)
+}
+
+function renderCenturionChrome(model: CenturionModel): void {
+  const inLobby = model.tag === 'lobby'
+  centurionBackButton.style.display = inLobby ? 'none' : ''
+  centurionLabsFoot.style.display = inLobby ? 'block' : 'none'
+}
+
 function renderCenturion(model: CenturionModel): void {
   const inSession = model.tag === 'playing'
   centurionLobby.style.display = inSession ? 'none' : 'flex'
   centurionSession.style.display = inSession ? 'grid' : 'none'
+  renderCenturionChrome(model)
 
   if (model.tag === 'playing') {
     renderCenturionSession(model.session)
@@ -782,10 +940,12 @@ function bindEvents(): void {
     dispatch({ tag: 'open-chat-lab' })
   })
   button('labs-menu-open-centurion').addEventListener('click', () => {
-    dispatch({ tag: 'open-centurion-match' })
+    navigate('game')
+    tryRestorePersistedSession()
   })
   button('labs-menu-back-btn').addEventListener('click', () => {
     navigate('game')
+    tryRestorePersistedSession()
   })
 
   button('superposition-back-btn').addEventListener('click', () => {
@@ -872,7 +1032,16 @@ function bindEvents(): void {
     })
   })
 
-  button('centurion-back-btn').addEventListener('click', () => {
+  centurionBackButton.addEventListener('click', () => {
+    if (state.tag !== 'centurion-match') {
+      return
+    }
+    if (!confirmReturnToLobby(state.model)) {
+      return
+    }
+    dispatchCenturion({ tag: 'leave-session-requested' })
+  })
+  button('centurion-open-labs-btn').addEventListener('click', () => {
     navigate('labs')
   })
   centurionSoloButton.addEventListener('click', () => {
@@ -921,6 +1090,24 @@ function bindEvents(): void {
   centurionLeaveButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'leave-session-requested' })
   })
+  centurionGameSelect.addEventListener('change', () => {
+    dispatchCenturion({
+      tag: 'game-replay-game-selected',
+      gameId: Number(centurionGameSelect.value),
+    })
+  })
+  centurionReplayStartButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'game-replay-step', step: 'start' })
+  })
+  centurionReplayPrevButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'game-replay-step', step: 'prev' })
+  })
+  centurionReplayNextButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'game-replay-step', step: 'next' })
+  })
+  centurionReplayEndButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'game-replay-step', step: 'end' })
+  })
   centurionConnectionLogClear.addEventListener('click', () => {
     clearConnectionLog()
     renderConnectionLog(centurionConnectionLogList)
@@ -949,7 +1136,33 @@ function bindEvents(): void {
   })
 }
 
+function tryRestorePersistedSession(): void {
+  if (pathnameToAppRoute(window.location.pathname) === 'labs') {
+    return
+  }
+  const persisted = loadCenturionPersistence()
+  if (persisted === null) {
+    return
+  }
+  if (persisted.tag === 'waiting') {
+    hostPendingSeed = persisted.pendingSeed
+  }
+  const [model, commands] = updateCenturion(initCenturionModel(), {
+    tag: 'restore-session-requested',
+    persisted,
+  })
+  state = { tag: 'centurion-match', model }
+  persistCenturionState()
+  render()
+  for (const command of commands) {
+    runCommand({ tag: 'centurion', cmd: command })
+  }
+}
+
 function autoJoinFromUrl(): void {
+  if (state.tag === 'centurion-match' && state.model.tag !== 'lobby') {
+    return
+  }
   const search: string | undefined = window.location.search
   if (search === undefined || search.length === 0) {
     return
@@ -975,4 +1188,5 @@ logConnection(
   `Multiplayer signaling uses Trystero/Nostr (app id ${CENTURION_TRANSPORT_APP_ID}).`,
 )
 navigate(pathnameToAppRoute(window.location.pathname), false)
+tryRestorePersistedSession()
 autoJoinFromUrl()

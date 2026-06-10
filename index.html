@@ -81,7 +81,7 @@
 
   <section id="screen-centurion-match" class="screen screen-feature">
     <header class="feature-header">
-      <button class="text-btn" id="centurion-back-btn">← Labs</button>
+      <button class="text-btn" id="centurion-back-btn">← Lobby</button>
       <h2>Centurion Chess</h2>
       <span></span>
     </header>
@@ -121,6 +121,9 @@
           <li><strong>Solo mode:</strong> you place every arrow. After each one, both half-moves play out back to back &mdash; no opponent arrows, just you steering 100 Stockfish games.</li>
         </ul>
       </details>
+      <p class="centurion-labs-foot">
+        <button type="button" class="centurion-labs-link" id="centurion-open-labs-btn">Labs</button>
+      </p>
     </div>
 
     <div id="centurion-session" class="feature-layout centurion-session">
@@ -156,6 +159,19 @@
             <button class="btn btn-secondary" id="centurion-submit-arrow-btn">Place Arrow</button>
           </div>
         </details>
+        <div id="centurion-game-replay" class="centurion-game-replay" hidden>
+          <div class="centurion-section-label">Review a game</div>
+          <select id="centurion-game-select" class="centurion-game-select" aria-label="Choose a game to review"></select>
+          <div id="centurion-replay-board" class="centurion-replay-board"></div>
+          <div class="centurion-replay-controls" role="group" aria-label="Replay controls">
+            <button type="button" class="btn btn-outline centurion-replay-btn" id="centurion-replay-start" title="Go to start">|◀</button>
+            <button type="button" class="btn btn-outline centurion-replay-btn" id="centurion-replay-prev" title="Previous move">◀</button>
+            <button type="button" class="btn btn-outline centurion-replay-btn" id="centurion-replay-next" title="Next move">▶</button>
+            <button type="button" class="btn btn-outline centurion-replay-btn" id="centurion-replay-end" title="Go to end">▶|</button>
+          </div>
+          <div id="centurion-replay-move-info" class="centurion-meta-line"></div>
+          <textarea id="centurion-replay-pgn" class="centurion-replay-pgn" readonly spellcheck="false" aria-label="Game PGN"></textarea>
+        </div>
         <div class="centurion-section-label">Arrow history</div>
         <ul id="centurion-arrow-history" class="centurion-arrow-history"></ul>
         <button class="btn btn-outline" id="centurion-leave-btn">Leave match</button>

@@ -1,7 +1,7 @@
 import type { Chess } from 'chessops/chess'
 import { makeFen } from 'chessops/fen'
 import { type NormalMove, isNormal } from 'chessops/types'
-import { parseUci, squareRank } from 'chessops/util'
+import { makeUci, parseUci, squareRank } from 'chessops/util'
 import { type RngState, pickIndex } from '../rng'
 import {
   type Arrow,
@@ -10,6 +10,7 @@ import {
   type MatchGame,
   type MatchPhase,
   type MatchState,
+  type MoveSource,
   type PlayerId,
   activePlacer,
   addBoardArrow,
@@ -79,7 +80,11 @@ function statusAfterMove(
   return { tag: 'active' }
 }
 
-function applyMoveToGame(game: MatchGame, move: NormalMove): MatchGame {
+function applyMoveToGame(
+  game: MatchGame,
+  move: NormalMove,
+  source: MoveSource,
+): MatchGame {
   const position = game.position.clone()
   position.play(move)
   const key = positionKey(position)
@@ -91,6 +96,7 @@ function applyMoveToGame(game: MatchGame, move: NormalMove): MatchGame {
     position,
     repetition,
     status: statusAfterMove(game, position, count),
+    moves: [...game.moves, { uci: makeUci(move), source }],
   }
 }
 
@@ -233,7 +239,7 @@ function beginResolutionPhase(
       if (game === undefined) {
         break
       }
-      games[chosen.gameIndex] = applyMoveToGame(game, chosen.move)
+      games[chosen.gameIndex] = applyMoveToGame(game, chosen.move, 'arrow')
       advanced.add(chosen.gameIndex)
       arrowMoves += 1
     }
@@ -291,7 +297,7 @@ export function completeResolution(
     if (move === undefined || !isNormal(move) || !game.position.isLegal(move)) {
       return null
     }
-    games[gameIndex] = applyMoveToGame(game, move)
+    games[gameIndex] = applyMoveToGame(game, move, 'engine')
   }
 
   const base = resolution.base

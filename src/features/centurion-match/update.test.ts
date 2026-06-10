@@ -240,8 +240,9 @@ describe('multiplayer flow', () => {
         status: 'waiting',
         code: '123456',
         isHost: true,
+        pendingSeed: 77,
       },
-      { tag: 'transport-peer-joined', seed: 77 },
+      { tag: 'transport-peer-joined' },
     )
   }
 
@@ -254,9 +255,15 @@ describe('multiplayer flow', () => {
         status: 'waiting',
         code: '123456',
         isHost: true,
+        pendingSeed: 42,
       },
     )
-    expect(waiting).toEqual({ tag: 'waiting', code: '123456', notice: null })
+    expect(waiting).toEqual({
+      tag: 'waiting',
+      code: '123456',
+      pendingSeed: 42,
+      notice: null,
+    })
 
     const [, shareCommands] = apply(waiting, { tag: 'share-invite-requested' })
     expect(shareCommands).toEqual([{ tag: 'share-invite', code: '123456' }])
@@ -268,8 +275,25 @@ describe('multiplayer flow', () => {
     expect(copied).toEqual({
       tag: 'waiting',
       code: '123456',
+      pendingSeed: 42,
       notice: 'Invite link copied.',
     })
+  })
+
+  it('host sends a sync snapshot when the guest reconnects mid-match', () => {
+    const [playing] = hostToPlaying()
+    if (playing.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    const [model, commands] = apply(playing, { tag: 'transport-peer-joined' })
+    if (model.tag !== 'playing' || model.session.mode.tag !== 'remote') {
+      throw new Error('expected remote playing state')
+    }
+    expect(model.session.mode.peerConnected).toBe(true)
+    expect(commands[0]?.tag).toBe('transport-send')
+    const payload =
+      commands[0]?.tag === 'transport-send' ? commands[0].payload : null
+    expect(payload).toMatchObject({ type: 'centurion:sync' })
   })
 
   it('host starts the match and broadcasts the seed when a peer joins', () => {

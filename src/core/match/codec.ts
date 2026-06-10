@@ -1,3 +1,9 @@
+import {
+  type MatchSnapshot,
+  decodeMatchSnapshot,
+  encodeMatchState,
+} from './snapshot'
+
 export type MatchWireMessage =
   | {
       readonly type: 'centurion:start'
@@ -24,6 +30,11 @@ export type MatchWireMessage =
        * closes (turn 101+), sent by the active placer each ply.
        */
       readonly moves: readonly string[]
+    }
+  | {
+      readonly type: 'centurion:sync'
+      /** Authoritative match snapshot from the host after reconnect. */
+      readonly snapshot: MatchSnapshot
     }
 
 export function encodeMatchWireMessage(
@@ -61,10 +72,8 @@ export function decodeMatchWireMessage(
   if (typeof payload !== 'object' || payload === null) {
     return null
   }
-  const { type, seed, gameCount, from, to, turn, moves } = payload as Record<
-    string,
-    unknown
-  >
+  const { type, seed, gameCount, from, to, turn, moves, snapshot } =
+    payload as Record<string, unknown>
 
   if (type === 'centurion:start') {
     if (isNonNegativeInteger(seed) && isNonNegativeInteger(gameCount)) {
@@ -92,6 +101,14 @@ export function decodeMatchWireMessage(
       return { type: 'centurion:auto', turn, moves }
     }
     return null
+  }
+
+  if (type === 'centurion:sync') {
+    const decoded = decodeMatchSnapshot(snapshot)
+    if (decoded === null) {
+      return null
+    }
+    return { type: 'centurion:sync', snapshot: encodeMatchState(decoded) }
   }
 
   return null

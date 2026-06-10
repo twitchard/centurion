@@ -41,12 +41,24 @@ export type GameStatus =
   | { readonly tag: 'won'; readonly by: PlayerId }
   | { readonly tag: 'drawn'; readonly reason: DrawReason }
 
+/** Whether a half-move followed a board arrow or Stockfish's choice. */
+export type MoveSource = 'arrow' | 'engine'
+
+export interface RecordedMove {
+  readonly uci: string
+  readonly source: MoveSource
+}
+
 export interface MatchGame {
   readonly id: number
   readonly whiteOwner: PlayerId
+  /** FEN at the start of this game (for PGN export and replay). */
+  readonly startingFen: string
   readonly position: Chess
   readonly repetition: ReadonlyMap<string, number>
   readonly status: GameStatus
+  /** Half-moves played from `startingFen`, with resolution source. */
+  readonly moves: readonly RecordedMove[]
 }
 
 export interface ResolutionSummary {
@@ -206,9 +218,11 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     games.push({
       id,
       whiteOwner: whitePlayer,
+      startingFen: makeFen(position.toSetup()),
       position,
       repetition,
       status: { tag: 'active' },
+      moves: [],
     })
   }
 

@@ -53,6 +53,14 @@ vi.mock('./adapters/trystero-transport', () => {
       return this.code
     }
 
+    hostRoom(code: string): void {
+      this.disconnect()
+      this.code = code
+      this.isHost = true
+      this.setStatus('connecting')
+      this.setStatus('waiting')
+    }
+
     joinRoom(code: string): void {
       this.disconnect()
       this.code = code
@@ -80,6 +88,14 @@ vi.mock('./adapters/trystero-transport', () => {
 
   return { TrysteroTransportAdapter: MockTransportAdapter }
 })
+
+vi.mock('chessground', () => ({
+  Chessground: vi.fn(() => ({
+    set: vi.fn(),
+    redrawAll: vi.fn(),
+    destroy: vi.fn(),
+  })),
+}))
 
 vi.mock('./adapters/stockfish-engine', () => {
   class MockStockfishEngineAdapter {
@@ -198,6 +214,9 @@ class FakeDocument {
   createElement(tagName: string): FakeElement {
     const id = `generated-${tagName}-${this.sequence}`
     this.sequence += 1
+    if (tagName === 'option') {
+      return new FakeOptionElement(id, this)
+    }
     return new FakeHTMLElement(id, this)
   }
 }
@@ -206,6 +225,7 @@ class FakeElement {
   readonly style: FakeStyle = {}
   textContent = ''
   className = ''
+  hidden = false
   clientWidth = 360
   clientHeight = 360
   scrollTop = 0
@@ -304,6 +324,32 @@ class FakeInputElement extends FakeHTMLElement {
 
 class FakeTextAreaElement extends FakeHTMLElement {
   value = ''
+}
+
+class FakeOptionElement extends FakeHTMLElement {
+  value = ''
+}
+
+class FakeSelectElement extends FakeHTMLElement {
+  value = ''
+  readonly dataset: Record<string, string> = {}
+  private optionNodes: FakeOptionElement[] = []
+
+  get options(): FakeOptionElement[] {
+    return this.optionNodes
+  }
+
+  override set innerHTML(value: string) {
+    super.innerHTML = value
+    this.optionNodes = []
+  }
+
+  override appendChild(child: FakeElement): FakeElement {
+    if (child instanceof FakeOptionElement) {
+      this.optionNodes.push(child)
+    }
+    return super.appendChild(child)
+  }
 }
 
 class FakeCanvasElement extends FakeHTMLElement {
@@ -528,10 +574,12 @@ function setupDom(pathname = '/labs'): TestDom {
 
   const centurionIds: readonly (readonly [
     string,
-    'element' | 'button' | 'input' | 'canvas',
+    'element' | 'button' | 'input' | 'canvas' | 'textarea' | 'select',
   ])[] = [
     ['centurion-back-btn', 'button'],
     ['centurion-lobby', 'element'],
+    ['centurion-labs-foot', 'element'],
+    ['centurion-open-labs-btn', 'button'],
     ['centurion-session', 'element'],
     ['centurion-status-copy', 'element'],
     ['centurion-solo-btn', 'button'],
@@ -552,6 +600,15 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-board-hint', 'element'],
     ['centurion-submit-arrow-btn', 'button'],
     ['centurion-resolution-summary', 'element'],
+    ['centurion-game-replay', 'element'],
+    ['centurion-game-select', 'select'],
+    ['centurion-replay-board', 'element'],
+    ['centurion-replay-move-info', 'element'],
+    ['centurion-replay-pgn', 'textarea'],
+    ['centurion-replay-start', 'button'],
+    ['centurion-replay-prev', 'button'],
+    ['centurion-replay-next', 'button'],
+    ['centurion-replay-end', 'button'],
     ['centurion-arrow-history', 'element'],
     ['centurion-leave-btn', 'button'],
     ['centurion-mode-pieces', 'button'],
@@ -572,6 +629,18 @@ function setupDom(pathname = '/labs'): TestDom {
         id,
         (i, owner) => new FakeInputElement(i, owner),
       )
+    } else if (kind === 'textarea') {
+      registerById(
+        documentRef,
+        id,
+        (i, owner) => new FakeTextAreaElement(i, owner),
+      )
+    } else if (kind === 'select') {
+      registerById(
+        documentRef,
+        id,
+        (i, owner) => new FakeSelectElement(i, owner),
+      )
     } else {
       registerById(documentRef, id, (i, owner) => new FakeHTMLElement(i, owner))
     }
@@ -590,10 +659,12 @@ function setupDom(pathname = '/labs'): TestDom {
 
   vi.stubGlobal('document', documentRef as unknown as Document)
   vi.stubGlobal('window', windowRef as unknown as Window)
+  vi.stubGlobal('confirm', () => true)
   vi.stubGlobal('HTMLElement', FakeHTMLElement)
   vi.stubGlobal('HTMLButtonElement', FakeButtonElement)
   vi.stubGlobal('HTMLInputElement', FakeInputElement)
   vi.stubGlobal('HTMLTextAreaElement', FakeTextAreaElement)
+  vi.stubGlobal('HTMLSelectElement', FakeSelectElement)
   vi.stubGlobal('HTMLCanvasElement', FakeCanvasElement)
 
   return { documentRef, windowRef }
