@@ -54,6 +54,18 @@ async function main(): Promise<void> {
       },
     },
     { name: 'board-standalone', path: '/board.html' },
+    { name: 'centurion-lobby', path: '/' },
+    {
+      name: 'centurion-match',
+      path: '/',
+      setup: async () => {
+        await page.click('#centurion-pass-and-play-btn')
+        await page.waitForTimeout(500)
+        await page.fill('#centurion-arrow-input', 'e2->e4')
+        await page.press('#centurion-arrow-input', 'Enter')
+        await page.waitForTimeout(800)
+      },
+    },
   ]
 
   for (const { name, path, setup } of pages) {
