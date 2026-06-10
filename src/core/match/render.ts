@@ -66,13 +66,12 @@ function visualSquare(
 
 /**
  * Project the live match onto the unified superposition board as seen by
- * one player: their white games render as-is and their black games render
- * rank-flipped, so their own pieces are always closest to them.
+ * one player. The white owner's games render in the canonical frame; the
+ * black owner's games render rank-flipped, so each player's own pieces
+ * are always closest to them.
  *
- * Pieces are colored by ownership, not by each game's chess color: the
- * viewer's pieces always render white and the opponent's black. Without
- * this, a board that mixes the viewer's white and black games would make
- * ownership invisible.
+ * Pieces are colored by ownership, not by chess color: the viewer's
+ * pieces always render white and the opponent's black.
  *
  * While a turn is mid-resolution (Stockfish still computing), pass the
  * pending resolution so the just-placed arrow and any games it already

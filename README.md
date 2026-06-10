@@ -1,6 +1,6 @@
 # Centurion Chess
 
-Two players compete across 100 simultaneous games of chess. In 50 games you play white; in 50 you play black. You view a single shared board displaying a superposition of all active games, and influence them by placing persistent arrows.
+Two players compete across 100 simultaneous games of chess. One player is white in every game and the other is black; which player gets which color is chosen at random when the match starts. You view a single shared board displaying a superposition of all active games, and influence them by placing persistent arrows.
 
 **The full match is playable**: pass-and-play on one device, or serverless P2P multiplayer with a 6-digit match code.
 
@@ -17,13 +17,13 @@ Place an arrow by clicking its origin and destination squares on the board (or t
 
 ### Board and display
 
-The board is displayed from your perspective: your pieces are always closest to you. The board uses a vertical flip to align the two colors — your white pieces on rank 1 and your black pieces on rank 8 both appear at the bottom of the board. This means initial positions overlap naturally (white king and black king share the same visual square, king pawns overlap, etc.).
+The board is displayed from your perspective: your pieces are always closest to you. The player who owns black sees the board rank-flipped so their pieces sit at the bottom, matching the white owner's view of the starting position.
 
 Pieces from all active games are rendered on a single board with opacity proportional to how many games contain that piece on that square, producing a ghostly superposition. No other game state information is visible — you cannot see individual game positions or which games matched which arrows.
 
 ### Turns
 
-Players alternate turns. The player going first is chosen from the match seed (each player controls 50 white games, so the choice is effectively a coin flip).
+Players alternate turns. Who plays white and who goes first are both chosen from the match seed at the start of the match.
 
 On your turn, you place exactly one arrow from any origin square to any destination square on the unified board. You may place an arrow on top of an existing arrow to stack it; stacking adds 8 to that arrow's cardinality and refreshes its decay from the current turn.
 
@@ -38,7 +38,7 @@ After each arrow placement, all active games advance by one half-move (one ply) 
 1. **Apply arrows**
    - Arrows are processed from most recently placed or stacked to least recent.
    - For each arrow: pull up to its current decay weight (cardinality halved each turn since it was last placed or stacked) in games, each time selecting one game at random from the set of active games that has not yet advanced this turn and for which the arrow is a legal move for the side whose turn it is.
-   - An arrow placed on the unified board is interpreted through the vertical flip: a visual arrow represents the same positional idea for both colors. For example, a visual arrow pushing a pawn from the second row to the fourth row corresponds to e2->e4 in your white games and e7->e5 in your black games.
+   - An arrow placed on the unified board is interpreted through the vertical flip when the black owner places it, so the same visual arrow represents the same positional idea for both players.
    - If a matching game exists, that move is made and the game is marked as advanced for this turn. Pawn promotion is always to queen. Castling and en passant are legal per standard chess rules.
 2. **Stockfish fallback**
    - Any active game that has not yet advanced this turn plays the best move as determined by Stockfish at depth 5 (single-threaded WASM build, running in a web worker), evaluated from the perspective of the side whose turn it is.

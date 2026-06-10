@@ -120,9 +120,7 @@ describe('matchRenderModel', () => {
   })
 
   it('colors pieces by ownership: the viewer is white, the opponent black', () => {
-    // gameCount 2 gives one game with each whiteOwner, so the starting
-    // superposition mixes the viewer's white and black games everywhere.
-    const match = initMatch(9, { gameCount: 2 })
+    const match = initMatch(9, { gameCount: 2, whitePlayer: 1 })
     for (const viewer of [1, 2] as const) {
       const model = matchRenderModel(match, viewer, null)
       expect(model.squareLayers.length).toBeGreaterThan(0)
