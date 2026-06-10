@@ -97,6 +97,7 @@ export function matchRenderModel(
   const arrows: ArrowSegment[] = placedArrows.map((placed) => ({
     from: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.from)),
     to: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.to)),
+    owner: placed.placedBy,
   }))
 
   const base = buildSuperpositionRenderModel(positions, arrows)

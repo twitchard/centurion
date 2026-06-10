@@ -448,14 +448,14 @@ canvas {
 }
 
 .centurion-arrow-entry--player-1 {
-  background: #1e3a5a;
-  color: #9fd9ff;
+  background: #20371a;
+  color: #a9e08a;
   align-self: flex-end;
 }
 
 .centurion-arrow-entry--player-2 {
-  background: #3a2a1e;
-  color: #ffb870;
+  background: #3d1e1c;
+  color: #f3a09b;
   align-self: flex-start;
 }
 

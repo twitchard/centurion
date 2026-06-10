@@ -286,6 +286,16 @@ export class SuperpositionRenderer {
     }
   }
 
+  private arrowColor(owner: 1 | 2 | undefined, alpha: number): string {
+    if (owner === 1) {
+      return `rgba(120, 200, 80, ${alpha})`
+    }
+    if (owner === 2) {
+      return `rgba(228, 90, 84, ${alpha})`
+    }
+    return `rgba(90, 185, 255, ${alpha})`
+  }
+
   private drawArrow(arrow: ArrowSegment, alpha: number): void {
     const ctx = this.context
     const square = this.squareSize
@@ -302,7 +312,7 @@ export class SuperpositionRenderer {
     const headLength = width * 2.4
     const headWidth = width * 1.4
 
-    const color = `rgba(90, 185, 255, ${alpha})`
+    const color = this.arrowColor(arrow.owner, alpha)
     ctx.strokeStyle = color
     ctx.fillStyle = color
     ctx.lineWidth = width

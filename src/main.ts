@@ -444,13 +444,16 @@ function renderChatLab(model: ChatLabModel): void {
   chatSendButton.disabled = !connected || model.draft.trim().length === 0
 }
 
+function playerColorName(player: PlayerId): string {
+  return player === 1 ? 'green' : 'red'
+}
+
 function playerLabel(session: MatchSession, player: PlayerId): string {
-  if (session.mode.tag === 'remote') {
-    return session.mode.you === player
-      ? `Player ${player} (you)`
-      : `Player ${player}`
+  const base = `Player ${player} (${playerColorName(player)})`
+  if (session.mode.tag === 'remote' && session.mode.you === player) {
+    return `${base} (you)`
   }
-  return `Player ${player}`
+  return base
 }
 
 function describePlacer(session: MatchSession): string {
@@ -463,9 +466,9 @@ function describePlacer(session: MatchSession): string {
   const who =
     session.mode.tag === 'remote'
       ? placer === session.mode.you
-        ? 'You place'
-        : 'Opponent places'
-      : `Player ${placer} places`
+        ? `You (${playerColorName(placer)}) place`
+        : `Opponent (${playerColorName(placer)}) places`
+      : `Player ${placer} (${playerColorName(placer)}) places`
   return `Turn ${match.turn}: ${who} an arrow, then all games advance (${color} to move).`
 }
 
@@ -519,7 +522,9 @@ function boardHintText(session: MatchSession): string {
     return `From ${squareName(session.selectedSquare)} - now tap the destination.`
   }
   const placer =
-    session.mode.tag === 'remote' ? 'You' : `Player ${activePlacer(match)}`
+    session.mode.tag === 'remote'
+      ? 'You'
+      : `Player ${activePlacer(match)} (${playerColorName(activePlacer(match))})`
   return `${placer}: tap the origin square of your arrow.`
 }
 

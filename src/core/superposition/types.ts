@@ -29,6 +29,8 @@ export interface ArrowCoordinate {
 export interface ArrowSegment {
   readonly from: ArrowCoordinate
   readonly to: ArrowCoordinate
+  /** Which player placed it (1 = green, 2 = red); unowned arrows render neutral. */
+  readonly owner?: 1 | 2
 }
 
 export interface PieceStack {

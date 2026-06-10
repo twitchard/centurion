@@ -28,7 +28,11 @@ describe('matchRenderModel', () => {
 
     const during = matchRenderModel(match, 1, null, resolution)
     expect(during.arrows).toEqual([
-      { from: { col: 4, row: 1 }, to: { col: 4, row: 3 } },
+      {
+        from: { col: 4, row: 1 },
+        to: { col: 4, row: 3 },
+        owner: match.firstPlacer,
+      },
     ])
   })
 
@@ -43,7 +47,11 @@ describe('matchRenderModel', () => {
     }
     const during = matchRenderModel(match, 2, null, resolution)
     expect(during.arrows).toEqual([
-      { from: { col: 4, row: 6 }, to: { col: 4, row: 4 } },
+      {
+        from: { col: 4, row: 6 },
+        to: { col: 4, row: 4 },
+        owner: match.firstPlacer,
+      },
     ])
   })
 
