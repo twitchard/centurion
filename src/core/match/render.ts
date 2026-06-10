@@ -12,6 +12,7 @@ import {
   type BoardSquare,
   type MatchState,
   type PlayerId,
+  arrowWeight,
   otherPlayer,
 } from './model'
 import { type PendingResolution, flipSquare } from './resolve'
@@ -107,22 +108,25 @@ export function matchRenderModel(
   }
 
   // Collapse stacked copies (same squares, same player) into one segment
-  // with a count; a re-placed arrow moves to the end of the order so the
-  // whole stack renders as fresh as its newest copy.
+  // with a count equal to their combined pull weight this turn.
   const stacks = new Map<string, ArrowSegment>()
   for (const placed of placedArrows) {
+    const weight = arrowWeight(placed.turn, match.turn)
+    if (weight === 0) {
+      continue
+    }
     const key = `${placed.arrow.from}-${placed.arrow.to}-${placed.placedBy}`
     const existing = stacks.get(key)
     if (existing !== undefined) {
       stacks.delete(key)
-      stacks.set(key, { ...existing, count: (existing.count ?? 1) + 1 })
+      stacks.set(key, { ...existing, count: (existing.count ?? 0) + weight })
       continue
     }
     stacks.set(key, {
       from: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.from)),
       to: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.to)),
       owner: placed.placedBy,
-      count: 1,
+      count: weight,
     })
   }
   const arrows: ArrowSegment[] = [...stacks.values()]

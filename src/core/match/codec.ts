@@ -16,6 +16,15 @@ export type MatchWireMessage =
        */
       readonly moves: readonly string[]
     }
+  | {
+      readonly type: 'centurion:auto'
+      readonly turn: number
+      /**
+       * Stockfish moves for arrowless turns after the placement window
+       * closes (turn 101+), sent by the active placer each ply.
+       */
+      readonly moves: readonly string[]
+    }
 
 export function encodeMatchWireMessage(
   message: MatchWireMessage,
@@ -74,6 +83,13 @@ export function decodeMatchWireMessage(
       isUciMoveList(moves)
     ) {
       return { type: 'centurion:arrow', from, to, turn, moves }
+    }
+    return null
+  }
+
+  if (type === 'centurion:auto') {
+    if (isNonNegativeInteger(turn) && isUciMoveList(moves)) {
+      return { type: 'centurion:auto', turn, moves }
     }
     return null
   }

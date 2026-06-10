@@ -12,6 +12,8 @@ import {
   type PlacedArrow,
   type PlayerId,
   activePlacer,
+  arrowWeight,
+  canPlaceArrows,
   otherPlayer,
   positionKey,
 } from './model'
@@ -134,8 +136,9 @@ export interface PendingResolution {
 
 /**
  * Phase one of a turn: append the placed arrow, then process all arrows
- * newest-first, each instance advancing at most one randomly chosen game
- * for which it is a legal move (interpreted through the vertical flip).
+ * newest-first. Each instance pulls up to its decay weight in randomly
+ * chosen games for which it is a legal move (interpreted through the
+ * vertical flip).
  * Games left over are listed in `pending` and must advance by a Stockfish
  * move supplied to `completeResolution`.
  *
@@ -147,7 +150,7 @@ export function beginResolution(
   match: MatchState,
   arrow: Arrow,
 ): PendingResolution | null {
-  if (match.phase.tag === 'finished') {
+  if (!canPlaceArrows(match)) {
     return null
   }
   const placed: PlacedArrow = {
@@ -186,40 +189,46 @@ function beginResolutionPhase(
     if (entry === undefined) {
       continue
     }
-    const candidates: {
-      readonly gameIndex: number
-      readonly move: NormalMove
-    }[] = []
-    for (let gameIndex = 0; gameIndex < games.length; gameIndex++) {
-      const game = games[gameIndex]
-      if (
-        game === undefined ||
-        game.status.tag !== 'active' ||
-        advanced.has(gameIndex)
-      ) {
-        continue
+    const weight = arrowWeight(entry.turn, match.turn)
+    if (weight === 0) {
+      continue
+    }
+    for (let pull = 0; pull < weight; pull++) {
+      const candidates: {
+        readonly gameIndex: number
+        readonly move: NormalMove
+      }[] = []
+      for (let gameIndex = 0; gameIndex < games.length; gameIndex++) {
+        const game = games[gameIndex]
+        if (
+          game === undefined ||
+          game.status.tag !== 'active' ||
+          advanced.has(gameIndex)
+        ) {
+          continue
+        }
+        const move = arrowMoveForGame(game, entry.arrow)
+        if (move !== null) {
+          candidates.push({ gameIndex, move })
+        }
       }
-      const move = arrowMoveForGame(game, entry.arrow)
-      if (move !== null) {
-        candidates.push({ gameIndex, move })
+      if (candidates.length === 0) {
+        break
       }
+      const [pick, nextRng] = pickIndex(rng, candidates.length)
+      rng = nextRng
+      const chosen = candidates[pick]
+      if (chosen === undefined) {
+        break
+      }
+      const game = games[chosen.gameIndex]
+      if (game === undefined) {
+        break
+      }
+      games[chosen.gameIndex] = applyMoveToGame(game, chosen.move)
+      advanced.add(chosen.gameIndex)
+      arrowMoves += 1
     }
-    if (candidates.length === 0) {
-      continue
-    }
-    const [pick, nextRng] = pickIndex(rng, candidates.length)
-    rng = nextRng
-    const chosen = candidates[pick]
-    if (chosen === undefined) {
-      continue
-    }
-    const game = games[chosen.gameIndex]
-    if (game === undefined) {
-      continue
-    }
-    games[chosen.gameIndex] = applyMoveToGame(game, chosen.move)
-    advanced.add(chosen.gameIndex)
-    arrowMoves += 1
   }
 
   const pending: PendingEngineGame[] = []
@@ -308,11 +317,16 @@ export function completeResolution(
     p2: base.scores.p2 + p2Wins,
   }
 
+  const nextTurn = base.turn + 1
+  const activeArrows = resolution.arrows.filter(
+    (entry) => arrowWeight(entry.turn, nextTurn) > 0,
+  )
+
   return {
     ...base,
     games,
-    arrows: resolution.arrows,
-    turn: base.turn + 1,
+    arrows: activeArrows,
+    turn: nextTurn,
     scores,
     rng: resolution.rng,
     phase: matchPhaseFor(games, scores),

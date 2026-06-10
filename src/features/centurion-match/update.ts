@@ -3,10 +3,12 @@ import {
   encodeMatchWireMessage,
 } from '../../core/match/codec'
 import {
+  ARROW_PLACEMENT_LAST_TURN,
   type Arrow,
   type BoardSquare,
   type MatchState,
   activePlacer,
+  canPlaceArrows,
   initMatch,
   otherPlayer,
 } from '../../core/match/model'
@@ -74,6 +76,8 @@ const INVALID_JOIN_CODE_COPY = 'Enter a valid 6-digit match code.'
 const TRANSPORT_ERROR_COPY =
   'Unable to connect to a match. Both players need the same code, the host must still be waiting, and your networks must allow WebRTC (try Wi‑Fi, disable VPN, or use the connection log below).'
 const NOT_YOUR_TURN_COPY = 'Waiting for your opponent to place an arrow.'
+const ARROWLESS_PHASE_COPY =
+  'Turn 100 has passed; Stockfish is playing out the remaining games.'
 const OUT_OF_SYNC_COPY =
   'Received an out-of-sync message from the opponent; the match may have diverged.'
 const RESOLVING_COPY = 'Stockfish is resolving the turn...'
@@ -108,6 +112,10 @@ function startSession(
   }
 }
 
+function isArrowlessPhase(match: MatchState): boolean {
+  return match.turn > ARROW_PLACEMENT_LAST_TURN
+}
+
 function arrowSendCommands(
   session: MatchSession,
   resolution: PendingResolution,
@@ -134,6 +142,37 @@ function arrowSendCommands(
   ]
 }
 
+function autoSendCommands(
+  session: MatchSession,
+  resolution: PendingResolution,
+  moves: readonly string[],
+): readonly CenturionCmd[] {
+  if (session.mode.tag !== 'remote') {
+    return []
+  }
+  return [
+    {
+      tag: 'transport-send',
+      payload: encodeMatchWireMessage({
+        type: 'centurion:auto',
+        turn: resolution.base.turn,
+        moves,
+      }),
+    },
+  ]
+}
+
+function resolutionSendCommands(
+  session: MatchSession,
+  resolution: PendingResolution,
+  moves: readonly string[],
+): readonly CenturionCmd[] {
+  if (isArrowlessPhase(resolution.base)) {
+    return autoSendCommands(session, resolution, moves)
+  }
+  return arrowSendCommands(session, resolution, moves)
+}
+
 function placerIsYou(session: MatchSession): boolean {
   if (session.mode.tag !== 'remote') {
     return true
@@ -141,37 +180,40 @@ function placerIsYou(session: MatchSession): boolean {
   return activePlacer(session.match) === session.mode.you
 }
 
-/**
- * Solo mode: after the player's arrow resolves the white half-turn, the
- * black half-turn plays out immediately with no new arrow. Returns the
- * settled session, or a new resolving state plus the engine command for
- * the second ply.
- */
-function continueAfterResolution(
+function shouldChainAutoResolution(
   session: MatchSession,
   match: MatchState,
-): UpdateResult<CenturionModel, CenturionCmd> {
-  const settled: MatchSession = { ...session, match, resolving: null }
-  if (
-    session.mode.tag !== 'solo' ||
-    match.phase.tag === 'finished' ||
-    match.turn % 2 !== 0
-  ) {
-    return noCmd(playing(settled))
+): boolean {
+  if (match.phase.tag === 'finished') {
+    return false
   }
-  const resolution = beginAutoResolution(match)
+  if (isArrowlessPhase(match)) {
+    return true
+  }
+  return session.mode.tag === 'solo' && match.turn % 2 === 0
+}
+
+function driveAutoResolution(
+  session: MatchSession,
+): UpdateResult<CenturionModel, CenturionCmd> {
+  const resolution = beginAutoResolution(session.match)
   if (resolution === null) {
-    return noCmd(playing(settled))
+    return noCmd(playing(session))
   }
   if (resolution.pending.length === 0) {
-    const next = completeResolution(resolution, [])
-    if (next === null) {
-      return noCmd(playing(settled))
+    const match = completeResolution(resolution, [])
+    if (match === null) {
+      return noCmd(playing(session))
     }
-    return noCmd(playing({ ...settled, match: next }))
+    return continueAfterResolution(session, match)
   }
   return [
-    playing({ ...settled, resolving: resolution }),
+    playing({
+      ...session,
+      resolving: resolution,
+      selectedSquare: null,
+      inputError: null,
+    }),
     [
       {
         tag: 'compute-engine-moves',
@@ -181,6 +223,31 @@ function continueAfterResolution(
   ]
 }
 
+/**
+ * Solo mode: after the player's arrow resolves the white half-turn, the
+ * black half-turn plays out immediately with no new arrow. After turn
+ * 100, every ply auto-plays with no new arrows. Returns the settled
+ * session, or a new resolving state plus the engine command for the
+ * next automatic ply.
+ */
+function continueAfterResolution(
+  session: MatchSession,
+  match: MatchState,
+): UpdateResult<CenturionModel, CenturionCmd> {
+  const settled: MatchSession = { ...session, match, resolving: null }
+  if (!shouldChainAutoResolution(session, match)) {
+    return noCmd(playing(settled))
+  }
+  if (
+    isArrowlessPhase(match) &&
+    session.mode.tag === 'remote' &&
+    !placerIsYou(settled)
+  ) {
+    return noCmd(playing(settled))
+  }
+  return driveAutoResolution(settled)
+}
+
 function submitArrow(
   session: MatchSession,
   visualFrom: BoardSquare,
@@ -188,6 +255,15 @@ function submitArrow(
 ): UpdateResult<CenturionModel, CenturionCmd> {
   if (session.match.phase.tag === 'finished' || session.resolving !== null) {
     return noCmd(playing(session))
+  }
+  if (!canPlaceArrows(session.match)) {
+    return noCmd(
+      playing({
+        ...session,
+        selectedSquare: null,
+        inputError: ARROWLESS_PHASE_COPY,
+      }),
+    )
   }
   if (!placerIsYou(session)) {
     return noCmd(
@@ -222,7 +298,10 @@ function submitArrow(
       return noCmd(playing(session))
     }
     const [model, commands] = continueAfterResolution(cleared, match)
-    return [model, [...arrowSendCommands(session, resolution, []), ...commands]]
+    return [
+      model,
+      [...resolutionSendCommands(session, resolution, []), ...commands],
+    ]
   }
 
   return [
@@ -330,6 +409,9 @@ export function updateCenturion(
       if (session.resolving !== null) {
         return noCmd(model)
       }
+      if (!canPlaceArrows(session.match)) {
+        return noCmd(model)
+      }
       if (!placerIsYou(session)) {
         return noCmd(withSession(model, { inputError: NOT_YOUR_TURN_COPY }))
       }
@@ -360,6 +442,9 @@ export function updateCenturion(
       const session = model.session
       if (session.resolving !== null) {
         return noCmd(withSession(model, { inputError: RESOLVING_COPY }))
+      }
+      if (!canPlaceArrows(session.match)) {
+        return noCmd(withSession(model, { inputError: ARROWLESS_PHASE_COPY }))
       }
       const input = session.arrowInput.trim()
       if (input.length === 0) {
@@ -409,7 +494,10 @@ export function updateCenturion(
       const [nextModel, commands] = continueAfterResolution(session, match)
       return [
         nextModel,
-        [...arrowSendCommands(session, resolution, msg.moves), ...commands],
+        [
+          ...resolutionSendCommands(session, resolution, msg.moves),
+          ...commands,
+        ],
       ]
     }
 
@@ -577,6 +665,22 @@ export function updateCenturion(
         session.match.phase.tag === 'finished'
       ) {
         return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
+      }
+      if (wire.type === 'centurion:auto') {
+        if (!isArrowlessPhase(session.match)) {
+          return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
+        }
+        const resolution = beginAutoResolution(session.match)
+        const match =
+          resolution === null
+            ? null
+            : completeResolution(resolution, wire.moves)
+        if (match === null) {
+          return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
+        }
+        return noCmd(
+          withSession(model, { match, selectedSquare: null, inputError: null }),
+        )
       }
       // The arrow phase replays deterministically from the shared rng;
       // the opponent's Stockfish moves are validated and applied verbatim.

@@ -25,9 +25,11 @@ Pieces from all active games are rendered on a single board with opacity proport
 
 Players alternate turns. The player going first is chosen from the match seed (each player controls 50 white games, so the choice is effectively a coin flip).
 
-On your turn, you place exactly one arrow from any origin square to any destination square on the unified board. You may place an arrow on top of an existing arrow to stack it, doubling that arrow's potential effect during resolution.
+On your turn, you place exactly one arrow from any origin square to any destination square on the unified board. You may place an arrow on top of an existing arrow to stack it; each stacked copy starts fresh with its own decay schedule.
 
-Arrows are permanent and cannot be removed.
+Arrow placement is only allowed through turn 100. After that, the match plays out automatically with Stockfish and no further arrows can be placed.
+
+Arrows decay over time. On the turn you place an arrow it can pull up to 8 games; the next turn 4, then 2, then 1, then it vanishes. Stacking another arrow on the same squares adds another copy that also starts at 8.
 
 ### Resolution
 
@@ -35,7 +37,7 @@ After each arrow placement, all active games advance by one half-move (one ply) 
 
 1. **Apply arrows**
    - Each arrow is processed from most recently placed to least recently placed; each instance of a stacked arrow is processed individually.
-   - For each arrow: select one game at random from the set of active games that has not yet advanced this turn and for which the arrow is a legal move for the side whose turn it is.
+   - For each arrow: pull up to its current decay weight in games (8 on the placement turn, halving each turn until it reaches 0 and is removed), each time selecting one game at random from the set of active games that has not yet advanced this turn and for which the arrow is a legal move for the side whose turn it is.
    - An arrow placed on the unified board is interpreted through the vertical flip: a visual arrow represents the same positional idea for both colors. For example, a visual arrow pushing a pawn from the second row to the fourth row corresponds to e2->e4 in your white games and e7->e5 in your black games.
    - If a matching game exists, that move is made and the game is marked as advanced for this turn. Pawn promotion is always to queen. Castling and en passant are legal per standard chess rules.
 2. **Stockfish fallback**

@@ -64,7 +64,7 @@ describe('matchRenderModel', () => {
         from: { col: 4, row: 1 },
         to: { col: 4, row: 3 },
         owner: match.firstPlacer,
-        count: 1,
+        count: 8,
       },
     ])
   })
@@ -84,7 +84,7 @@ describe('matchRenderModel', () => {
         from: { col: 4, row: 6 },
         to: { col: 4, row: 4 },
         owner: match.firstPlacer,
-        count: 1,
+        count: 8,
       },
     ])
   })
@@ -111,10 +111,10 @@ describe('matchRenderModel', () => {
       from: { col: 4, row: 1 },
       to: { col: 4, row: 3 },
       owner: firstPlacer,
-      count: 2,
+      count: 10,
     })
     const single = model.arrows[0]
-    expect(single?.count).toBe(1)
+    expect(single?.count).toBe(4)
   })
 
   it('colors pieces by ownership: the viewer is white, the opponent black', () => {

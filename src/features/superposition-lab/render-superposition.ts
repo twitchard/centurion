@@ -390,8 +390,7 @@ export class SuperpositionRenderer {
   }
 
   private drawArrows(arrows: readonly ArrowSegment[]): void {
-    // Arrows are permanent, so old ones pile up; fade them with age and
-    // keep the newest prominent. Stacked duplicates overdraw and
+    // Older arrows fade as their decay weight drops; keep the newest prominent. Stacked duplicates overdraw and
     // naturally read as stronger.
     const count = arrows.length
     for (let index = 0; index < count; index++) {

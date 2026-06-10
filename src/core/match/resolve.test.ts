@@ -7,6 +7,8 @@ import {
   type MatchState,
   activeGameCount,
   activePlacer,
+  arrowWeight,
+  canPlaceArrows,
   initMatch,
   sideToMove,
 } from './model'
@@ -116,8 +118,18 @@ describe('arrowMoveForGame', () => {
   })
 })
 
+describe('arrowWeight', () => {
+  it('halves each turn until the arrow vanishes', () => {
+    expect(arrowWeight(1, 1)).toBe(8)
+    expect(arrowWeight(1, 2)).toBe(4)
+    expect(arrowWeight(1, 3)).toBe(2)
+    expect(arrowWeight(1, 4)).toBe(1)
+    expect(arrowWeight(1, 5)).toBe(0)
+  })
+})
+
 describe('beginResolution', () => {
-  it('matches each arrow instance to at most one game', () => {
+  it('pulls up to the decay weight in games on the placement turn', () => {
     const match = initMatch(3, { gameCount: 10 })
     const resolution = beginResolution(match, {
       from: sq('e2'),
@@ -126,15 +138,24 @@ describe('beginResolution', () => {
     if (resolution === null) {
       throw new Error('expected a resolution')
     }
-    expect(resolution.arrowMoves).toBe(1)
-    expect(resolution.pending).toHaveLength(9)
+    expect(resolution.arrowMoves).toBeLessThanOrEqual(8)
+    expect(resolution.arrowMoves).toBe(5)
+    expect(resolution.arrowMoves + resolution.pending.length).toBe(10)
   })
 
-  it('keeps old arrows active in later turns', () => {
+  it('rejects arrow placement after turn 100', () => {
+    const match = {
+      ...initMatch(3, { gameCount: 2 }),
+      turn: 101,
+    }
+    expect(canPlaceArrows(match)).toBe(false)
+    expect(beginResolution(match, { from: sq('e2'), to: sq('e4') })).toBeNull()
+  })
+
+  it('keeps decaying arrows active in later turns', () => {
     let match = initMatch(3, { gameCount: 4 })
     match = resolveTurn(match, { from: sq('e2'), to: sq('e4') })
-    // Turn 2: black to move. The earlier e2->e4 arrow now also matches the
-    // flipped games (actual move e7->e5).
+    // Turn 2: black to move. The earlier e2->e4 arrow pulls up to 4 games.
     const resolution = beginResolution(match, {
       from: sq('d7'),
       to: sq('d5'),
@@ -144,6 +165,19 @@ describe('beginResolution', () => {
     }
     expect(resolution.arrowMoves).toBeGreaterThanOrEqual(1)
     expect(resolution.arrows).toHaveLength(2)
+  })
+
+  it('removes arrows once their decay weight reaches zero', () => {
+    let match = initMatch(3, { gameCount: 4, firstPlacer: 1 })
+    match = resolveTurn(match, { from: sq('e2'), to: sq('e4') })
+    for (let ply = 0; ply < 3; ply++) {
+      match = resolveTurn(match, { from: sq('a7'), to: sq('a6') })
+    }
+    expect(match.turn).toBe(5)
+    expect(match.arrows.some((entry) => entry.turn === 1)).toBe(false)
+    expect(
+      match.arrows.every((entry) => arrowWeight(entry.turn, match.turn) > 0),
+    ).toBe(true)
   })
 
   it('replays the arrow phase deterministically for a given seed', () => {

@@ -16,10 +16,12 @@ import {
 } from './connection-log'
 import { decodeMatchWireMessage } from './core/match/codec'
 import {
+  ARROW_PLACEMENT_LAST_TURN,
   type MatchState,
   type PlayerId,
   activeGameCount,
   activePlacer,
+  canPlaceArrows,
   sideToMove,
 } from './core/match/model'
 import {
@@ -190,6 +192,9 @@ function describeWirePayload(payload: unknown): string {
   }
   if (wire.type === 'centurion:start') {
     return `centurion:start seed=${wire.seed} games=${wire.gameCount}`
+  }
+  if (wire.type === 'centurion:auto') {
+    return `centurion:auto turn=${wire.turn} moves=${wire.moves.length}`
   }
   return `centurion:arrow turn=${wire.turn} ${wire.from}->${wire.to} moves=${wire.moves.length}`
 }
@@ -571,6 +576,9 @@ function describePlacer(session: MatchSession): string {
   if (session.resolving !== null) {
     return `Turn ${match.turn}: Stockfish (depth ${ENGINE_DEPTH}) is resolving ${session.resolving.pending.length} game(s)...`
   }
+  if (!canPlaceArrows(match)) {
+    return `Turn ${match.turn}: arrow placement closed after turn ${ARROW_PLACEMENT_LAST_TURN}; Stockfish is playing out the match.`
+  }
   if (session.mode.tag === 'solo') {
     return `Turn ${match.turn}: place an arrow, then both half-moves play out.`
   }
@@ -624,6 +632,9 @@ function boardHintText(session: MatchSession): string {
   }
   if (session.resolving !== null) {
     return `Stockfish is resolving ${session.resolving.pending.length} game(s)...`
+  }
+  if (!canPlaceArrows(match)) {
+    return 'Arrow placement is closed; Stockfish is playing out the remaining games.'
   }
   if (
     session.mode.tag === 'remote' &&

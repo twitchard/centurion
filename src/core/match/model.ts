@@ -69,6 +69,29 @@ export interface MatchState {
 
 export const DEFAULT_GAME_COUNT = 100
 
+/** How many games a freshly placed arrow can pull on its placement turn. */
+export const ARROW_DECAY_INITIAL = 8
+
+/** After this turn number, players can no longer place arrows; the match auto-plays out. */
+export const ARROW_PLACEMENT_LAST_TURN = 100
+
+/**
+ * How many games an arrow can pull on a given turn. Starts at 8 on the
+ * placement turn, halves (rounded) each turn, and reaches 0 after four
+ * more turns (8 → 4 → 2 → 1 → gone).
+ */
+export function arrowWeight(placedTurn: number, currentTurn: number): number {
+  const age = currentTurn - placedTurn
+  if (age < 0 || age >= 4) {
+    return 0
+  }
+  return ARROW_DECAY_INITIAL >> age
+}
+
+export function canPlaceArrows(match: MatchState): boolean {
+  return match.phase.tag === 'active' && match.turn <= ARROW_PLACEMENT_LAST_TURN
+}
+
 export interface MatchOptions {
   readonly gameCount?: number
   /** Custom starting FENs, mainly for tests. Length overrides gameCount. */
