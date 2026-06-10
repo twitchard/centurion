@@ -11,6 +11,11 @@ export type SessionMode =
       readonly peerConnected: boolean
     }
 
+export interface GameReplayState {
+  readonly gameId: number
+  readonly ply: number
+}
+
 export interface MatchSession {
   readonly mode: SessionMode
   readonly match: MatchState
@@ -20,6 +25,8 @@ export interface MatchSession {
   readonly arrowInput: string
   readonly inputError: string | null
   readonly notice: string | null
+  /** Set when the match ends so the user can step through a finished game. */
+  readonly gameReplay: GameReplayState | null
 }
 
 export type CenturionModel =

@@ -1,7 +1,7 @@
 import type { Chess } from 'chessops/chess'
 import { makeFen } from 'chessops/fen'
 import { type NormalMove, isNormal } from 'chessops/types'
-import { parseUci, squareRank } from 'chessops/util'
+import { makeUci, parseUci, squareRank } from 'chessops/util'
 import { type RngState, pickIndex } from '../rng'
 import {
   type Arrow,
@@ -92,6 +92,7 @@ function applyMoveToGame(game: MatchGame, move: NormalMove): MatchGame {
     position,
     repetition,
     status: statusAfterMove(game, position, count),
+    moves: [...game.moves, makeUci(move)],
   }
 }
 

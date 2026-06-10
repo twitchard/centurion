@@ -531,6 +531,58 @@ canvas {
   align-self: flex-start;
 }
 
+.centurion-game-replay {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.centurion-game-select {
+  width: 100%;
+  border: 1px solid #3d3d3d;
+  border-radius: 8px;
+  background: #141311;
+  color: #e6e6e6;
+  padding: 8px 10px;
+  font-size: 0.86rem;
+}
+
+.centurion-replay-board {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-width: 100%;
+}
+
+.centurion-replay-board cg-board {
+  border-radius: 4px;
+}
+
+.centurion-replay-controls {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.centurion-replay-btn {
+  padding: 0.45rem 0.25rem;
+  font-size: 0.82rem;
+}
+
+.centurion-replay-pgn {
+  width: 100%;
+  min-height: 88px;
+  max-height: 140px;
+  resize: vertical;
+  border: 1px solid #3d3d3d;
+  border-radius: 8px;
+  background: #141311;
+  color: #d8d8d8;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  line-height: 1.4;
+}
+
 #centurion-canvas {
   cursor: pointer;
   touch-action: manipulation;

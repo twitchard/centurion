@@ -44,9 +44,13 @@ export type GameStatus =
 export interface MatchGame {
   readonly id: number
   readonly whiteOwner: PlayerId
+  /** FEN at the start of this game (for PGN export and replay). */
+  readonly startingFen: string
   readonly position: Chess
   readonly repetition: ReadonlyMap<string, number>
   readonly status: GameStatus
+  /** UCI half-moves played from `startingFen`. */
+  readonly moves: readonly string[]
 }
 
 export interface ResolutionSummary {
@@ -195,9 +199,11 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     games.push({
       id,
       whiteOwner: id < p1WhiteCount ? 1 : 2,
+      startingFen: makeFen(position.toSetup()),
       position,
       repetition,
       status: { tag: 'active' },
+      moves: [],
     })
   }
 

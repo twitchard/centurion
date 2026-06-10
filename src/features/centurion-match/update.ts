@@ -57,6 +57,11 @@ export type CenturionMsg =
   | { readonly tag: 'transport-peer-joined'; readonly seed: number }
   | { readonly tag: 'transport-peer-left' }
   | { readonly tag: 'transport-message-received'; readonly payload: unknown }
+  | { readonly tag: 'game-replay-game-selected'; readonly gameId: number }
+  | {
+      readonly tag: 'game-replay-step'
+      readonly step: 'start' | 'prev' | 'next' | 'end'
+    }
 
 export type CenturionCmd =
   | { readonly tag: 'transport-create-room' }
@@ -109,7 +114,23 @@ function startSession(
     arrowInput: '',
     inputError: null,
     notice: null,
+    gameReplay: null,
   }
+}
+
+function withFinishedReplay(
+  session: MatchSession,
+  match: MatchState,
+): MatchSession {
+  const next = { ...session, match, resolving: null }
+  if (match.phase.tag !== 'finished' || next.gameReplay !== null) {
+    return next
+  }
+  return { ...next, gameReplay: { gameId: 0, ply: 0 } }
+}
+
+function clampReplayPly(moveCount: number, ply: number): number {
+  return Math.max(0, Math.min(ply, moveCount))
 }
 
 function isArrowlessPhase(match: MatchState): boolean {
@@ -234,7 +255,7 @@ function continueAfterResolution(
   session: MatchSession,
   match: MatchState,
 ): UpdateResult<CenturionModel, CenturionCmd> {
-  const settled: MatchSession = { ...session, match, resolving: null }
+  const settled = withFinishedReplay(session, match)
   if (!shouldChainAutoResolution(session, match)) {
     return noCmd(playing(settled))
   }
@@ -679,7 +700,12 @@ export function updateCenturion(
           return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
         }
         return noCmd(
-          withSession(model, { match, selectedSquare: null, inputError: null }),
+          playing(
+            withFinishedReplay(
+              { ...session, selectedSquare: null, inputError: null },
+              match,
+            ),
+          ),
         )
       }
       // The arrow phase replays deterministically from the shared rng;
@@ -694,7 +720,73 @@ export function updateCenturion(
         return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
       }
       return noCmd(
-        withSession(model, { match, selectedSquare: null, inputError: null }),
+        playing(
+          withFinishedReplay(
+            { ...session, selectedSquare: null, inputError: null },
+            match,
+          ),
+        ),
+      )
+    }
+
+    case 'game-replay-game-selected': {
+      if (model.tag !== 'playing') {
+        return noCmd(model)
+      }
+      const session = model.session
+      if (session.match.phase.tag !== 'finished') {
+        return noCmd(model)
+      }
+      const game = session.match.games.find((entry) => entry.id === msg.gameId)
+      if (game === undefined) {
+        return noCmd(model)
+      }
+      return noCmd(
+        withSession(model, {
+          gameReplay: { gameId: game.id, ply: 0 },
+        }),
+      )
+    }
+
+    case 'game-replay-step': {
+      if (model.tag !== 'playing') {
+        return noCmd(model)
+      }
+      const session = model.session
+      const replay = session.gameReplay
+      if (replay === null || session.match.phase.tag !== 'finished') {
+        return noCmd(model)
+      }
+      const game = session.match.games.find(
+        (entry) => entry.id === replay.gameId,
+      )
+      if (game === undefined) {
+        return noCmd(model)
+      }
+      let ply = replay.ply
+      switch (msg.step) {
+        case 'start':
+          ply = 0
+          break
+        case 'prev':
+          ply -= 1
+          break
+        case 'next':
+          ply += 1
+          break
+        case 'end':
+          ply = game.moves.length
+          break
+        default:
+          return assertNever(msg.step)
+      }
+      return noCmd(
+        withSession(model, {
+          gameReplay: {
+            gameId: replay.gameId,
+            ply: clampReplayPly(game.moves.length, ply),
+          },
+        }),
       )
     }
 

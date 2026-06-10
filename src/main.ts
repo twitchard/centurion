@@ -1,3 +1,6 @@
+import 'chessground/assets/chessground.base.css'
+import 'chessground/assets/chessground.brown.css'
+import 'chessground/assets/chessground.cburnett.css'
 import './styles.css'
 
 import { StockfishEngineAdapter } from './adapters/stockfish-engine'
@@ -25,6 +28,11 @@ import {
   sideToMove,
 } from './core/match/model'
 import {
+  describeGameResult,
+  matchGameToPgn,
+  replaySnapshot,
+} from './core/match/pgn'
+import {
   matchRenderModel,
   squareName,
   toCanonicalSquare,
@@ -37,6 +45,7 @@ import type {
   MatchSession,
 } from './features/centurion-match/model'
 import { sessionViewer } from './features/centurion-match/model'
+import { ReplayBoard } from './features/centurion-match/replay-board'
 import {
   type CenturionMsg,
   LOBBY_COPY,
@@ -144,6 +153,18 @@ const centurionSubmitArrowButton = button('centurion-submit-arrow-btn')
 const centurionResolutionSummary = element('centurion-resolution-summary')
 const centurionArrowHistory = element('centurion-arrow-history')
 const centurionLeaveButton = button('centurion-leave-btn')
+const centurionGameReplay = element('centurion-game-replay')
+const centurionGameSelect = element(
+  'centurion-game-select',
+) as HTMLSelectElement
+const centurionReplayBoardHost = element('centurion-replay-board')
+const centurionReplayMoveInfo = element('centurion-replay-move-info')
+const centurionReplayPgn = textarea('centurion-replay-pgn')
+const centurionReplayStartButton = button('centurion-replay-start')
+const centurionReplayPrevButton = button('centurion-replay-prev')
+const centurionReplayNextButton = button('centurion-replay-next')
+const centurionReplayEndButton = button('centurion-replay-end')
+const centurionReplayBoard = new ReplayBoard(centurionReplayBoardHost)
 const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
@@ -625,7 +646,9 @@ function resolutionSummaryText(match: MatchState): string {
 function boardHintText(session: MatchSession): string {
   const match = session.match
   if (match.phase.tag === 'finished') {
-    return 'Match over.'
+    return session.gameReplay === null
+      ? 'Match over.'
+      : 'Match over. Review a finished game below.'
   }
   if (session.inputError !== null) {
     return session.inputError
@@ -650,6 +673,52 @@ function boardHintText(session: MatchSession): string {
       ? `Player ${activePlacer(match)} (${playerColorName(activePlacer(match))})`
       : 'You'
   return `${placer}: tap the origin square of your arrow.`
+}
+
+function renderGameReplay(session: MatchSession): void {
+  const match = session.match
+  const replay = session.gameReplay
+  const showReplay = match.phase.tag === 'finished' && replay !== null
+  centurionGameReplay.hidden = !showReplay
+  if (!showReplay || replay === null) {
+    return
+  }
+
+  const selectedGame = match.games.find((game) => game.id === replay.gameId)
+  if (selectedGame === undefined) {
+    return
+  }
+
+  if (centurionGameSelect.options.length !== match.games.length) {
+    centurionGameSelect.innerHTML = ''
+    for (const game of match.games) {
+      const option = document.createElement('option')
+      option.value = String(game.id)
+      option.textContent = `Game ${game.id + 1} (${describeGameResult(game)}, ${game.moves.length} plies)`
+      centurionGameSelect.appendChild(option)
+    }
+  }
+  centurionGameSelect.value = String(replay.gameId)
+
+  const snapshot = replaySnapshot(selectedGame, replay.ply)
+  centurionReplayBoard.setPosition(snapshot.fen, snapshot.lastMove)
+  centurionReplayBoard.redraw()
+
+  centurionReplayMoveInfo.textContent =
+    snapshot.moveCount === 0
+      ? 'No moves recorded for this game.'
+      : `Ply ${snapshot.ply} of ${snapshot.moveCount}`
+
+  centurionReplayPgn.value = matchGameToPgn(selectedGame, {
+    white: playerLabel(session, selectedGame.whiteOwner),
+    black: playerLabel(session, selectedGame.whiteOwner === 1 ? 2 : 1),
+    round: String(selectedGame.id + 1),
+  })
+
+  centurionReplayStartButton.disabled = snapshot.ply === 0
+  centurionReplayPrevButton.disabled = snapshot.ply === 0
+  centurionReplayNextButton.disabled = snapshot.ply >= snapshot.moveCount
+  centurionReplayEndButton.disabled = snapshot.ply >= snapshot.moveCount
 }
 
 function renderCenturionSession(session: MatchSession): void {
@@ -688,6 +757,8 @@ function renderCenturionSession(session: MatchSession): void {
     item.textContent = `T${boardArrow.placedTurn} P${boardArrow.owner}: ${from}->${to} (×${boardArrow.cardinality})`
     centurionArrowHistory.appendChild(item)
   }
+
+  renderGameReplay(session)
 
   centurionRenderer.resize(panelBoardSize(centurionBoardPanel))
   centurionRenderer.render(
@@ -920,6 +991,24 @@ function bindEvents(): void {
   })
   centurionLeaveButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'leave-session-requested' })
+  })
+  centurionGameSelect.addEventListener('change', () => {
+    dispatchCenturion({
+      tag: 'game-replay-game-selected',
+      gameId: Number(centurionGameSelect.value),
+    })
+  })
+  centurionReplayStartButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'game-replay-step', step: 'start' })
+  })
+  centurionReplayPrevButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'game-replay-step', step: 'prev' })
+  })
+  centurionReplayNextButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'game-replay-step', step: 'next' })
+  })
+  centurionReplayEndButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'game-replay-step', step: 'end' })
   })
   centurionConnectionLogClear.addEventListener('click', () => {
     clearConnectionLog()
