@@ -10,6 +10,12 @@ import {
 } from './app/model'
 import { updateApp } from './app/update'
 import {
+  appendConnectionLog,
+  clearConnectionLog,
+  renderConnectionLog,
+} from './connection-log'
+import { decodeMatchWireMessage } from './core/match/codec'
+import {
   type MatchState,
   type PlayerId,
   activeGameCount,
@@ -136,18 +142,53 @@ const centurionLeaveButton = button('centurion-leave-btn')
 const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
+const centurionConnectionLogList = element(
+  'centurion-connection-log-list',
+) as HTMLOListElement
+const centurionConnectionLogClear = button('centurion-connection-log-clear')
+
+const CENTURION_TRANSPORT_APP_ID = 'centurion-chess-match-v1'
 
 const chatTransport = new TrysteroTransportAdapter()
 const centurionTransport = new TrysteroTransportAdapter(
-  'centurion-chess-match-v1',
+  CENTURION_TRANSPORT_APP_ID,
 )
 const centurionEngine = new StockfishEngineAdapter()
 
 let state: AppState = initAppState()
 
+function centurionRoomId(code: string): string {
+  return `${CENTURION_TRANSPORT_APP_ID}-${code}`
+}
+
+function describeWirePayload(payload: unknown): string {
+  const wire = decodeMatchWireMessage(payload)
+  if (wire === null) {
+    return 'unrecognized payload'
+  }
+  if (wire.type === 'centurion:start') {
+    return `centurion:start seed=${wire.seed} games=${wire.gameCount}`
+  }
+  return `centurion:arrow turn=${wire.turn} ${wire.from}->${wire.to} moves=${wire.moves.length}`
+}
+
+function logConnection(message: string): void {
+  appendConnectionLog(message)
+  renderConnectionLog(centurionConnectionLogList)
+}
+
 function dispatch(msg: AppMsg): void {
+  const prevCenturionTag =
+    state.tag === 'centurion-match' ? state.model.tag : null
   const [nextState, commands] = updateApp(state, msg)
   state = nextState
+  if (
+    nextState.tag === 'centurion-match' &&
+    prevCenturionTag !== null &&
+    prevCenturionTag !== nextState.model.tag
+  ) {
+    logConnection(`State: ${prevCenturionTag} -> ${nextState.model.tag}`)
+  }
   render()
   for (const command of commands) {
     runCommand(command)
@@ -155,6 +196,25 @@ function dispatch(msg: AppMsg): void {
 }
 
 function dispatchCenturion(msg: CenturionMsg): void {
+  switch (msg.tag) {
+    case 'new-match-requested':
+      logConnection('You requested a new multiplayer match (host).')
+      break
+    case 'join-match-requested':
+      logConnection('You requested to join a match (guest).')
+      break
+    case 'leave-session-requested':
+      logConnection('You left the multiplayer session.')
+      break
+    case 'share-invite-requested':
+      logConnection('You opened the share sheet for the invite link.')
+      break
+    case 'copy-invite-requested':
+      logConnection('You copied the invite link.')
+      break
+    default:
+      break
+  }
   dispatch({ tag: 'centurion-msg', msg })
 }
 
@@ -241,6 +301,12 @@ chatTransport.setCallbacks({
 
 centurionTransport.setCallbacks({
   onStatusChange: (status) => {
+    const role = centurionTransport.isHost ? 'host' : 'guest'
+    const code = centurionTransport.code
+    const room = code.length > 0 ? centurionRoomId(code) : '(no room code yet)'
+    logConnection(
+      `Trystero status: ${status} (${role}, code=${code || '—'}, room=${room})`,
+    )
     dispatchCenturion({
       tag: 'transport-status-changed',
       status,
@@ -249,12 +315,15 @@ centurionTransport.setCallbacks({
     })
   },
   onPeerJoin: () => {
+    logConnection('Peer joined the Trystero room.')
     dispatchCenturion({ tag: 'transport-peer-joined', seed: newSeed() })
   },
   onPeerLeave: () => {
+    logConnection('Peer left the Trystero room.')
     dispatchCenturion({ tag: 'transport-peer-left' })
   },
   onMessage: (data: unknown) => {
+    logConnection(`Received: ${describeWirePayload(data)}`)
     dispatchCenturion({ tag: 'transport-message-received', payload: data })
   },
 })
@@ -281,16 +350,25 @@ function runCommand(command: AppCmd): void {
       }
     case 'centurion':
       switch (command.cmd.tag) {
-        case 'transport-create-room':
-          centurionTransport.createRoom()
+        case 'transport-create-room': {
+          const code = centurionTransport.createRoom()
+          logConnection(
+            `Creating room as host (code=${code}, room=${centurionRoomId(code)}).`,
+          )
           return
+        }
         case 'transport-join-room':
+          logConnection(
+            `Joining room as guest (code=${command.cmd.code}, room=${centurionRoomId(command.cmd.code)}).`,
+          )
           centurionTransport.joinRoom(command.cmd.code)
           return
         case 'transport-disconnect':
+          logConnection('Disconnecting from Trystero.')
           centurionTransport.disconnect()
           return
         case 'transport-send':
+          logConnection(`Sending: ${describeWirePayload(command.cmd.payload)}`)
           centurionTransport.send(command.cmd.payload)
           return
         case 'share-invite':
@@ -807,6 +885,10 @@ function bindEvents(): void {
   centurionLeaveButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'leave-session-requested' })
   })
+  centurionConnectionLogClear.addEventListener('click', () => {
+    clearConnectionLog()
+    renderConnectionLog(centurionConnectionLogList)
+  })
   centurionCanvas.addEventListener('click', (event) => {
     const square = centurionSquareFromClick(event as MouseEvent)
     if (square === null) {
@@ -835,6 +917,7 @@ function autoJoinFromUrl(): void {
   if (code.length !== 6) {
     return
   }
+  logConnection(`Invite link detected: auto-joining with code ${code}.`)
   const url = new URL(window.location.href)
   url.search = ''
   window.history.replaceState({}, '', `${url.pathname}${url.hash}`)
@@ -843,5 +926,9 @@ function autoJoinFromUrl(): void {
 }
 
 bindEvents()
+logConnection(`Loaded at ${window.location.href}`)
+logConnection(
+  `Multiplayer signaling uses Trystero/Nostr (app id ${CENTURION_TRANSPORT_APP_ID}).`,
+)
 navigate(pathnameToAppRoute(window.location.pathname), false)
 autoJoinFromUrl()

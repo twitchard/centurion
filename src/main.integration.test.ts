@@ -531,6 +531,8 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-resolution-summary', 'element'],
     ['centurion-arrow-history', 'element'],
     ['centurion-leave-btn', 'button'],
+    ['centurion-connection-log-list', 'element'],
+    ['centurion-connection-log-clear', 'button'],
   ]
   for (const [id, kind] of centurionIds) {
     if (kind === 'button') {
