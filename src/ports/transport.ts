@@ -10,6 +10,7 @@ export interface TransportCallbacks {
   readonly onPeerJoin: () => void
   readonly onPeerLeave: () => void
   readonly onMessage: (data: unknown) => void
+  readonly onLog?: (message: string) => void
 }
 
 export interface TransportPort {

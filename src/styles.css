@@ -325,6 +325,47 @@ canvas {
   gap: 8px;
 }
 
+.centurion-connection-log {
+  margin: 0 14px 14px;
+  max-width: 720px;
+  align-self: center;
+  justify-self: center;
+  width: calc(100% - 28px);
+}
+
+.centurion-connection-log summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #b9b9b9;
+}
+
+.centurion-connection-log-hint {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #9a9a9a;
+}
+
+.centurion-connection-log-list {
+  margin: 10px 0;
+  padding: 10px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  background: #111;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #d6d6d6;
+  list-style: none;
+}
+
+.centurion-connection-log-list li + li {
+  margin-top: 4px;
+}
+
 .centurion-rules summary {
   cursor: pointer;
   font-size: 0.9rem;

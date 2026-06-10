@@ -1,4 +1,5 @@
-import { joinRoom } from 'trystero/nostr'
+import { joinRoom } from 'trystero'
+import { getRelaySockets } from 'trystero/nostr'
 import {
   NOOP_TRANSPORT_CALLBACKS,
   type TransportCallbacks,
@@ -7,13 +8,14 @@ import {
 } from '../ports/transport'
 
 const DEFAULT_APP_ID = 'centurion-chess-chat-lab-v1'
+const GUEST_CONNECT_TIMEOUT_MS = 45_000
 
 /**
- * Explicit signalling relays. Trystero otherwise derives a random subset
- * of its default relay list from the appId, and the subset our appIds
- * land on is largely dead (expired certs, defunct hosts), which made
- * matchmaking silently hang. These are large, long-lived public relays;
- * both peers always use the same list.
+ * Explicit signalling relays. Trystero otherwise derives a subset of its
+ * default relay list from the appId, and the subset our appIds land on
+ * is largely dead (expired certs, defunct hosts), which made matchmaking
+ * silently hang. These are large, long-lived public relays; both peers
+ * always use the same list.
  */
 const RELAY_URLS = [
   'wss://relay.damus.io',
@@ -24,8 +26,42 @@ const RELAY_URLS = [
   'wss://nostr.mom',
 ]
 
+/** Public TURN relay for networks that block direct WebRTC (e.g. mobile CGNAT). */
+const OPENRELAY_TURN = [
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+] as const
+
 type Room = ReturnType<typeof joinRoom>
 type Sender = (data: unknown, targetPeers?: readonly string[]) => void
+
+function relayReadyStateLabel(readyState: number): string {
+  switch (readyState) {
+    case WebSocket.CONNECTING:
+      return 'connecting'
+    case WebSocket.OPEN:
+      return 'open'
+    case WebSocket.CLOSING:
+      return 'closing'
+    case WebSocket.CLOSED:
+      return 'closed'
+    default:
+      return `unknown(${readyState})`
+  }
+}
 
 export class TrysteroTransportAdapter implements TransportPort {
   private room: Room | null = null
@@ -33,6 +69,7 @@ export class TrysteroTransportAdapter implements TransportPort {
   private callbacks: TransportCallbacks = NOOP_TRANSPORT_CALLBACKS
   private currentStatus: TransportStatus = 'disconnected'
   private readonly appId: string
+  private guestConnectTimer: ReturnType<typeof setTimeout> | null = null
 
   code = ''
   isHost = false
@@ -71,6 +108,7 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   disconnect(): void {
+    this.clearGuestConnectTimer()
     this.room?.leave()
     this.room = null
     this.sendFn = null
@@ -79,20 +117,82 @@ export class TrysteroTransportAdapter implements TransportPort {
     this.isHost = false
   }
 
+  private log(message: string): void {
+    this.callbacks.onLog?.(message)
+  }
+
+  private clearGuestConnectTimer(): void {
+    if (this.guestConnectTimer !== null) {
+      clearTimeout(this.guestConnectTimer)
+      this.guestConnectTimer = null
+    }
+  }
+
+  private startGuestConnectTimer(): void {
+    this.clearGuestConnectTimer()
+    this.guestConnectTimer = setTimeout(() => {
+      this.guestConnectTimer = null
+      if (this.isHost || this.currentStatus !== 'connecting') {
+        return
+      }
+      this.log(
+        'Timed out waiting for WebRTC peer connection (45s). Try another network or disable VPN.',
+      )
+      this.setStatus('error')
+      this.room?.leave()
+      this.room = null
+      this.sendFn = null
+    }, GUEST_CONNECT_TIMEOUT_MS)
+  }
+
   private setStatus(status: TransportStatus): void {
     this.currentStatus = status
     this.callbacks.onStatusChange(status)
+  }
+
+  private logRelayStatus(): void {
+    const sockets = getRelaySockets()
+    const entries = Object.entries(sockets)
+    if (entries.length === 0) {
+      this.log('Nostr relays: none connected yet.')
+      return
+    }
+    for (const [url, socket] of entries) {
+      const readyState = (socket as WebSocket).readyState
+      this.log(`Nostr relay ${url}: ${relayReadyStateLabel(readyState)}`)
+    }
   }
 
   private connect(): void {
     const roomId = `${this.appId}-${this.code}`
 
     try {
-      this.room = joinRoom({ appId: this.appId, relayUrls: RELAY_URLS }, roomId)
-    } catch (_error: unknown) {
+      this.room = joinRoom(
+        {
+          appId: this.appId,
+          turnConfig: [...OPENRELAY_TURN],
+          relayUrls: RELAY_URLS,
+        },
+        roomId,
+        (details) => {
+          this.log(
+            `Trystero join error (peer ${details.peerId}): ${details.error}`,
+          )
+          if (!this.isHost && this.currentStatus === 'connecting') {
+            this.setStatus('error')
+          }
+        },
+      )
+    } catch (error: unknown) {
+      this.log(
+        `Trystero joinRoom threw: ${error instanceof Error ? error.message : String(error)}`,
+      )
       this.setStatus('error')
       return
     }
+
+    this.log(`Joined Trystero room id=${roomId}`)
+    window.setTimeout(() => this.logRelayStatus(), 2_000)
 
     const [send, receive] = this.room.makeAction('chat')
     this.sendFn = send as Sender
@@ -101,19 +201,29 @@ export class TrysteroTransportAdapter implements TransportPort {
       this.callbacks.onMessage(data)
     })
 
-    this.room.onPeerJoin(() => {
+    this.room.onPeerJoin((peerId) => {
+      this.clearGuestConnectTimer()
+      this.log(`Trystero onPeerJoin: peer ${peerId}`)
       this.setStatus('connected')
       this.callbacks.onPeerJoin()
     })
 
-    this.room.onPeerLeave(() => {
+    this.room.onPeerLeave((peerId) => {
+      this.log(`Trystero onPeerLeave: peer ${peerId}`)
       this.setStatus(this.isHost ? 'waiting' : 'disconnected')
       this.callbacks.onPeerLeave()
     })
 
     if (this.isHost) {
       this.setStatus('waiting')
+      this.log('Host room ready; waiting for guest to connect.')
+      return
     }
+
+    this.log(
+      'Guest waiting for WebRTC handshake (needs open Nostr relays + peer route).',
+    )
+    this.startGuestConnectTimer()
   }
 
   private static generateCode(): string {

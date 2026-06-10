@@ -52,7 +52,7 @@ describe('updateApp', () => {
         tag: 'centurion-match',
         model: { tag: 'lobby', joinCodeInput: '', notice: null },
       },
-      { tag: 'navigate', path: '/labs' },
+      { tag: 'navigate', route: 'labs' },
     )
     expect(state.tag).toBe('labs-menu')
     expect(commands).toEqual([
@@ -60,21 +60,10 @@ describe('updateApp', () => {
     ])
   })
 
-  it('routes subpath labs URLs to the labs menu', () => {
-    const [state] = updateApp(
-      {
-        tag: 'centurion-match',
-        model: { tag: 'lobby', joinCodeInput: '', notice: null },
-      },
-      { tag: 'navigate', path: '/centurion/labs' },
-    )
-    expect(state.tag).toBe('labs-menu')
-  })
-
-  it('routes subpath home URLs to the centurion match', () => {
+  it('navigates from labs back to the game route', () => {
     const [state] = updateApp(
       { tag: 'labs-menu' },
-      { tag: 'navigate', path: '/centurion/' },
+      { tag: 'navigate', route: 'game' },
     )
     expect(state.tag).toBe('centurion-match')
   })

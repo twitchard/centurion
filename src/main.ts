@@ -10,6 +10,12 @@ import {
 } from './app/model'
 import { updateApp } from './app/update'
 import {
+  appendConnectionLog,
+  clearConnectionLog,
+  renderConnectionLog,
+} from './connection-log'
+import { decodeMatchWireMessage } from './core/match/codec'
+import {
   type MatchState,
   type PlayerId,
   activeGameCount,
@@ -40,6 +46,12 @@ import type {
 } from './features/chat-lab/model'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
 import { SuperpositionRenderer } from './features/superposition-lab/render-superposition'
+import {
+  type AppRoute,
+  inviteUrl,
+  pathnameToAppRoute,
+  urlPathForRoute,
+} from './routing'
 
 function element(id: string): HTMLElement {
   const node = document.getElementById(id)
@@ -130,36 +142,53 @@ const centurionLeaveButton = button('centurion-leave-btn')
 const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
+const centurionConnectionLogList = element(
+  'centurion-connection-log-list',
+) as HTMLOListElement
+const centurionConnectionLogClear = button('centurion-connection-log-clear')
+
+const CENTURION_TRANSPORT_APP_ID = 'centurion-chess-match-v1'
 
 const chatTransport = new TrysteroTransportAdapter()
 const centurionTransport = new TrysteroTransportAdapter(
-  'centurion-chess-match-v1',
+  CENTURION_TRANSPORT_APP_ID,
 )
 const centurionEngine = new StockfishEngineAdapter()
 
-const JOIN_TIMEOUT_MS = 25_000
-let joinTimer: ReturnType<typeof setTimeout> | null = null
-
-function clearJoinTimer(): void {
-  if (joinTimer !== null) {
-    clearTimeout(joinTimer)
-    joinTimer = null
-  }
-}
-
-function armJoinTimer(code: string): void {
-  clearJoinTimer()
-  joinTimer = setTimeout(() => {
-    joinTimer = null
-    dispatchCenturion({ tag: 'join-timed-out', code })
-  }, JOIN_TIMEOUT_MS)
-}
-
 let state: AppState = initAppState()
 
+function centurionRoomId(code: string): string {
+  return `${CENTURION_TRANSPORT_APP_ID}-${code}`
+}
+
+function describeWirePayload(payload: unknown): string {
+  const wire = decodeMatchWireMessage(payload)
+  if (wire === null) {
+    return 'unrecognized payload'
+  }
+  if (wire.type === 'centurion:start') {
+    return `centurion:start seed=${wire.seed} games=${wire.gameCount}`
+  }
+  return `centurion:arrow turn=${wire.turn} ${wire.from}->${wire.to} moves=${wire.moves.length}`
+}
+
+function logConnection(message: string): void {
+  appendConnectionLog(message)
+  renderConnectionLog(centurionConnectionLogList)
+}
+
 function dispatch(msg: AppMsg): void {
+  const prevCenturionTag =
+    state.tag === 'centurion-match' ? state.model.tag : null
   const [nextState, commands] = updateApp(state, msg)
   state = nextState
+  if (
+    nextState.tag === 'centurion-match' &&
+    prevCenturionTag !== null &&
+    prevCenturionTag !== nextState.model.tag
+  ) {
+    logConnection(`State: ${prevCenturionTag} -> ${nextState.model.tag}`)
+  }
   render()
   for (const command of commands) {
     runCommand(command)
@@ -167,42 +196,38 @@ function dispatch(msg: AppMsg): void {
 }
 
 function dispatchCenturion(msg: CenturionMsg): void {
+  switch (msg.tag) {
+    case 'new-match-requested':
+      logConnection('You requested a new multiplayer match (host).')
+      break
+    case 'join-match-requested':
+      logConnection('You requested to join a match (guest).')
+      break
+    case 'leave-session-requested':
+      logConnection('You left the multiplayer session.')
+      break
+    case 'share-invite-requested':
+      logConnection('You opened the share sheet for the invite link.')
+      break
+    case 'copy-invite-requested':
+      logConnection('You copied the invite link.')
+      break
+    default:
+      break
+  }
   dispatch({ tag: 'centurion-msg', msg })
 }
 
-function navigate(path: string, pushState = true): void {
+function navigate(route: AppRoute, pushState = true): void {
+  const path = urlPathForRoute(route)
   if (pushState) {
     window.history.pushState({}, '', path)
   }
-  dispatch({ tag: 'navigate', path })
+  dispatch({ tag: 'navigate', route })
 }
 
 function newSeed(): number {
   return Math.floor(Math.random() * 0x100000000) >>> 0
-}
-
-/**
- * The path the app is served from, with a trailing slash. On GitHub
- * Pages project sites this is e.g. /centurion/, so routes and invite
- * links must be built relative to it rather than the origin root.
- */
-function appBasePath(): string {
-  let path = window.location.pathname
-  if (path.endsWith('/index.html')) {
-    path = path.slice(0, -'index.html'.length)
-  }
-  if (path.endsWith('/labs')) {
-    path = path.slice(0, -'labs'.length)
-  }
-  return path.endsWith('/') ? path : `${path}/`
-}
-
-function labsPath(): string {
-  return `${appBasePath()}labs`
-}
-
-function inviteUrl(code: string): string {
-  return `${window.location.origin}${appBasePath()}?join=${code}`
 }
 
 function canShareInvites(): boolean {
@@ -275,7 +300,16 @@ chatTransport.setCallbacks({
 })
 
 centurionTransport.setCallbacks({
+  onLog: (message) => {
+    logConnection(message)
+  },
   onStatusChange: (status) => {
+    const role = centurionTransport.isHost ? 'host' : 'guest'
+    const code = centurionTransport.code
+    const room = code.length > 0 ? centurionRoomId(code) : '(no room code yet)'
+    logConnection(
+      `Trystero status: ${status} (${role}, code=${code || '—'}, room=${room})`,
+    )
     dispatchCenturion({
       tag: 'transport-status-changed',
       status,
@@ -284,12 +318,15 @@ centurionTransport.setCallbacks({
     })
   },
   onPeerJoin: () => {
+    logConnection('Peer joined the Trystero room.')
     dispatchCenturion({ tag: 'transport-peer-joined', seed: newSeed() })
   },
   onPeerLeave: () => {
+    logConnection('Peer left the Trystero room.')
     dispatchCenturion({ tag: 'transport-peer-left' })
   },
   onMessage: (data: unknown) => {
+    logConnection(`Received: ${describeWirePayload(data)}`)
     dispatchCenturion({ tag: 'transport-message-received', payload: data })
   },
 })
@@ -316,19 +353,25 @@ function runCommand(command: AppCmd): void {
       }
     case 'centurion':
       switch (command.cmd.tag) {
-        case 'transport-create-room':
-          clearJoinTimer()
-          centurionTransport.createRoom()
+        case 'transport-create-room': {
+          const code = centurionTransport.createRoom()
+          logConnection(
+            `Creating room as host (code=${code}, room=${centurionRoomId(code)}).`,
+          )
           return
+        }
         case 'transport-join-room':
-          armJoinTimer(command.cmd.code)
+          logConnection(
+            `Joining room as guest (code=${command.cmd.code}, room=${centurionRoomId(command.cmd.code)}).`,
+          )
           centurionTransport.joinRoom(command.cmd.code)
           return
         case 'transport-disconnect':
-          clearJoinTimer()
+          logConnection('Disconnecting from Trystero.')
           centurionTransport.disconnect()
           return
         case 'transport-send':
+          logConnection(`Sending: ${describeWirePayload(command.cmd.payload)}`)
           centurionTransport.send(command.cmd.payload)
           return
         case 'share-invite':
@@ -709,11 +752,11 @@ function bindEvents(): void {
     dispatch({ tag: 'open-centurion-match' })
   })
   button('labs-menu-back-btn').addEventListener('click', () => {
-    navigate(appBasePath())
+    navigate('game')
   })
 
   button('superposition-back-btn').addEventListener('click', () => {
-    navigate(labsPath())
+    navigate('labs')
   })
   button('superposition-reset-btn').addEventListener('click', () => {
     dispatch({
@@ -741,7 +784,7 @@ function bindEvents(): void {
   })
 
   button('chat-back-btn').addEventListener('click', () => {
-    navigate(labsPath())
+    navigate('labs')
   })
   chatCreateRoomButton.addEventListener('click', () => {
     dispatch({
@@ -797,7 +840,7 @@ function bindEvents(): void {
   })
 
   button('centurion-back-btn').addEventListener('click', () => {
-    navigate(labsPath())
+    navigate('labs')
   })
   centurionSoloButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'solo-requested', seed: newSeed() })
@@ -845,6 +888,10 @@ function bindEvents(): void {
   centurionLeaveButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'leave-session-requested' })
   })
+  centurionConnectionLogClear.addEventListener('click', () => {
+    clearConnectionLog()
+    renderConnectionLog(centurionConnectionLogList)
+  })
   centurionCanvas.addEventListener('click', (event) => {
     const square = centurionSquareFromClick(event as MouseEvent)
     if (square === null) {
@@ -854,7 +901,7 @@ function bindEvents(): void {
   })
 
   window.addEventListener('popstate', () => {
-    navigate(window.location.pathname, false)
+    navigate(pathnameToAppRoute(window.location.pathname), false)
   })
 
   window.addEventListener('resize', () => {
@@ -873,11 +920,18 @@ function autoJoinFromUrl(): void {
   if (code.length !== 6) {
     return
   }
-  window.history.replaceState({}, '', window.location.pathname)
+  logConnection(`Invite link detected: auto-joining with code ${code}.`)
+  const url = new URL(window.location.href)
+  url.search = ''
+  window.history.replaceState({}, '', `${url.pathname}${url.hash}`)
   dispatchCenturion({ tag: 'join-code-updated', value: code })
   dispatchCenturion({ tag: 'join-match-requested' })
 }
 
 bindEvents()
-navigate(window.location.pathname, false)
+logConnection(`Loaded at ${window.location.href}`)
+logConnection(
+  `Multiplayer signaling uses Trystero/Nostr (app id ${CENTURION_TRANSPORT_APP_ID}).`,
+)
+navigate(pathnameToAppRoute(window.location.pathname), false)
 autoJoinFromUrl()
