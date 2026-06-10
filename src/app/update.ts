@@ -23,7 +23,7 @@ export function updateApp(
 ): UpdateResult<AppState, AppCmd> {
   switch (msg.tag) {
     case 'navigate': {
-      if (msg.path === '/labs') {
+      if (msg.route === 'labs') {
         if (state.tag === 'labs-menu') {
           return [state, []]
         }

@@ -40,6 +40,12 @@ import type {
 } from './features/chat-lab/model'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
 import { SuperpositionRenderer } from './features/superposition-lab/render-superposition'
+import {
+  type AppRoute,
+  inviteUrl,
+  pathnameToAppRoute,
+  urlPathForRoute,
+} from './routing'
 
 function element(id: string): HTMLElement {
   const node = document.getElementById(id)
@@ -152,19 +158,16 @@ function dispatchCenturion(msg: CenturionMsg): void {
   dispatch({ tag: 'centurion-msg', msg })
 }
 
-function navigate(path: string, pushState = true): void {
+function navigate(route: AppRoute, pushState = true): void {
+  const path = urlPathForRoute(route)
   if (pushState) {
     window.history.pushState({}, '', path)
   }
-  dispatch({ tag: 'navigate', path })
+  dispatch({ tag: 'navigate', route })
 }
 
 function newSeed(): number {
   return Math.floor(Math.random() * 0x100000000) >>> 0
-}
-
-function inviteUrl(code: string): string {
-  return `${window.location.origin}/?join=${code}`
 }
 
 function canShareInvites(): boolean {
@@ -668,11 +671,11 @@ function bindEvents(): void {
     dispatch({ tag: 'open-centurion-match' })
   })
   button('labs-menu-back-btn').addEventListener('click', () => {
-    navigate('/')
+    navigate('game')
   })
 
   button('superposition-back-btn').addEventListener('click', () => {
-    navigate('/labs')
+    navigate('labs')
   })
   button('superposition-reset-btn').addEventListener('click', () => {
     dispatch({
@@ -700,7 +703,7 @@ function bindEvents(): void {
   })
 
   button('chat-back-btn').addEventListener('click', () => {
-    navigate('/labs')
+    navigate('labs')
   })
   chatCreateRoomButton.addEventListener('click', () => {
     dispatch({
@@ -756,7 +759,7 @@ function bindEvents(): void {
   })
 
   button('centurion-back-btn').addEventListener('click', () => {
-    navigate('/labs')
+    navigate('labs')
   })
   centurionSoloButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'solo-requested', seed: newSeed() })
@@ -813,7 +816,7 @@ function bindEvents(): void {
   })
 
   window.addEventListener('popstate', () => {
-    navigate(window.location.pathname, false)
+    navigate(pathnameToAppRoute(window.location.pathname), false)
   })
 
   window.addEventListener('resize', () => {
@@ -832,11 +835,13 @@ function autoJoinFromUrl(): void {
   if (code.length !== 6) {
     return
   }
-  window.history.replaceState({}, '', window.location.pathname)
+  const url = new URL(window.location.href)
+  url.search = ''
+  window.history.replaceState({}, '', `${url.pathname}${url.hash}`)
   dispatchCenturion({ tag: 'join-code-updated', value: code })
   dispatchCenturion({ tag: 'join-match-requested' })
 }
 
 bindEvents()
-navigate(window.location.pathname, false)
+navigate(pathnameToAppRoute(window.location.pathname), false)
 autoJoinFromUrl()

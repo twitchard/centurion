@@ -52,7 +52,7 @@ describe('updateApp', () => {
         tag: 'centurion-match',
         model: { tag: 'lobby', joinCodeInput: '', notice: null },
       },
-      { tag: 'navigate', path: '/labs' },
+      { tag: 'navigate', route: 'labs' },
     )
     expect(state.tag).toBe('labs-menu')
     expect(commands).toEqual([

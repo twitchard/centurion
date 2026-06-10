@@ -8,6 +8,7 @@ import type { ChatLabModel } from '../features/chat-lab/model'
 import type { ChatLabCmd, ChatLabMsg } from '../features/chat-lab/update'
 import type { SuperpositionLabModel } from '../features/superposition-lab/model'
 import type { SuperpositionLabMsg } from '../features/superposition-lab/update'
+import { type AppRoute, pathnameToAppRoute } from '../routing'
 
 export type AppState =
   | { readonly tag: 'centurion-match'; readonly model: CenturionModel }
@@ -16,7 +17,7 @@ export type AppState =
   | { readonly tag: 'chat-lab'; readonly model: ChatLabModel }
 
 export type AppMsg =
-  | { readonly tag: 'navigate'; readonly path: string }
+  | { readonly tag: 'navigate'; readonly route: AppRoute }
   | { readonly tag: 'open-superposition-lab' }
   | { readonly tag: 'open-chat-lab' }
   | { readonly tag: 'open-centurion-match' }
@@ -30,8 +31,7 @@ export type AppCmd =
   | { readonly tag: 'centurion'; readonly cmd: CenturionCmd }
 
 export function initAppState(): AppState {
-  const path = window.location.pathname
-  if (path === '/labs') {
+  if (pathnameToAppRoute(window.location.pathname) === 'labs') {
     return { tag: 'labs-menu' }
   }
   return { tag: 'centurion-match', model: initCenturionModel() }

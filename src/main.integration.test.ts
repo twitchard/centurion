@@ -310,8 +310,23 @@ class FakeWindow {
   readonly devicePixelRatio = 1
   readonly location: { pathname: string }
   readonly history = {
-    pushState: (): void => {
-      return
+    pushState: (
+      _state: unknown,
+      _title: string,
+      url?: string | URL | null,
+    ): void => {
+      if (typeof url === 'string') {
+        this.location.pathname = new URL(url, 'https://example.com').pathname
+      }
+    },
+    replaceState: (
+      _state: unknown,
+      _title: string,
+      url?: string | URL | null,
+    ): void => {
+      if (typeof url === 'string') {
+        this.location.pathname = new URL(url, 'https://example.com').pathname
+      }
     },
   }
   private readonly listeners = new Map<string, ((event: unknown) => void)[]>()
@@ -671,6 +686,31 @@ describe('main app wiring', () => {
 
     newMatchButton.click()
     expect(statusCopy.textContent).toContain('Share code')
+  })
+
+  it('routes and navigates under a GitHub Pages project subpath', async () => {
+    vi.resetModules()
+    const { documentRef, windowRef } = setupDom('/centurion/labs')
+
+    await import('./main')
+
+    const labsMenu = documentRef.getElementById(
+      'screen-labs-menu',
+    ) as FakeHTMLElement
+    const centurion = documentRef.getElementById(
+      'screen-centurion-match',
+    ) as FakeHTMLElement
+    const backToGame = documentRef.getElementById(
+      'labs-menu-back-btn',
+    ) as FakeButtonElement
+
+    expect(labsMenu.style.display).toBe('flex')
+    expect(centurion.style.display).toBe('none')
+
+    backToGame.click()
+    expect(windowRef.location.pathname).toBe('/centurion/')
+    expect(labsMenu.style.display).toBe('none')
+    expect(centurion.style.display).toBe('flex')
   })
 
   it('plays a pass-and-play turn end to end', async () => {
