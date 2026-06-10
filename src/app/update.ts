@@ -5,7 +5,7 @@ import { initChatLabModel } from '../features/chat-lab/model'
 import { updateChatLab } from '../features/chat-lab/update'
 import { initSuperpositionLabModel } from '../features/superposition-lab/model'
 import { updateSuperpositionLab } from '../features/superposition-lab/update'
-import type { AppCmd, AppMsg, AppState } from './model'
+import { type AppCmd, type AppMsg, type AppState, isLabsPath } from './model'
 
 function cleanupCommandsFor(state: AppState): readonly AppCmd[] {
   if (state.tag === 'chat-lab') {
@@ -23,7 +23,7 @@ export function updateApp(
 ): UpdateResult<AppState, AppCmd> {
   switch (msg.tag) {
     case 'navigate': {
-      if (msg.path === '/labs') {
+      if (isLabsPath(msg.path)) {
         if (state.tag === 'labs-menu') {
           return [state, []]
         }

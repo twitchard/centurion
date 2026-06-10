@@ -84,10 +84,14 @@ export class StockfishEngineAdapter implements EnginePort {
   private initWorker(): Promise<Worker> {
     if (this.workerInit === null) {
       this.workerInit = new Promise<Worker>((resolve, reject) => {
-        // The stockfish.js worker reads the wasm location from its hash.
-        const worker = new Worker(
-          `${engineScriptUrl}#${encodeURIComponent(engineWasmUrl)}`,
-        )
+        // The build emits relative asset URLs (base './' for subpath
+        // hosting); resolve them against the page before handing them to
+        // the worker, where relative URLs would resolve against the
+        // worker script instead. The stockfish.js worker reads the wasm
+        // location from its hash.
+        const scriptUrl = new URL(engineScriptUrl, window.location.href).href
+        const wasmUrl = new URL(engineWasmUrl, window.location.href).href
+        const worker = new Worker(`${scriptUrl}#${encodeURIComponent(wasmUrl)}`)
         let initialised = false
         worker.onerror = (event) => {
           if (!initialised) {

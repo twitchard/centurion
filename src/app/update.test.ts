@@ -60,6 +60,25 @@ describe('updateApp', () => {
     ])
   })
 
+  it('routes subpath labs URLs to the labs menu', () => {
+    const [state] = updateApp(
+      {
+        tag: 'centurion-match',
+        model: { tag: 'lobby', joinCodeInput: '', notice: null },
+      },
+      { tag: 'navigate', path: '/centurion/labs' },
+    )
+    expect(state.tag).toBe('labs-menu')
+  })
+
+  it('routes subpath home URLs to the centurion match', () => {
+    const [state] = updateApp(
+      { tag: 'labs-menu' },
+      { tag: 'navigate', path: '/centurion/' },
+    )
+    expect(state.tag).toBe('centurion-match')
+  })
+
   it('ignores chat messages outside chat lab state', () => {
     const [state, commands] = updateApp(
       { tag: 'labs-menu' },

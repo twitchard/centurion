@@ -8,6 +8,22 @@ import {
 
 const DEFAULT_APP_ID = 'centurion-chess-chat-lab-v1'
 
+/**
+ * Explicit signalling relays. Trystero otherwise derives a random subset
+ * of its default relay list from the appId, and the subset our appIds
+ * land on is largely dead (expired certs, defunct hosts), which made
+ * matchmaking silently hang. These are large, long-lived public relays;
+ * both peers always use the same list.
+ */
+const RELAY_URLS = [
+  'wss://relay.damus.io',
+  'wss://nos.lol',
+  'wss://relay.primal.net',
+  'wss://offchain.pub',
+  'wss://relay.fountain.fm',
+  'wss://nostr.mom',
+]
+
 type Room = ReturnType<typeof joinRoom>
 type Sender = (data: unknown, targetPeers?: readonly string[]) => void
 
@@ -72,7 +88,7 @@ export class TrysteroTransportAdapter implements TransportPort {
     const roomId = `${this.appId}-${this.code}`
 
     try {
-      this.room = joinRoom({ appId: this.appId }, roomId)
+      this.room = joinRoom({ appId: this.appId, relayUrls: RELAY_URLS }, roomId)
     } catch (_error: unknown) {
       this.setStatus('error')
       return

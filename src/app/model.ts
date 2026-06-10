@@ -29,9 +29,18 @@ export type AppCmd =
   | { readonly tag: 'chat-lab'; readonly cmd: ChatLabCmd }
   | { readonly tag: 'centurion'; readonly cmd: CenturionCmd }
 
+/**
+ * Route matching is suffix-based because the app may be served from a
+ * subpath (e.g. GitHub Pages project sites at /centurion/), where the
+ * labs route is /centurion/labs rather than /labs.
+ */
+export function isLabsPath(path: string): boolean {
+  return path === '/labs' || path.endsWith('/labs')
+}
+
 export function initAppState(): AppState {
   const path = window.location.pathname
-  if (path === '/labs') {
+  if (isLabsPath(path)) {
     return { tag: 'labs-menu' }
   }
   return { tag: 'centurion-match', model: initCenturionModel() }

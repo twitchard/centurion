@@ -272,6 +272,40 @@ describe('multiplayer flow', () => {
     })
   })
 
+  it('returns to the lobby with a notice when joining times out', () => {
+    const [connecting] = apply(
+      initCenturionModel(),
+      { tag: 'join-code-updated', value: '123456' },
+      { tag: 'join-match-requested' },
+    )
+    expect(connecting).toEqual({
+      tag: 'connecting',
+      role: 'guest',
+      code: '123456',
+    })
+
+    const [model, commands] = apply(connecting, {
+      tag: 'join-timed-out',
+      code: '123456',
+    })
+    if (model.tag !== 'lobby') {
+      throw new Error('expected lobby state')
+    }
+    expect(model.joinCodeInput).toBe('123456')
+    expect(model.notice).toContain('Could not find that match')
+    expect(commands).toEqual([{ tag: 'transport-disconnect' }])
+  })
+
+  it('ignores a stale join timeout after the match started', () => {
+    const [host] = hostToPlaying()
+    const [model, commands] = apply(host, {
+      tag: 'join-timed-out',
+      code: '123456',
+    })
+    expect(model).toBe(host)
+    expect(commands).toEqual([])
+  })
+
   it('host starts the match and broadcasts the seed when a peer joins', () => {
     const [model, commands] = hostToPlaying()
     if (model.tag !== 'playing') {

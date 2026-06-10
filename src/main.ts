@@ -137,6 +137,24 @@ const centurionTransport = new TrysteroTransportAdapter(
 )
 const centurionEngine = new StockfishEngineAdapter()
 
+const JOIN_TIMEOUT_MS = 25_000
+let joinTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearJoinTimer(): void {
+  if (joinTimer !== null) {
+    clearTimeout(joinTimer)
+    joinTimer = null
+  }
+}
+
+function armJoinTimer(code: string): void {
+  clearJoinTimer()
+  joinTimer = setTimeout(() => {
+    joinTimer = null
+    dispatchCenturion({ tag: 'join-timed-out', code })
+  }, JOIN_TIMEOUT_MS)
+}
+
 let state: AppState = initAppState()
 
 function dispatch(msg: AppMsg): void {
@@ -163,8 +181,28 @@ function newSeed(): number {
   return Math.floor(Math.random() * 0x100000000) >>> 0
 }
 
+/**
+ * The path the app is served from, with a trailing slash. On GitHub
+ * Pages project sites this is e.g. /centurion/, so routes and invite
+ * links must be built relative to it rather than the origin root.
+ */
+function appBasePath(): string {
+  let path = window.location.pathname
+  if (path.endsWith('/index.html')) {
+    path = path.slice(0, -'index.html'.length)
+  }
+  if (path.endsWith('/labs')) {
+    path = path.slice(0, -'labs'.length)
+  }
+  return path.endsWith('/') ? path : `${path}/`
+}
+
+function labsPath(): string {
+  return `${appBasePath()}labs`
+}
+
 function inviteUrl(code: string): string {
-  return `${window.location.origin}/?join=${code}`
+  return `${window.location.origin}${appBasePath()}?join=${code}`
 }
 
 function canShareInvites(): boolean {
@@ -279,12 +317,15 @@ function runCommand(command: AppCmd): void {
     case 'centurion':
       switch (command.cmd.tag) {
         case 'transport-create-room':
+          clearJoinTimer()
           centurionTransport.createRoom()
           return
         case 'transport-join-room':
+          armJoinTimer(command.cmd.code)
           centurionTransport.joinRoom(command.cmd.code)
           return
         case 'transport-disconnect':
+          clearJoinTimer()
           centurionTransport.disconnect()
           return
         case 'transport-send':
@@ -668,11 +709,11 @@ function bindEvents(): void {
     dispatch({ tag: 'open-centurion-match' })
   })
   button('labs-menu-back-btn').addEventListener('click', () => {
-    navigate('/')
+    navigate(appBasePath())
   })
 
   button('superposition-back-btn').addEventListener('click', () => {
-    navigate('/labs')
+    navigate(labsPath())
   })
   button('superposition-reset-btn').addEventListener('click', () => {
     dispatch({
@@ -700,7 +741,7 @@ function bindEvents(): void {
   })
 
   button('chat-back-btn').addEventListener('click', () => {
-    navigate('/labs')
+    navigate(labsPath())
   })
   chatCreateRoomButton.addEventListener('click', () => {
     dispatch({
@@ -756,7 +797,7 @@ function bindEvents(): void {
   })
 
   button('centurion-back-btn').addEventListener('click', () => {
-    navigate('/labs')
+    navigate(labsPath())
   })
   centurionSoloButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'solo-requested', seed: newSeed() })

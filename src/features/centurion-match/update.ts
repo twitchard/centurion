@@ -52,6 +52,7 @@ export type CenturionMsg =
       readonly code: string
       readonly isHost: boolean
     }
+  | { readonly tag: 'join-timed-out'; readonly code: string }
   | { readonly tag: 'transport-peer-joined'; readonly seed: number }
   | { readonly tag: 'transport-peer-left' }
   | { readonly tag: 'transport-message-received'; readonly payload: unknown }
@@ -73,6 +74,8 @@ export const LOBBY_COPY =
 const INVALID_JOIN_CODE_COPY = 'Enter a valid 6-digit match code.'
 const TRANSPORT_ERROR_COPY =
   'Unable to connect to a match. Check your connection and try again.'
+const JOIN_TIMEOUT_COPY =
+  'Could not find that match. Check the code, and make sure the host still has the match open.'
 const NOT_YOUR_TURN_COPY = 'Waiting for your opponent to place an arrow.'
 const OUT_OF_SYNC_COPY =
   'Received an out-of-sync message from the opponent; the match may have diverged.'
@@ -434,6 +437,20 @@ export function updateCenturion(
       return [
         initCenturionModel(),
         needsDisconnect ? [{ tag: 'transport-disconnect' }] : [],
+      ]
+    }
+
+    case 'join-timed-out': {
+      if (
+        model.tag !== 'connecting' ||
+        model.role !== 'guest' ||
+        model.code !== msg.code
+      ) {
+        return noCmd(model)
+      }
+      return [
+        { tag: 'lobby', joinCodeInput: msg.code, notice: JOIN_TIMEOUT_COPY },
+        [{ tag: 'transport-disconnect' }],
       ]
     }
 
