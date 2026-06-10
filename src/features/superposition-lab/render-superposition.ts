@@ -10,24 +10,86 @@ const BOARD_LIGHT = '#38342f'
 const GRID_LINE = 'rgba(255, 255, 255, 0.05)'
 const LABEL_COLOR = '#a8a8a8'
 
-interface PieceGlyphStyle {
-  readonly glyph: string
-  readonly isWhite: boolean
+const WHITE_CHIP_BG = '#efe9dd'
+const WHITE_CHIP_FG = '#1c1a17'
+const WHITE_CHIP_BORDER = 'rgba(0, 0, 0, 0.45)'
+const BLACK_CHIP_BG = '#13110e'
+const BLACK_CHIP_FG = '#efe9dd'
+const BLACK_CHIP_BORDER = 'rgba(255, 255, 255, 0.35)'
+const OVERFLOW_CHIP_BG = 'rgba(150, 150, 150, 0.22)'
+const OVERFLOW_CHIP_FG = '#cccccc'
+const OVERFLOW_CHIP_BORDER = 'rgba(255, 255, 255, 0.18)'
+
+const CHIP_FONT_FAMILY =
+  'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+
+/** Most piece-type chips a square will show before collapsing into "+N". */
+const MAX_CHIPS = 6
+
+const PIECE_LETTERS: Record<FenPieceSymbol, string> = {
+  P: 'P',
+  N: 'N',
+  B: 'B',
+  R: 'R',
+  Q: 'Q',
+  K: 'K',
+  p: 'P',
+  n: 'N',
+  b: 'B',
+  r: 'R',
+  q: 'Q',
+  k: 'K',
 }
 
-const PIECE_GLYPHS: Record<FenPieceSymbol, PieceGlyphStyle> = {
-  P: { glyph: '♙', isWhite: true },
-  N: { glyph: '♘', isWhite: true },
-  B: { glyph: '♗', isWhite: true },
-  R: { glyph: '♖', isWhite: true },
-  Q: { glyph: '♕', isWhite: true },
-  K: { glyph: '♔', isWhite: true },
-  p: { glyph: '♟', isWhite: false },
-  n: { glyph: '♞', isWhite: false },
-  b: { glyph: '♝', isWhite: false },
-  r: { glyph: '♜', isWhite: false },
-  q: { glyph: '♛', isWhite: false },
-  k: { glyph: '♚', isWhite: false },
+function isWhitePiece(piece: FenPieceSymbol): boolean {
+  return piece === piece.toUpperCase()
+}
+
+function formatCount(count: number): string {
+  return count > 999 ? '999+' : `${count}`
+}
+
+interface Chip {
+  readonly text: string
+  readonly bg: string
+  readonly fg: string
+  readonly border: string
+}
+
+/**
+ * Turn one square's piece distribution into display chips: per piece
+ * type a letter plus how many games hold that piece here, ordered by
+ * count. Counts are omitted when only a single position is shown.
+ */
+function squareChips(
+  stacks: readonly PieceStack[],
+  positionCount: number,
+): Chip[] {
+  const sorted = [...stacks].sort((left, right) => right.count - left.count)
+  const overflowing = sorted.length > MAX_CHIPS
+  const visible = overflowing ? sorted.slice(0, MAX_CHIPS - 1) : sorted
+
+  const chips: Chip[] = visible.map((stack) => {
+    const letter = PIECE_LETTERS[stack.piece]
+    const white = isWhitePiece(stack.piece)
+    return {
+      text:
+        positionCount === 1 ? letter : `${letter} ${formatCount(stack.count)}`,
+      bg: white ? WHITE_CHIP_BG : BLACK_CHIP_BG,
+      fg: white ? WHITE_CHIP_FG : BLACK_CHIP_FG,
+      border: white ? WHITE_CHIP_BORDER : BLACK_CHIP_BORDER,
+    }
+  })
+
+  if (overflowing) {
+    chips.push({
+      text: `+${sorted.length - visible.length}`,
+      bg: OVERFLOW_CHIP_BG,
+      fg: OVERFLOW_CHIP_FG,
+      border: OVERFLOW_CHIP_BORDER,
+    })
+  }
+  return chips
 }
 
 export class SuperpositionRenderer {
@@ -66,18 +128,6 @@ export class SuperpositionRenderer {
     }
     this.drawPieceLayers(model)
     this.drawArrows(model.arrows)
-  }
-
-  private drawHighlight(col: number, row: number): void {
-    const ctx = this.context
-    const square = this.squareSize
-    const x = col * square
-    const y = (7 - row) * square
-    ctx.fillStyle = 'rgba(122, 199, 255, 0.22)'
-    ctx.fillRect(x, y, square, square)
-    ctx.strokeStyle = 'rgba(122, 199, 255, 0.85)'
-    ctx.lineWidth = Math.max(2, square * 0.04)
-    ctx.strokeRect(x + 1, y + 1, square - 2, square - 2)
   }
 
   private drawBoard(): void {
@@ -125,163 +175,113 @@ export class SuperpositionRenderer {
     }
   }
 
-  private drawPieceLayers(model: SuperpositionRenderModel): void {
+  private drawHighlight(col: number, row: number): void {
     const ctx = this.context
     const square = this.squareSize
-    const totalPositions = Math.max(1, model.positionCount)
+    const x = col * square
+    const y = (7 - row) * square
+    ctx.fillStyle = 'rgba(122, 199, 255, 0.22)'
+    ctx.fillRect(x, y, square, square)
+    ctx.strokeStyle = 'rgba(122, 199, 255, 0.85)'
+    ctx.lineWidth = Math.max(2, square * 0.04)
+    ctx.strokeRect(x + 1, y + 1, square - 2, square - 2)
+  }
 
+  private drawPieceLayers(model: SuperpositionRenderModel): void {
+    const square = this.squareSize
     for (const layer of model.squareLayers) {
       const col = layer.square & 7
       const row = layer.square >> 3
-      const squareX = col * square
-      const squareY = (7 - row) * square
-      this.drawStackedPieces(layer.stacks, totalPositions, squareX, squareY)
+      this.drawSquareHistogram(
+        squareChips(layer.stacks, model.positionCount),
+        col * square,
+        (7 - row) * square,
+      )
     }
-
-    ctx.globalAlpha = 1
   }
 
-  private drawStackedPieces(
-    stacks: readonly PieceStack[],
-    totalPositions: number,
+  /**
+   * Lay the square's chips out in a small grid: a single column for one
+   * or two entries, two columns beyond that.
+   */
+  private drawSquareHistogram(
+    chips: readonly Chip[],
     squareX: number,
     squareY: number,
   ): void {
-    if (stacks.length === 0) {
+    if (chips.length === 0) {
       return
     }
 
-    const ctx = this.context
     const square = this.squareSize
-    const centerX = squareX + square / 2
-    const centerY = squareY + square / 2
-    const pieceTypeCount = stacks.length
-    const orbitRadius = this.orbitRadius(pieceTypeCount)
-    const pieceSize = this.pieceSize(pieceTypeCount, orbitRadius)
+    const pad = square * 0.08
+    const gap = square * 0.045
+    const cols = chips.length <= 2 ? 1 : 2
+    const rows = Math.ceil(chips.length / cols)
+    const cellWidth = (square - 2 * pad - (cols - 1) * gap) / cols
+    const cellHeight = (square - 2 * pad - (rows - 1) * gap) / rows
 
-    for (let index = 0; index < pieceTypeCount; index++) {
-      const stack = stacks[index]
-      if (stack === undefined) {
+    for (let index = 0; index < chips.length; index++) {
+      const chip = chips[index]
+      if (chip === undefined) {
         continue
       }
-
-      const style = PIECE_GLYPHS[stack.piece]
-      const slotAngle = this.slotAngle(index, pieceTypeCount)
-      const pieceRotation = slotAngle + Math.PI / 2
-      const anchorX = centerX + Math.cos(slotAngle) * orbitRadius
-      const anchorY = centerY + Math.sin(slotAngle) * orbitRadius
-      const opacity = Math.min(1, Math.max(0.12, stack.count / totalPositions))
-
-      ctx.save()
-      ctx.globalAlpha = opacity
-      ctx.translate(anchorX, anchorY)
-      ctx.rotate(pieceRotation)
-      this.drawPieceGlyph(style, pieceSize)
-      this.drawCountBadge(stack.count, pieceSize, pieceRotation, opacity)
-      ctx.restore()
+      const col = index % cols
+      const row = Math.floor(index / cols)
+      // Center a final odd chip that has its row to itself.
+      const lonelyLastRow =
+        cols === 2 && row === rows - 1 && chips.length % 2 === 1
+      const x = lonelyLastRow
+        ? squareX + pad + (cellWidth + gap) / 2
+        : squareX + pad + col * (cellWidth + gap)
+      const y = squareY + pad + row * (cellHeight + gap)
+      this.drawChip(chip, x, y, cellWidth, cellHeight)
     }
   }
 
-  private slotAngle(index: number, total: number): number {
-    if (total <= 1) {
-      return -Math.PI / 2
-    }
-    return -Math.PI / 2 + (index * Math.PI * 2) / total
-  }
-
-  private orbitRadius(pieceTypeCount: number): number {
-    const square = this.squareSize
-    if (pieceTypeCount <= 1) {
-      return 0
-    }
-    if (pieceTypeCount <= 4) {
-      return square * 0.18
-    }
-    if (pieceTypeCount <= 8) {
-      return square * 0.21
-    }
-    return square * 0.24
-  }
-
-  private pieceSize(pieceTypeCount: number, orbitRadius: number): number {
-    const square = this.squareSize
-    if (pieceTypeCount <= 1) {
-      return square * 0.72
-    }
-
-    const margin = square * 0.08
-    const maxOrbit = square / 2 - margin
-    const arcLength = (Math.PI * 2 * orbitRadius) / pieceTypeCount
-    const radialSpan = Math.max(0, (maxOrbit - orbitRadius) * 2)
-    const maxSize = Math.min(square * 0.4, arcLength * 0.82, radialSpan * 0.92)
-    return Math.max(square * 0.1, maxSize)
-  }
-
-  private drawCountBadge(
-    count: number,
-    pieceSize: number,
-    pieceRotation: number,
-    opacity: number,
+  private drawChip(
+    chip: Chip,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
   ): void {
     const ctx = this.context
-    const badgeSize = Math.max(9, pieceSize * 0.34)
-    const badgeY = -pieceSize * 0.6
 
-    ctx.save()
-    ctx.translate(0, badgeY)
-    ctx.rotate(-pieceRotation)
-    ctx.globalAlpha = Math.min(1, opacity + 0.25)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
-    ctx.beginPath()
-    ctx.arc(0, 0, badgeSize * 0.58, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = '#ffffff'
-    ctx.font = `bold ${badgeSize * 0.72}px sans-serif`
+    ctx.fillStyle = chip.bg
+    ctx.fillRect(x, y, width, height)
+    ctx.strokeStyle = chip.border
+    ctx.lineWidth = Math.max(1, height * 0.05)
+    ctx.strokeRect(x, y, width, height)
+
+    const fontSize = Math.max(
+      8,
+      Math.min(height * 0.68, (width * 0.9) / (chip.text.length * 0.62)),
+    )
+    ctx.fillStyle = chip.fg
+    ctx.font = `700 ${fontSize}px ${CHIP_FONT_FAMILY}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(count > 99 ? '99+' : `${count}`, 0, 0)
-    ctx.restore()
-  }
-
-  private drawPieceGlyph(style: PieceGlyphStyle, pieceSize: number): void {
-    const ctx = this.context
-    const radius = pieceSize / 2
-
-    // Render a token-style base for readability on dark/light squares.
-    ctx.beginPath()
-    ctx.arc(0, 0, radius, 0, Math.PI * 2)
-    ctx.fillStyle = style.isWhite ? '#f5f5f5' : '#171717'
-    ctx.fill()
-    ctx.lineWidth = Math.max(1, pieceSize * 0.07)
-    ctx.strokeStyle = style.isWhite ? '#2c2c2c' : '#dedede'
-    ctx.stroke()
-
-    ctx.beginPath()
-    ctx.arc(0, radius * 0.34, radius * 0.42, 0, Math.PI * 2)
-    ctx.fillStyle = style.isWhite
-      ? 'rgba(0, 0, 0, 0.15)'
-      : 'rgba(255, 255, 255, 0.16)'
-    ctx.fill()
-
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.font = `700 ${Math.max(10, pieceSize * 0.84)}px "DejaVu Sans", "Noto Sans Symbols 2", "Noto Sans Symbols", "Segoe UI Symbol", sans-serif`
-    ctx.fillStyle = style.isWhite ? '#171717' : '#f2f2f2'
-    ctx.strokeStyle = style.isWhite
-      ? 'rgba(255, 255, 255, 0.45)'
-      : 'rgba(0, 0, 0, 0.5)'
-    ctx.lineWidth = Math.max(1, pieceSize * 0.06)
-    ctx.strokeText(style.glyph, 0, pieceSize * 0.03)
-    ctx.fillText(style.glyph, 0, pieceSize * 0.03)
+    ctx.fillText(chip.text, x + width / 2, y + height / 2 + fontSize * 0.05)
   }
 
   private drawArrows(arrows: readonly ArrowSegment[]): void {
-    for (const arrow of arrows) {
-      this.drawArrow(arrow)
+    // Arrows are permanent, so old ones pile up; fade them with age and
+    // keep the newest prominent. Stacked duplicates overdraw and
+    // naturally read as stronger.
+    const count = arrows.length
+    for (let index = 0; index < count; index++) {
+      const arrow = arrows[index]
+      if (arrow === undefined) {
+        continue
+      }
+      const recency = count <= 1 ? 1 : index / (count - 1)
+      const alpha = 0.16 + 0.56 * recency * recency
+      this.drawArrow(arrow, alpha)
     }
   }
 
-  private drawArrow(arrow: ArrowSegment): void {
+  private drawArrow(arrow: ArrowSegment, alpha: number): void {
     const ctx = this.context
     const square = this.squareSize
     const fromX = arrow.from.col * square + square / 2
@@ -293,12 +293,13 @@ export class SuperpositionRenderer {
     const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY) || 1
     const unitX = deltaX / length
     const unitY = deltaY / length
-    const width = Math.max(square * 0.12, 7)
-    const headLength = width * 2
-    const headWidth = width * 1.1
+    const width = Math.max(square * 0.06, 4)
+    const headLength = width * 2.4
+    const headWidth = width * 1.4
 
-    ctx.strokeStyle = 'rgba(90, 185, 255, 0.72)'
-    ctx.fillStyle = 'rgba(90, 185, 255, 0.72)'
+    const color = `rgba(90, 185, 255, ${alpha})`
+    ctx.strokeStyle = color
+    ctx.fillStyle = color
     ctx.lineWidth = width
     ctx.lineCap = 'round'
 
