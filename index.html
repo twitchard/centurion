@@ -155,7 +155,10 @@
     <details id="centurion-connection-log-panel" class="centurion-connection-log panel" open>
       <summary>Connection log</summary>
       <p class="centurion-connection-log-hint">
-        Multiplayer uses Trystero over Nostr relays and WebRTC. These events show what the app is doing.
+        Multiplayer uses Trystero over Nostr relays and WebRTC. Host should reach
+        <strong>waiting</strong>; guest should reach <strong>connected</strong> then
+        <strong>Peer joined</strong>. Stuck on guest <strong>connecting</strong> usually
+        means the phones cannot establish a peer link (try Wi‑Fi, disable VPN, or retry).
       </p>
       <ol id="centurion-connection-log-list" class="centurion-connection-log-list"></ol>
       <button type="button" class="btn btn-outline" id="centurion-connection-log-clear">Clear log</button>

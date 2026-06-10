@@ -72,7 +72,7 @@ export const LOBBY_COPY =
   'Play both seats at one device, or start a multiplayer match and share the code.'
 const INVALID_JOIN_CODE_COPY = 'Enter a valid 6-digit match code.'
 const TRANSPORT_ERROR_COPY =
-  'Unable to connect to a match. Check your connection and try again.'
+  'Unable to connect to a match. Both players need the same code, the host must still be waiting, and your networks must allow WebRTC (try Wi‑Fi, disable VPN, or use the connection log below).'
 const NOT_YOUR_TURN_COPY = 'Waiting for your opponent to place an arrow.'
 const OUT_OF_SYNC_COPY =
   'Received an out-of-sync message from the opponent; the match may have diverged.'

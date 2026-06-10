@@ -300,6 +300,9 @@ chatTransport.setCallbacks({
 })
 
 centurionTransport.setCallbacks({
+  onLog: (message) => {
+    logConnection(message)
+  },
   onStatusChange: (status) => {
     const role = centurionTransport.isHost ? 'host' : 'guest'
     const code = centurionTransport.code
