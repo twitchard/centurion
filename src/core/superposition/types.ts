@@ -31,6 +31,8 @@ export interface ArrowSegment {
   readonly to: ArrowCoordinate
   /** Which player placed it (1 = green, 2 = red); unowned arrows render neutral. */
   readonly owner?: 1 | 2
+  /** Stack size: how many copies of this arrow have been placed. */
+  readonly count?: number
 }
 
 export interface PieceStack {

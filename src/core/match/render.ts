@@ -94,11 +94,26 @@ export function matchRenderModel(
     positions.push({ pieces })
   }
 
-  const arrows: ArrowSegment[] = placedArrows.map((placed) => ({
-    from: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.from)),
-    to: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.to)),
-    owner: placed.placedBy,
-  }))
+  // Collapse stacked copies (same squares, same player) into one segment
+  // with a count; a re-placed arrow moves to the end of the order so the
+  // whole stack renders as fresh as its newest copy.
+  const stacks = new Map<string, ArrowSegment>()
+  for (const placed of placedArrows) {
+    const key = `${placed.arrow.from}-${placed.arrow.to}-${placed.placedBy}`
+    const existing = stacks.get(key)
+    if (existing !== undefined) {
+      stacks.delete(key)
+      stacks.set(key, { ...existing, count: (existing.count ?? 1) + 1 })
+      continue
+    }
+    stacks.set(key, {
+      from: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.from)),
+      to: squareToCoordinate(toCanonicalSquare(viewer, placed.arrow.to)),
+      owner: placed.placedBy,
+      count: 1,
+    })
+  }
+  const arrows: ArrowSegment[] = [...stacks.values()]
 
   const base = buildSuperpositionRenderModel(positions, arrows)
   if (selected === null) {

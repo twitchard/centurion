@@ -335,5 +335,43 @@ export class SuperpositionRenderer {
     )
     ctx.closePath()
     ctx.fill()
+
+    const count = arrow.count ?? 1
+    if (count >= 2) {
+      this.drawArrowCountBadge(
+        arrow,
+        (fromX + toX) / 2,
+        (fromY + toY) / 2,
+        count,
+        alpha,
+      )
+    }
+  }
+
+  private drawArrowCountBadge(
+    arrow: ArrowSegment,
+    x: number,
+    y: number,
+    count: number,
+    alpha: number,
+  ): void {
+    const ctx = this.context
+    const square = this.squareSize
+    const radius = Math.max(9, square * 0.17)
+    const badgeAlpha = Math.min(1, alpha + 0.3)
+
+    ctx.beginPath()
+    ctx.arc(x, y, radius, 0, Math.PI * 2)
+    ctx.fillStyle = `rgba(15, 14, 12, ${badgeAlpha})`
+    ctx.fill()
+    ctx.lineWidth = Math.max(1.5, radius * 0.16)
+    ctx.strokeStyle = this.arrowColor(arrow.owner, badgeAlpha)
+    ctx.stroke()
+
+    ctx.fillStyle = `rgba(245, 245, 245, ${badgeAlpha})`
+    ctx.font = `700 ${radius * 1.05}px ${CHIP_FONT_FAMILY}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(`${count > 99 ? '99+' : count}`, x, y + radius * 0.05)
   }
 }
