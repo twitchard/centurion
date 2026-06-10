@@ -18,6 +18,8 @@ export interface TransportPort {
   readonly code: string
   readonly isHost: boolean
   createRoom(): string
+  /** Re-open an existing room code as host (e.g. after a page reload). */
+  hostRoom(code: string): void
   joinRoom(code: string): void
   send(data: unknown): void
   disconnect(): void

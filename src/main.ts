@@ -3,6 +3,11 @@ import 'chessground/assets/chessground.brown.css'
 import 'chessground/assets/chessground.cburnett.css'
 import './styles.css'
 
+import {
+  clearCenturionPersistence,
+  loadCenturionPersistence,
+  saveCenturionPersistence,
+} from './adapters/local-storage-centurion-persistence'
 import { StockfishEngineAdapter } from './adapters/stockfish-engine'
 import { TrysteroTransportAdapter } from './adapters/trystero-transport'
 import {
@@ -46,11 +51,14 @@ import type {
   CenturionModel,
   MatchSession,
 } from './features/centurion-match/model'
+import { initCenturionModel } from './features/centurion-match/model'
 import { sessionViewer } from './features/centurion-match/model'
+import { encodeCenturionForPersistence } from './features/centurion-match/persistence'
 import { ReplayBoard } from './features/centurion-match/replay-board'
 import {
   type CenturionMsg,
   LOBBY_COPY,
+  updateCenturion,
 } from './features/centurion-match/update'
 import type {
   ChatConnectionState,
@@ -204,6 +212,7 @@ const centurionTransport = new TrysteroTransportAdapter(
 const centurionEngine = new StockfishEngineAdapter()
 
 let state: AppState = initAppState()
+let hostPendingSeed: number | null = null
 
 function centurionRoomId(code: string): string {
   return `${CENTURION_TRANSPORT_APP_ID}-${code}`
@@ -220,6 +229,9 @@ function describeWirePayload(payload: unknown): string {
   if (wire.type === 'centurion:auto') {
     return `centurion:auto turn=${wire.turn} moves=${wire.moves.length}`
   }
+  if (wire.type === 'centurion:sync') {
+    return `centurion:sync turn=${wire.snapshot.turn} games=${wire.snapshot.gameCount}`
+  }
   return `centurion:arrow turn=${wire.turn} ${wire.from}->${wire.to} moves=${wire.moves.length}`
 }
 
@@ -228,7 +240,20 @@ function logConnection(message: string): void {
   renderConnectionLog(centurionConnectionLogList)
 }
 
+function persistCenturionState(): void {
+  if (state.tag !== 'centurion-match') {
+    return
+  }
+  const encoded = encodeCenturionForPersistence(state.model)
+  if (encoded !== null) {
+    saveCenturionPersistence(encoded)
+  }
+}
+
 function dispatch(msg: AppMsg): void {
+  if (state.tag === 'centurion-match') {
+    persistCenturionState()
+  }
   const prevCenturionTag =
     state.tag === 'centurion-match' ? state.model.tag : null
   const [nextState, commands] = updateApp(state, msg)
@@ -239,6 +264,15 @@ function dispatch(msg: AppMsg): void {
     prevCenturionTag !== nextState.model.tag
   ) {
     logConnection(`State: ${prevCenturionTag} -> ${nextState.model.tag}`)
+  }
+  if (
+    msg.tag === 'centurion-msg' &&
+    msg.msg.tag === 'leave-session-requested'
+  ) {
+    hostPendingSeed = null
+    clearCenturionPersistence()
+  } else {
+    persistCenturionState()
   }
   render()
   for (const command of commands) {
@@ -255,7 +289,11 @@ function dispatchCenturion(msg: CenturionMsg): void {
       logConnection('You requested to join a match (guest).')
       break
     case 'leave-session-requested':
+      hostPendingSeed = null
       logConnection('You left the multiplayer session.')
+      break
+    case 'restore-session-requested':
+      logConnection('Restoring in-progress match from local storage.')
       break
     case 'share-invite-requested':
       logConnection('You opened the share sheet for the invite link.')
@@ -361,16 +399,26 @@ centurionTransport.setCallbacks({
     logConnection(
       `Trystero status: ${status} (${role}, code=${code || '—'}, room=${room})`,
     )
+    let pendingSeed: number | undefined
+    if (
+      status === 'waiting' &&
+      centurionTransport.isHost &&
+      hostPendingSeed === null
+    ) {
+      hostPendingSeed = newSeed()
+      pendingSeed = hostPendingSeed
+    }
     dispatchCenturion({
       tag: 'transport-status-changed',
       status,
       code: centurionTransport.code,
       isHost: centurionTransport.isHost,
+      ...(pendingSeed !== undefined && { pendingSeed }),
     })
   },
   onPeerJoin: () => {
     logConnection('Peer joined the Trystero room.')
-    dispatchCenturion({ tag: 'transport-peer-joined', seed: newSeed() })
+    dispatchCenturion({ tag: 'transport-peer-joined' })
   },
   onPeerLeave: () => {
     logConnection('Peer left the Trystero room.')
@@ -405,12 +453,19 @@ function runCommand(command: AppCmd): void {
     case 'centurion':
       switch (command.cmd.tag) {
         case 'transport-create-room': {
+          hostPendingSeed = null
           const code = centurionTransport.createRoom()
           logConnection(
             `Creating room as host (code=${code}, room=${centurionRoomId(code)}).`,
           )
           return
         }
+        case 'transport-host-room':
+          logConnection(
+            `Re-opening room as host (code=${command.cmd.code}, room=${centurionRoomId(command.cmd.code)}).`,
+          )
+          centurionTransport.hostRoom(command.cmd.code)
+          return
         case 'transport-join-room':
           logConnection(
             `Joining room as guest (code=${command.cmd.code}, room=${centurionRoomId(command.cmd.code)}).`,
@@ -865,10 +920,12 @@ function bindEvents(): void {
     dispatch({ tag: 'open-chat-lab' })
   })
   button('labs-menu-open-centurion').addEventListener('click', () => {
-    dispatch({ tag: 'open-centurion-match' })
+    navigate('game')
+    tryRestorePersistedSession()
   })
   button('labs-menu-back-btn').addEventListener('click', () => {
     navigate('game')
+    tryRestorePersistedSession()
   })
 
   button('superposition-back-btn').addEventListener('click', () => {
@@ -1050,7 +1107,33 @@ function bindEvents(): void {
   })
 }
 
+function tryRestorePersistedSession(): void {
+  if (pathnameToAppRoute(window.location.pathname) === 'labs') {
+    return
+  }
+  const persisted = loadCenturionPersistence()
+  if (persisted === null) {
+    return
+  }
+  if (persisted.tag === 'waiting') {
+    hostPendingSeed = persisted.pendingSeed
+  }
+  const [model, commands] = updateCenturion(initCenturionModel(), {
+    tag: 'restore-session-requested',
+    persisted,
+  })
+  state = { tag: 'centurion-match', model }
+  persistCenturionState()
+  render()
+  for (const command of commands) {
+    runCommand({ tag: 'centurion', cmd: command })
+  }
+}
+
 function autoJoinFromUrl(): void {
+  if (state.tag === 'centurion-match' && state.model.tag !== 'lobby') {
+    return
+  }
   const search: string | undefined = window.location.search
   if (search === undefined || search.length === 0) {
     return
@@ -1076,4 +1159,5 @@ logConnection(
   `Multiplayer signaling uses Trystero/Nostr (app id ${CENTURION_TRANSPORT_APP_ID}).`,
 )
 navigate(pathnameToAppRoute(window.location.pathname), false)
+tryRestorePersistedSession()
 autoJoinFromUrl()

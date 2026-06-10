@@ -53,6 +53,14 @@ vi.mock('./adapters/trystero-transport', () => {
       return this.code
     }
 
+    hostRoom(code: string): void {
+      this.disconnect()
+      this.code = code
+      this.isHost = true
+      this.setStatus('connecting')
+      this.setStatus('waiting')
+    }
+
     joinRoom(code: string): void {
       this.disconnect()
       this.code = code

@@ -43,6 +43,7 @@ export type CenturionModel =
   | {
       readonly tag: 'waiting'
       readonly code: string
+      readonly pendingSeed: number
       readonly notice: string | null
     }
   | { readonly tag: 'syncing'; readonly code: string }
