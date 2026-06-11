@@ -23,8 +23,8 @@ type Sender = (data: unknown, targetPeers?: readonly string[]) => void
  * BitTorrent WebSocket trackers announce pre-built WebRTC offers immediately,
  * which is much faster and more reliable than waiting for Nostr peer discovery.
  */
+/** Verified live WebSocket trackers (others in Trystero defaults are dead or hang). */
 const TRACKER_URLS = [
-  'wss://tracker.webtorrent.dev',
   'wss://tracker.openwebtorrent.com',
   'wss://tracker.btorrent.xyz',
 ]
@@ -284,9 +284,6 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   private logIceStatus(): void {
-    if (this.currentStatus !== 'connecting') {
-      return
-    }
     const summaries = CHANNEL_CONFIG.map(({ channel, label }) => {
       const room = this.rooms.get(channel)
       if (!room) {
@@ -297,9 +294,12 @@ export class TrysteroTransportAdapter implements TransportPort {
     this.log(`WebRTC negotiation — ${summaries.join(' | ')}`)
   }
 
-  private startMonitoring(): void {
+  private startGuestMonitoring(): void {
     this.clearMonitoringTimers()
-    setTimeout(() => this.logRelayStatus(), 2_000)
+    setTimeout(() => {
+      this.logRelayStatus()
+      this.logIceStatus()
+    }, 2_000)
     this.relayStatusTimer = setInterval(() => {
       if (this.currentStatus !== 'connecting') {
         this.clearMonitoringTimers()
@@ -307,12 +307,26 @@ export class TrysteroTransportAdapter implements TransportPort {
       }
       this.logRelayStatus()
     }, RELAY_STATUS_INTERVAL_MS)
-    if (!this.isHost) {
-      this.iceStatusTimer = setInterval(
-        () => this.logIceStatus(),
-        ICE_STATUS_INTERVAL_MS,
-      )
-    }
+    this.iceStatusTimer = setInterval(
+      () => this.logIceStatus(),
+      ICE_STATUS_INTERVAL_MS,
+    )
+  }
+
+  private startHostWaitingMonitoring(): void {
+    this.clearMonitoringTimers()
+    setTimeout(() => {
+      this.logRelayStatus()
+      this.logIceStatus()
+    }, 2_000)
+    this.relayStatusTimer = setInterval(() => {
+      if (this.currentStatus !== 'waiting' || !this.isHost) {
+        this.clearMonitoringTimers()
+        return
+      }
+      this.logRelayStatus()
+      this.logIceStatus()
+    }, 10_000)
   }
 
   private async openRoom(): Promise<void> {
@@ -343,9 +357,6 @@ export class TrysteroTransportAdapter implements TransportPort {
             this.log(
               `${label} join error (peer ${details.peerId}): ${details.error}`,
             )
-            if (!this.isHost && this.currentStatus === 'connecting') {
-              this.setStatus('error')
-            }
           },
         )
         if (generation !== this.openGeneration) {
@@ -367,16 +378,16 @@ export class TrysteroTransportAdapter implements TransportPort {
       return
     }
 
-    this.startMonitoring()
-
     if (this.isHost) {
       this.setStatus('waiting')
       this.log(
         'Host room ready; waiting for guest. Keep this page open until they join.',
       )
-      this.clearMonitoringTimers()
+      this.startHostWaitingMonitoring()
       return
     }
+
+    this.startGuestMonitoring()
 
     this.log(
       'Guest waiting for host via trackers and Nostr (host must still be on the waiting screen).',

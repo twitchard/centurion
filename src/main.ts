@@ -1347,7 +1347,7 @@ bindEvents()
 applyPieceDisplayMode('pieces')
 logConnection(`Loaded at ${window.location.href}`)
 logConnection(
-  `Multiplayer signaling uses Trystero/Nostr (app id ${CENTURION_TRANSPORT_APP_ID}).`,
+  `Multiplayer build ${__MULTIPLAYER_BUILD_ID__}: BitTorrent trackers + Nostr (app id ${CENTURION_TRANSPORT_APP_ID}). Hard-refresh both devices if this build id looks stale.`,
 )
 navigate(pathnameToAppRoute(window.location.pathname), false)
 tryRestorePersistedSession()

@@ -77,7 +77,7 @@ describe('TrysteroTransportAdapter', () => {
       expect.objectContaining({
         appId: 'test-app',
         rtcConfig: { iceCandidatePoolSize: 10 },
-        relayUrls: expect.arrayContaining(['wss://tracker.webtorrent.dev']),
+        relayUrls: expect.arrayContaining(['wss://tracker.openwebtorrent.com']),
       }),
       expect.stringMatching(/^test-app-\d{6}$/),
       expect.any(Function),
