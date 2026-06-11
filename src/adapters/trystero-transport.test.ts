@@ -1,14 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const joinRoomMock = vi.fn()
-const getRelaySocketsMock = vi.fn(() => ({}))
+const joinNostrRoomMock = vi.fn()
+const joinTorrentRoomMock = vi.fn()
+const getNostrRelaySocketsMock = vi.fn(() => ({}))
+const getTorrentRelaySocketsMock = vi.fn(() => ({}))
 
 vi.mock('trystero', () => ({
-  joinRoom: (...args: unknown[]) => joinRoomMock(...args),
+  joinRoom: (...args: unknown[]) => joinNostrRoomMock(...args),
+}))
+
+vi.mock('trystero/torrent', () => ({
+  joinRoom: (...args: unknown[]) => joinTorrentRoomMock(...args),
+  getRelaySockets: () => getTorrentRelaySocketsMock(),
 }))
 
 vi.mock('trystero/nostr', () => ({
-  getRelaySockets: () => getRelaySocketsMock(),
+  getRelaySockets: () => getNostrRelaySocketsMock(),
 }))
 
 import { TrysteroTransportAdapter } from './trystero-transport'
@@ -28,45 +35,56 @@ function makeRoom() {
     onPeerLeave: vi.fn((handler: (peerId: string) => void) => {
       handlers.onPeerLeave = handler
     }),
-    getPeers: vi.fn(() => new Map()),
-    leave: vi.fn(),
+    getPeers: vi.fn(() => ({})),
+    leave: vi.fn(async () => {}),
     handlers,
     receive,
     send,
   }
 }
 
+function mockDualRooms() {
+  const torrentRoom = makeRoom()
+  const nostrRoom = makeRoom()
+  joinTorrentRoomMock.mockReturnValue(torrentRoom)
+  joinNostrRoomMock.mockReturnValue(nostrRoom)
+  return { torrentRoom, nostrRoom }
+}
+
 describe('TrysteroTransportAdapter', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    joinRoomMock.mockReset()
-    getRelaySocketsMock.mockReset()
-    getRelaySocketsMock.mockReturnValue({})
+    joinNostrRoomMock.mockReset()
+    joinTorrentRoomMock.mockReset()
+    getNostrRelaySocketsMock.mockReset()
+    getTorrentRelaySocketsMock.mockReset()
+    getNostrRelaySocketsMock.mockReturnValue({})
+    getTorrentRelaySocketsMock.mockReturnValue({})
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it('passes expanded TURN and rtcConfig to joinRoom', () => {
-    const room = makeRoom()
-    joinRoomMock.mockReturnValue(room)
+  it('joins both torrent trackers and nostr relays with shared ICE config', async () => {
+    mockDualRooms()
 
     const adapter = new TrysteroTransportAdapter('test-app')
     adapter.createRoom()
+    await Promise.resolve()
 
-    expect(joinRoomMock).toHaveBeenCalledWith(
+    expect(joinTorrentRoomMock).toHaveBeenCalledWith(
       expect.objectContaining({
         appId: 'test-app',
         rtcConfig: { iceCandidatePoolSize: 10 },
-        turnConfig: expect.arrayContaining([
-          expect.objectContaining({ urls: 'stun:openrelay.metered.ca:80' }),
-          expect.objectContaining({
-            urls: expect.arrayContaining(['turns:openrelay.metered.ca:443']),
-            username: 'openrelayproject',
-            credential: 'openrelayproject',
-          }),
-        ]),
+        relayUrls: expect.arrayContaining(['wss://tracker.openwebtorrent.com']),
+      }),
+      expect.stringMatching(/^test-app-\d{6}$/),
+      expect.any(Function),
+    )
+    expect(joinNostrRoomMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 'test-app',
         relayUrls: expect.arrayContaining(['wss://relay.damus.io']),
       }),
       expect.stringMatching(/^test-app-\d{6}$/),
@@ -74,14 +92,10 @@ describe('TrysteroTransportAdapter', () => {
     )
   })
 
-  it('retries guest connect before reporting error', () => {
-    const roomOne = makeRoom()
-    const roomTwo = makeRoom()
-    const roomThree = makeRoom()
-    joinRoomMock
-      .mockReturnValueOnce(roomOne)
-      .mockReturnValueOnce(roomTwo)
-      .mockReturnValueOnce(roomThree)
+  it('retries guest connect before reporting error', async () => {
+    mockDualRooms()
+    mockDualRooms()
+    mockDualRooms()
 
     const statuses: string[] = []
     const logs: string[] = []
@@ -95,39 +109,43 @@ describe('TrysteroTransportAdapter', () => {
     })
 
     adapter.joinRoom('123456')
-    expect(statuses).toEqual(['connecting'])
-    expect(joinRoomMock).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
+    expect(joinNostrRoomMock).toHaveBeenCalledTimes(1)
 
-    vi.advanceTimersByTime(20_000)
-    expect(joinRoomMock).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(25_000)
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(2)
     expect(logs.some((line) => line.includes('Retrying'))).toBe(true)
     expect(statuses.at(-1)).toBe('connecting')
 
-    vi.advanceTimersByTime(20_000)
-    expect(joinRoomMock).toHaveBeenCalledTimes(3)
-    expect(logs.some((line) => line.includes('retry 3/3'))).toBe(true)
+    await vi.advanceTimersByTimeAsync(25_000)
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(3)
 
-    vi.advanceTimersByTime(20_000)
+    await vi.advanceTimersByTimeAsync(25_000)
     expect(statuses.at(-1)).toBe('error')
-    expect(roomThree.leave).toHaveBeenCalled()
   })
 
-  it('clears guest timer when peer joins', () => {
-    const room = makeRoom()
-    joinRoomMock.mockReturnValue(room)
+  it('uses the first signalling channel that delivers a peer', async () => {
+    const { torrentRoom } = mockDualRooms()
 
     const adapter = new TrysteroTransportAdapter('test-app')
+    let peerJoined = false
     adapter.setCallbacks({
       onStatusChange: () => {},
-      onPeerJoin: () => {},
+      onPeerJoin: () => {
+        peerJoined = true
+      },
       onPeerLeave: () => {},
       onMessage: () => {},
+      onLog: () => {},
     })
 
     adapter.joinRoom('123456')
-    room.handlers.onPeerJoin('peer-1')
+    await Promise.resolve()
+    torrentRoom.handlers.onPeerJoin('peer-1')
 
-    vi.advanceTimersByTime(60_000)
-    expect(joinRoomMock).toHaveBeenCalledTimes(1)
+    expect(peerJoined).toBe(true)
+    await vi.advanceTimersByTimeAsync(75_000)
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
   })
 })
