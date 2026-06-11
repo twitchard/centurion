@@ -1140,22 +1140,36 @@ function tryRestorePersistedSession(): void {
   if (pathnameToAppRoute(window.location.pathname) === 'labs') {
     return
   }
-  const persisted = loadCenturionPersistence()
-  if (persisted === null) {
-    return
-  }
-  if (persisted.tag === 'waiting') {
-    hostPendingSeed = persisted.pendingSeed
-  }
-  const [model, commands] = updateCenturion(initCenturionModel(), {
-    tag: 'restore-session-requested',
-    persisted,
-  })
-  state = { tag: 'centurion-match', model }
-  persistCenturionState()
-  render()
-  for (const command of commands) {
-    runCommand({ tag: 'centurion', cmd: command })
+  // A broken saved session must never take down the app: if anything
+  // throws while resuming, drop the saved state and show a fresh lobby.
+  try {
+    const persisted = loadCenturionPersistence()
+    if (persisted === null) {
+      return
+    }
+    if (persisted.tag === 'waiting') {
+      hostPendingSeed = persisted.pendingSeed
+    }
+    const [model, commands] = updateCenturion(initCenturionModel(), {
+      tag: 'restore-session-requested',
+      persisted,
+    })
+    state = { tag: 'centurion-match', model }
+    persistCenturionState()
+    render()
+    for (const command of commands) {
+      runCommand({ tag: 'centurion', cmd: command })
+    }
+  } catch (error) {
+    clearCenturionPersistence()
+    hostPendingSeed = null
+    state = initAppState()
+    logConnection(
+      `Failed to restore saved match (${
+        error instanceof Error ? error.message : String(error)
+      }); cleared saved state.`,
+    )
+    render()
   }
 }
 
