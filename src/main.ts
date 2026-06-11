@@ -159,7 +159,8 @@ const centurionCancelButton = button('centurion-cancel-btn')
 const centurionShareRow = element('centurion-share-row')
 const centurionShareButton = button('centurion-share-btn')
 const centurionCopyLinkButton = button('centurion-copy-link-btn')
-const centurionScoreLine = element('centurion-score-line')
+const centurionScoreP1 = element('centurion-score-p1')
+const centurionScoreP2 = element('centurion-score-p2')
 const centurionActiveLine = element('centurion-active-line')
 const centurionTurnLine = element('centurion-turn-line')
 const centurionSessionNotice = element('centurion-session-notice')
@@ -919,13 +920,25 @@ function renderCenturionSession(session: MatchSession): void {
   const match = session.match
   const viewer = sessionViewer(session)
 
-  centurionScoreLine.textContent = `${playerLabel(session, 1)} ${match.scores.p1} : ${match.scores.p2} ${playerLabel(session, 2)}`
+  centurionScoreP1.textContent = `${playerLabel(session, 1)} ${match.scores.p1}`
+  centurionScoreP2.textContent = `${match.scores.p2} ${playerLabel(session, 2)}`
   centurionActiveLine.textContent = `${activeGameCount(match)} of ${match.gameCount} games active`
   centurionTurnLine.textContent =
     match.phase.tag === 'finished' ? 'Match over.' : describePlacer(session)
 
   centurionSessionNotice.textContent = session.notice ?? ''
   centurionBoardHint.textContent = boardHintText(session)
+  // The hint speaks for the active placer; wear their color.
+  const hintPlacer =
+    session.resolving === null && match.phase.tag === 'active'
+      ? activePlacer(match)
+      : null
+  centurionBoardHint.style.color =
+    hintPlacer === 1
+      ? 'var(--gold-bright)'
+      : hintPlacer === 2
+        ? 'var(--crimson-text)'
+        : ''
 
   const result = describeResult(session, match)
   centurionResultBanner.textContent = result

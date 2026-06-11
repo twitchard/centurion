@@ -157,7 +157,11 @@ export function matchRenderModel(
 
   const base = buildSuperpositionRenderModel(positions, arrows)
   if (selected === null) {
-    return base
+    return { ...base, viewerPlayer: viewer }
   }
-  return { ...base, highlight: squareToCoordinate(selected) }
+  return {
+    ...base,
+    viewerPlayer: viewer,
+    highlight: squareToCoordinate(selected),
+  }
 }

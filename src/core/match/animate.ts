@@ -233,9 +233,10 @@ export function resolutionAnimationFrame(
     positions,
     matchArrowSegments(plan.after, plan.viewer),
   )
+  const withViewer = { ...base, viewerPlayer: plan.viewer }
   const model =
     selected === null
-      ? base
-      : { ...base, highlight: squareToCoordinate(selected) }
+      ? withViewer
+      : { ...withViewer, highlight: squareToCoordinate(selected) }
   return { model, overlays, done: elapsedMs >= plan.totalMs }
 }

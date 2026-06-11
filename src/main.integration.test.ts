@@ -592,6 +592,8 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-share-btn', 'button'],
     ['centurion-copy-link-btn', 'button'],
     ['centurion-score-line', 'element'],
+    ['centurion-score-p1', 'element'],
+    ['centurion-score-p2', 'element'],
     ['centurion-active-line', 'element'],
     ['centurion-turn-line', 'element'],
     ['centurion-session-notice', 'element'],
@@ -834,8 +836,11 @@ describe('main app wiring', () => {
     expect(lobby.style.display).toBe('none')
     expect(session.style.display).toBe('grid')
 
-    const scoreLine = documentRef.getElementById(
-      'centurion-score-line',
+    const scoreP1 = documentRef.getElementById(
+      'centurion-score-p1',
+    ) as FakeHTMLElement
+    const scoreP2 = documentRef.getElementById(
+      'centurion-score-p2',
     ) as FakeHTMLElement
     const activeLine = documentRef.getElementById(
       'centurion-active-line',
@@ -843,9 +848,8 @@ describe('main app wiring', () => {
     const turnLine = documentRef.getElementById(
       'centurion-turn-line',
     ) as FakeHTMLElement
-    expect(scoreLine.textContent).toBe(
-      'Player 1 (gold) 0 : 0 Player 2 (crimson)',
-    )
+    expect(scoreP1.textContent).toBe('Player 1 (gold) 0')
+    expect(scoreP2.textContent).toBe('0 Player 2 (crimson)')
     expect(activeLine.textContent).toBe('100 of 100 games active')
     expect(turnLine.textContent).toContain('Turn 1')
 

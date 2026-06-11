@@ -65,4 +65,11 @@ export interface SuperpositionRenderModel {
   readonly arrows: readonly ArrowSegment[]
   readonly positionCount: number
   readonly highlight?: ArrowCoordinate
+  /**
+   * Which player the viewer is, when the board shows a match. White
+   * glyphs are the viewer's pieces, so this lets the renderer paint
+   * per-player accents (count badges, chip borders) in that player's
+   * color — gold for player 1, crimson for player 2.
+   */
+  readonly viewerPlayer?: 1 | 2
 }

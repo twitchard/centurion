@@ -13,6 +13,7 @@
   --crimson: #8f221d;
   --crimson-bright: #ad3128;
   --crimson-deep: #4a1512;
+  --crimson-text: #e8806d;
   --ink: #ece3d2;
   --ink-dim: #c2b193;
   --ink-faint: #8d7c61;
@@ -584,7 +585,16 @@ canvas {
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: 1px;
+  color: var(--ink-dim);
+}
+
+/* Player identity colors, matching the board's arrows and counts. */
+.centurion-score-p1 {
   color: var(--gold-bright);
+}
+
+.centurion-score-p2 {
+  color: var(--crimson-text);
 }
 
 .centurion-meta-line {
@@ -644,13 +654,13 @@ canvas {
 
 .centurion-arrow-entry--player-1 {
   background: #38290c;
-  color: var(--gold-pale);
+  color: var(--gold-bright);
   align-self: flex-end;
 }
 
 .centurion-arrow-entry--player-2 {
   background: #421613;
-  color: #efa99c;
+  color: var(--crimson-text);
   align-self: flex-start;
 }
 

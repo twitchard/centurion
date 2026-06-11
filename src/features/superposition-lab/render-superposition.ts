@@ -74,11 +74,25 @@ function formatCount(count: number): string {
   return count > 999 ? '999+' : `${count}`
 }
 
+// Per-player accents, matching the arrows and the side-panel copy:
+// player 1 is gold, player 2 crimson. Count badges and chip borders
+// pick these up when the board knows which player the viewer is.
+const PLAYER_COUNT_FILL: Record<1 | 2, string> = {
+  1: '#ffd97d',
+  2: '#f59c8d',
+}
+const PLAYER_CHIP_BORDER: Record<1 | 2, string> = {
+  1: 'rgba(224, 185, 79, 0.85)',
+  2: 'rgba(214, 92, 76, 0.95)',
+}
+const NEUTRAL_COUNT_FILL = '#ffd97d'
+
 interface Chip {
   readonly text: string
   readonly bg: string
   readonly fg: string
   readonly border: string
+  readonly whitePiece: boolean
 }
 
 /**
@@ -102,6 +116,7 @@ function squareChips(
       bg: white ? WHITE_CHIP_BG : BLACK_CHIP_BG,
       fg: white ? WHITE_CHIP_FG : BLACK_CHIP_FG,
       border: white ? WHITE_CHIP_BORDER : BLACK_CHIP_BORDER,
+      whitePiece: white,
     }
   })
 }
@@ -113,6 +128,7 @@ export class SuperpositionRenderer {
   private readonly context: CanvasRenderingContext2D
   private boardWidth = 0
   private squareSize = 0
+  private viewerPlayer: 1 | 2 | undefined
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -146,6 +162,7 @@ export class SuperpositionRenderer {
       return
     }
 
+    this.viewerPlayer = model.viewerPlayer
     this.drawBoard()
     if (model.highlight !== undefined) {
       this.drawHighlight(model.highlight.col, model.highlight.row)
@@ -236,6 +253,27 @@ export class SuperpositionRenderer {
    * or two entries, two columns up to six, three beyond that (a square
    * holds at most 12 distinct piece types).
    */
+  /** White glyphs are the viewer's pieces; black the opponent's. */
+  private pieceOwner(whitePiece: boolean): 1 | 2 | undefined {
+    if (this.viewerPlayer === undefined) {
+      return undefined
+    }
+    if (whitePiece) {
+      return this.viewerPlayer
+    }
+    return this.viewerPlayer === 1 ? 2 : 1
+  }
+
+  private countFill(whitePiece: boolean): string {
+    const owner = this.pieceOwner(whitePiece)
+    return owner === undefined ? NEUTRAL_COUNT_FILL : PLAYER_COUNT_FILL[owner]
+  }
+
+  private chipBorder(chip: Chip): string {
+    const owner = this.pieceOwner(chip.whitePiece)
+    return owner === undefined ? chip.border : PLAYER_CHIP_BORDER[owner]
+  }
+
   private drawSquareHistogram(
     chips: readonly Chip[],
     squareX: number,
@@ -363,7 +401,7 @@ export class SuperpositionRenderer {
       ctx.lineWidth = Math.max(2, countSize * 0.22)
       ctx.strokeStyle = 'rgba(12, 11, 9, 0.85)'
       ctx.strokeText(formatCount(stack.count), countX, countY)
-      ctx.fillStyle = '#ffd97d'
+      ctx.fillStyle = this.countFill(white)
       ctx.fillText(formatCount(stack.count), countX, countY)
     }
   }
@@ -379,7 +417,7 @@ export class SuperpositionRenderer {
 
     ctx.fillStyle = chip.bg
     ctx.fillRect(x, y, width, height)
-    ctx.strokeStyle = chip.border
+    ctx.strokeStyle = this.chipBorder(chip)
     ctx.lineWidth = Math.max(1, height * 0.05)
     ctx.strokeRect(x, y, width, height)
 

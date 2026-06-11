@@ -115,7 +115,7 @@
         <summary>How to play</summary>
         <ul>
           <li>You and your opponent are playing <strong>100 games of chess at once</strong>: one of you plays white in every game, the other black, chosen at random when the match starts. The white side places the first arrow.</li>
-          <li>All games appear stacked on one board. <strong>Your pieces are drawn white, your opponent's black</strong> &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square.</li>
+          <li>All games appear stacked on one board. <strong>Your pieces are drawn white, your opponent's black</strong> &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square; numbers and arrows are tinted by player: <strong>gold for player 1, crimson for player 2</strong>.</li>
           <li>If you play black, your view is flipped so your pieces start nearest you, and your arrow is read through that flip: drawing e2&rarr;e4 on your view means e7&rarr;e5 in the games.</li>
           <li>On your turn, place <strong>one arrow</strong>: tap its start square, then its end square. Arrows are permanent and shared &mdash; they can move your opponent's games too.</li>
           <li>After each arrow, <strong>every game advances one half-move</strong>. Arrows act newest first: each pulls up to its current strength in games where it is a legal move; every other game plays Stockfish's best move. A new arrow starts at strength 8 and halves each round &mdash; 8 when placed (and on the opponent's reply), 4 around your next arrow, then 2, then 1, then it disappears. Placing the same arrow again adds 8 and resets its decay.</li>
@@ -142,7 +142,7 @@
       </div>
       <div class="panel controls-panel">
         <div id="centurion-scoreboard" class="centurion-scoreboard">
-          <div id="centurion-score-line" class="centurion-score-line"></div>
+          <div id="centurion-score-line" class="centurion-score-line"><span id="centurion-score-p1" class="centurion-score-p1"></span><span class="centurion-score-divider"> : </span><span id="centurion-score-p2" class="centurion-score-p2"></span></div>
           <div id="centurion-active-line" class="centurion-meta-line"></div>
           <div id="centurion-turn-line" class="centurion-meta-line"></div>
         </div>
