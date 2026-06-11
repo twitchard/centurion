@@ -21,6 +21,8 @@ The board is displayed from your perspective: your pieces are always closest to 
 
 Pieces from all active games are rendered on a single board with opacity proportional to how many games contain that piece on that square, producing a ghostly superposition. No other game state information is visible — you cannot see individual game positions or which games matched which arrows.
 
+Each resolved turn replays as a ~2 second animation: pieces pulled by arrows slide to their destination first with a gold glow, then every engine-moved piece fades out of its origin and back in at its destination in a stagger. The animation is purely presentational (state is already final underneath) and is skipped when the system requests reduced motion.
+
 ### Turns
 
 Players alternate turns. Who plays white is chosen from the match seed at the start of the match; the white owner also places the first arrow, since turn 1 resolves white's half-move in every game. (Solo mode overrides this: you place every arrow regardless of which color you own.)

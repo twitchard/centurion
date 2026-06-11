@@ -35,6 +35,21 @@ export interface ArrowSegment {
   readonly count?: number
 }
 
+/**
+ * A single game's piece mid-transition, drawn on top of the aggregated
+ * board. Slides glide from origin to destination (arrow-driven moves,
+ * with emphasis); fades dissolve at the origin and reappear at the
+ * destination (engine moves).
+ */
+export interface PieceMoveOverlay {
+  readonly piece: FenPieceSymbol
+  readonly from: ArrowCoordinate
+  readonly to: ArrowCoordinate
+  /** 0 at the start of this piece's transition, 1 at the end. */
+  readonly progress: number
+  readonly kind: 'slide' | 'fade'
+}
+
 export interface PieceStack {
   readonly piece: FenPieceSymbol
   readonly count: number

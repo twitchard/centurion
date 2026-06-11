@@ -9,7 +9,9 @@ import type {
   SuperpositionRenderModel,
 } from '../superposition/types'
 import {
+  type BoardArrow,
   type BoardSquare,
+  type MatchGame,
   type MatchState,
   type PlayerId,
   arrowPullWeight,
@@ -55,13 +57,70 @@ export function squareName(square: BoardSquare): string {
   return `${String.fromCharCode(97 + (square & 7))}${(square >> 3) + 1}`
 }
 
-function visualSquare(
+export function visualSquare(
   actual: BoardSquare,
   whiteOwner: PlayerId,
   viewer: PlayerId,
 ): BoardSquare {
   const canonical = whiteOwner === 1 ? actual : flipSquare(actual)
   return viewer === 1 ? canonical : flipSquare(canonical)
+}
+
+/**
+ * The glyph a piece renders as for one viewer: pieces are colored by
+ * ownership, not chess color, so the viewer's pieces are always white
+ * symbols and the opponent's black.
+ */
+export function visualPieceSymbol(
+  piece: { readonly color: 'white' | 'black'; readonly role: Role },
+  whiteOwner: PlayerId,
+  viewer: PlayerId,
+): FenPieceSymbol {
+  const owner = piece.color === 'white' ? whiteOwner : otherPlayer(whiteOwner)
+  return owner === viewer
+    ? WHITE_SYMBOLS[piece.role]
+    : BLACK_SYMBOLS[piece.role]
+}
+
+/** One game's pieces projected onto the viewer's visual board frame. */
+export function gameVisualPieces(
+  game: MatchGame,
+  viewer: PlayerId,
+): PiecePlacement[] {
+  const pieces: PiecePlacement[] = []
+  for (const [square, piece] of game.position.board) {
+    pieces.push({
+      square: visualSquare(square, game.whiteOwner, viewer),
+      piece: visualPieceSymbol(piece, game.whiteOwner, viewer),
+    })
+  }
+  return pieces
+}
+
+/** The arrow layer for the viewer, weighted at the match's current turn. */
+export function matchArrowSegments(
+  match: MatchState,
+  viewer: PlayerId,
+  placedArrows: readonly BoardArrow[] = match.arrows,
+): ArrowSegment[] {
+  const arrows: ArrowSegment[] = []
+  for (const boardArrow of placedArrows) {
+    const weight = arrowPullWeight(
+      boardArrow.cardinality,
+      boardArrow.placedTurn,
+      match.turn,
+    )
+    if (weight === 0) {
+      continue
+    }
+    arrows.push({
+      from: squareToCoordinate(toCanonicalSquare(viewer, boardArrow.from)),
+      to: squareToCoordinate(toCanonicalSquare(viewer, boardArrow.to)),
+      owner: boardArrow.owner,
+      count: weight,
+    })
+  }
+  return arrows
 }
 
 /**
@@ -91,38 +150,10 @@ export function matchRenderModel(
     if (game.status.tag !== 'active') {
       continue
     }
-    const pieces: PiecePlacement[] = []
-    for (const [square, piece] of game.position.board) {
-      const owner =
-        piece.color === 'white' ? game.whiteOwner : otherPlayer(game.whiteOwner)
-      pieces.push({
-        square: visualSquare(square, game.whiteOwner, viewer),
-        piece:
-          owner === viewer
-            ? WHITE_SYMBOLS[piece.role]
-            : BLACK_SYMBOLS[piece.role],
-      })
-    }
-    positions.push({ pieces })
+    positions.push({ pieces: gameVisualPieces(game, viewer) })
   }
 
-  const arrows: ArrowSegment[] = []
-  for (const boardArrow of placedArrows) {
-    const weight = arrowPullWeight(
-      boardArrow.cardinality,
-      boardArrow.placedTurn,
-      match.turn,
-    )
-    if (weight === 0) {
-      continue
-    }
-    arrows.push({
-      from: squareToCoordinate(toCanonicalSquare(viewer, boardArrow.from)),
-      to: squareToCoordinate(toCanonicalSquare(viewer, boardArrow.to)),
-      owner: boardArrow.owner,
-      count: weight,
-    })
-  }
+  const arrows = matchArrowSegments(match, viewer, placedArrows)
 
   const base = buildSuperpositionRenderModel(positions, arrows)
   if (selected === null) {

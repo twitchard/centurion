@@ -22,6 +22,11 @@ import {
   clearConnectionLog,
   renderConnectionLog,
 } from './connection-log'
+import {
+  type ResolutionAnimationPlan,
+  planResolutionAnimation,
+  resolutionAnimationFrame,
+} from './core/match/animate'
 import { decodeMatchWireMessage } from './core/match/codec'
 import {
   ARROW_PLACEMENT_LAST_TURN,
@@ -790,6 +795,126 @@ function renderGameReplay(session: MatchSession): void {
   centurionReplayEndButton.disabled = snapshot.ply >= snapshot.moveCount
 }
 
+/**
+ * Resolution animation: when a settled turn lands, the board replays it
+ * over ~2 seconds — arrow-pulled pieces slide with emphasis first, then
+ * every engine move fades across in a stagger. Purely presentational:
+ * game state is already final underneath.
+ */
+const RESOLUTION_ANIMATION_MS = 2000
+const ANIMATION_QUEUE_LIMIT = 3
+
+let centurionAnimationQueue: ResolutionAnimationPlan[] = []
+let centurionAnimationStart: number | null = null
+let centurionLastMatch: MatchState | null = null
+let centurionAnimationRaf: number | null = null
+
+function centurionAnimationsEnabled(): boolean {
+  if (
+    typeof requestAnimationFrame !== 'function' ||
+    typeof performance === 'undefined'
+  ) {
+    return false
+  }
+  if (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) {
+    return false
+  }
+  return RESOLUTION_ANIMATION_MS > 0
+}
+
+function resetCenturionAnimation(): void {
+  centurionAnimationQueue = []
+  centurionAnimationStart = null
+  centurionLastMatch = null
+}
+
+function maybeQueueResolutionAnimation(session: MatchSession): void {
+  const match = session.match
+  const previous = centurionLastMatch
+  centurionLastMatch = match
+  if (previous === null || previous === match) {
+    return
+  }
+  if (!centurionAnimationsEnabled()) {
+    return
+  }
+  const plan = planResolutionAnimation(
+    previous,
+    match,
+    sessionViewer(session),
+    RESOLUTION_ANIMATION_MS,
+  )
+  if (plan === null) {
+    // Not a single-turn step (restore, sync, new match): drop any
+    // stale animations and show the live board.
+    centurionAnimationQueue = []
+    centurionAnimationStart = null
+    return
+  }
+  centurionAnimationQueue.push(plan)
+  // If resolution outpaces playback, skip ahead rather than lag.
+  while (centurionAnimationQueue.length > ANIMATION_QUEUE_LIMIT) {
+    centurionAnimationQueue.shift()
+    centurionAnimationStart = null
+  }
+}
+
+/** Paint the current animation frame; false when nothing is animating. */
+function renderCenturionAnimationFrame(session: MatchSession): boolean {
+  for (;;) {
+    const head = centurionAnimationQueue[0]
+    if (head === undefined) {
+      return false
+    }
+    const now = performance.now()
+    if (centurionAnimationStart === null) {
+      centurionAnimationStart = now
+    }
+    const elapsed = now - centurionAnimationStart
+    if (elapsed >= head.totalMs) {
+      centurionAnimationQueue.shift()
+      centurionAnimationStart = null
+      continue
+    }
+    const frame = resolutionAnimationFrame(
+      head,
+      elapsed,
+      session.selectedSquare,
+    )
+    centurionRenderer.render(frame.model, frame.overlays)
+    scheduleCenturionAnimationTick()
+    return true
+  }
+}
+
+function scheduleCenturionAnimationTick(): void {
+  if (centurionAnimationRaf !== null) {
+    return
+  }
+  centurionAnimationRaf = requestAnimationFrame(() => {
+    centurionAnimationRaf = null
+    if (state.tag !== 'centurion-match' || state.model.tag !== 'playing') {
+      resetCenturionAnimation()
+      return
+    }
+    const session = state.model.session
+    if (!renderCenturionAnimationFrame(session)) {
+      // Queue drained: settle the canvas on the live board.
+      centurionRenderer.render(
+        matchRenderModel(
+          session.match,
+          sessionViewer(session),
+          session.selectedSquare,
+          session.resolving,
+        ),
+      )
+    }
+  })
+}
+
 function renderCenturionSession(session: MatchSession): void {
   const match = session.match
   const viewer = sessionViewer(session)
@@ -829,10 +954,18 @@ function renderCenturionSession(session: MatchSession): void {
 
   renderGameReplay(session)
 
+  maybeQueueResolutionAnimation(session)
   centurionRenderer.resize(panelBoardSize(centurionBoardPanel))
-  centurionRenderer.render(
-    matchRenderModel(match, viewer, session.selectedSquare, session.resolving),
-  )
+  if (!renderCenturionAnimationFrame(session)) {
+    centurionRenderer.render(
+      matchRenderModel(
+        match,
+        viewer,
+        session.selectedSquare,
+        session.resolving,
+      ),
+    )
+  }
 }
 
 function confirmReturnToLobby(model: CenturionModel): boolean {
@@ -862,6 +995,8 @@ function renderCenturion(model: CenturionModel): void {
     renderCenturionSession(model.session)
     return
   }
+
+  resetCenturionAnimation()
 
   const idle = model.tag === 'lobby'
   centurionSoloButton.disabled = !idle

@@ -1,6 +1,7 @@
 import type {
   ArrowSegment,
   FenPieceSymbol,
+  PieceMoveOverlay,
   PieceStack,
   SuperpositionRenderModel,
 } from '../../core/superposition/types'
@@ -137,7 +138,10 @@ export class SuperpositionRenderer {
     this.context.setTransform(ratio, 0, 0, ratio, 0, 0)
   }
 
-  render(model: SuperpositionRenderModel): void {
+  render(
+    model: SuperpositionRenderModel,
+    overlays: readonly PieceMoveOverlay[] = [],
+  ): void {
     if (this.boardWidth === 0 || this.squareSize === 0) {
       return
     }
@@ -148,6 +152,7 @@ export class SuperpositionRenderer {
     }
     this.drawPieceLayers(model)
     this.drawArrows(model.arrows)
+    this.drawMoveOverlays(overlays)
   }
 
   private drawBoard(): void {
@@ -387,6 +392,65 @@ export class SuperpositionRenderer {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(chip.text, x + width / 2, y + height / 2 + fontSize * 0.05)
+  }
+
+  /**
+   * Pieces mid-transition during turn resolution. Arrow-driven moves
+   * slide with a gold glow and a small scale pulse for emphasis; engine
+   * moves fade out at their origin and fade back in at the destination.
+   */
+  private drawMoveOverlays(overlays: readonly PieceMoveOverlay[]): void {
+    const ctx = this.context
+    const square = this.squareSize
+    for (const overlay of overlays) {
+      const progress = Math.min(1, Math.max(0, overlay.progress))
+      const fromX = overlay.from.col * square + square / 2
+      const fromY = (7 - overlay.from.row) * square + square / 2
+      const toX = overlay.to.col * square + square / 2
+      const toY = (7 - overlay.to.row) * square + square / 2
+
+      let x: number
+      let y: number
+      let alpha: number
+      let scale: number
+      if (overlay.kind === 'slide') {
+        const eased =
+          progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - (-2 * progress + 2) ** 3 / 2
+        x = fromX + (toX - fromX) * eased
+        y = fromY + (toY - fromY) * eased
+        alpha = 1
+        scale = 1 + 0.22 * Math.sin(Math.PI * progress)
+      } else {
+        const leaving = progress < 0.5
+        x = leaving ? fromX : toX
+        y = leaving ? fromY : toY
+        alpha = leaving ? 1 - progress * 2 : progress * 2 - 1
+        scale = 1
+      }
+
+      const white = overlay.piece === overlay.piece.toUpperCase()
+      const glyph = PIECE_GLYPHS[overlay.piece]
+      const fontSize = square * 0.78 * scale
+
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.font = `${fontSize}px ${GLYPH_FONT_FAMILY}`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.lineWidth = Math.max(1.2, fontSize * 0.06)
+      ctx.lineJoin = 'round'
+      if (overlay.kind === 'slide') {
+        ctx.shadowColor = 'rgba(224, 185, 79, 0.9)'
+        ctx.shadowBlur = square * 0.3
+      }
+      ctx.fillStyle = white ? WHITE_GLYPH_FILL : BLACK_GLYPH_FILL
+      ctx.strokeStyle = white ? WHITE_GLYPH_OUTLINE : BLACK_GLYPH_OUTLINE
+      ctx.strokeText(glyph, x, y)
+      ctx.fillText(glyph, x, y)
+      ctx.restore()
+    }
   }
 
   private drawArrows(arrows: readonly ArrowSegment[]): void {
