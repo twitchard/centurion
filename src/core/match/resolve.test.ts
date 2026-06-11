@@ -123,17 +123,22 @@ describe('arrowMoveForGame', () => {
 })
 
 describe('arrowPullWeight', () => {
-  it('halves cardinality each turn until the arrow vanishes', () => {
+  it('halves cardinality each full round until the arrow vanishes', () => {
     expect(arrowPullWeight(8, 1, 1)).toBe(8)
-    expect(arrowPullWeight(8, 1, 2)).toBe(4)
-    expect(arrowPullWeight(8, 1, 3)).toBe(2)
-    expect(arrowPullWeight(8, 1, 4)).toBe(1)
-    expect(arrowPullWeight(8, 1, 5)).toBe(0)
+    expect(arrowPullWeight(8, 1, 2)).toBe(8)
+    expect(arrowPullWeight(8, 1, 3)).toBe(4)
+    expect(arrowPullWeight(8, 1, 4)).toBe(4)
+    expect(arrowPullWeight(8, 1, 5)).toBe(2)
+    expect(arrowPullWeight(8, 1, 6)).toBe(2)
+    expect(arrowPullWeight(8, 1, 7)).toBe(1)
+    expect(arrowPullWeight(8, 1, 8)).toBe(1)
+    expect(arrowPullWeight(8, 1, 9)).toBe(0)
   })
 
   it('scales pull weight with stacked cardinality', () => {
     expect(arrowPullWeight(16, 3, 3)).toBe(16)
-    expect(arrowPullWeight(16, 3, 4)).toBe(8)
+    expect(arrowPullWeight(16, 3, 4)).toBe(16)
+    expect(arrowPullWeight(16, 3, 5)).toBe(8)
   })
 })
 
@@ -179,10 +184,12 @@ describe('beginResolution', () => {
   it('removes arrows once their decay weight reaches zero', () => {
     let match = initMatch(3, { gameCount: 4, firstPlacer: 1 })
     match = resolveTurn(match, { from: sq('e2'), to: sq('e4') })
-    for (let ply = 0; ply < 3; ply++) {
+    // Per-round decay: an unrefreshed cardinality-8 arrow survives 8
+    // half-moves, so it is dropped once the turn counter reaches 9.
+    for (let ply = 0; ply < 7; ply++) {
       match = resolveTurn(match, { from: sq('a7'), to: sq('a6') })
     }
-    expect(match.turn).toBe(5)
+    expect(match.turn).toBe(9)
     expect(match.arrows.some((entry) => entry.placedTurn === 1)).toBe(false)
     expect(
       match.arrows.every(

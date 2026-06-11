@@ -96,8 +96,10 @@ export const ARROW_PLACEMENT_LAST_TURN = 100
 
 /**
  * How many games an arrow can pull on a given turn. Cardinality halves
- * each turn (integer divide by two) from the turn it was last placed or
- * stacked; at zero the arrow is removed.
+ * once per full round (two half-moves) from the turn it was last placed
+ * or stacked, so a fresh arrow pulls at full strength on its placement
+ * turn and the opponent's reply, then half that around the owner's next
+ * arrow: 8, 8, 4, 4, 2, 2, 1, 1, gone. At zero the arrow is removed.
  */
 export function arrowPullWeight(
   cardinality: number,
@@ -108,7 +110,7 @@ export function arrowPullWeight(
   if (age < 0) {
     return 0
   }
-  return cardinality >> age
+  return cardinality >> (age >> 1)
 }
 
 /** Add or stack an arrow, moving a refreshed stack to the end of the list. */
@@ -226,14 +228,10 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     })
   }
 
-  let firstPlacer: PlayerId
-  if (options?.firstPlacer !== undefined) {
-    firstPlacer = options.firstPlacer
-  } else {
-    const [pick, nextRng] = pickIndex(rng, 2)
-    rng = nextRng
-    firstPlacer = pick === 0 ? 1 : 2
-  }
+  // Turn 1 resolves white's half-move in every game, so unless a mode
+  // overrides it (solo does), the white owner also places the first
+  // arrow: one draw decides both who moves first and who places first.
+  const firstPlacer: PlayerId = options?.firstPlacer ?? whitePlayer
 
   return {
     gameCount,

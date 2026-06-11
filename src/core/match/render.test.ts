@@ -114,7 +114,7 @@ describe('matchRenderModel', () => {
       count: 16,
     })
     const single = model.arrows[0]
-    expect(single?.count).toBe(4)
+    expect(single?.count).toBe(8)
     expect(resolution.arrows).toHaveLength(2)
     expect(resolution.arrows[1]?.cardinality).toBe(16)
   })

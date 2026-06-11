@@ -114,11 +114,11 @@
       <details class="centurion-rules">
         <summary>How to play</summary>
         <ul>
-          <li>You and your opponent are playing <strong>100 games of chess at once</strong>: you are white in 50 and black in 50.</li>
-          <li>All games appear stacked on one board. <strong>Your pieces are drawn white, your opponent's black</strong> &mdash; whichever color each of you plays in the underlying games. The number next to a piece shows how many games have it on that square.</li>
-          <li>Your black games are shown flipped so your pieces always start nearest you. One arrow speaks for both colors: e2&rarr;e4 also means e7&rarr;e5 in your black games.</li>
+          <li>You and your opponent are playing <strong>100 games of chess at once</strong>: one of you plays white in every game, the other black, chosen at random when the match starts. The white side places the first arrow.</li>
+          <li>All games appear stacked on one board. <strong>Your pieces are drawn white, your opponent's black</strong> &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square.</li>
+          <li>If you play black, your view is flipped so your pieces start nearest you, and your arrow is read through that flip: drawing e2&rarr;e4 on your view means e7&rarr;e5 in the games.</li>
           <li>On your turn, place <strong>one arrow</strong>: tap its start square, then its end square. Arrows are permanent and shared &mdash; they can move your opponent's games too.</li>
-          <li>After each arrow, <strong>every game advances one half-move</strong>. Each arrow ever placed (newest first) moves one random game where it is a legal move; every other game plays Stockfish's best move. Placing the same arrow again stacks it, doubling its pull.</li>
+          <li>After each arrow, <strong>every game advances one half-move</strong>. Arrows act newest first: each pulls up to its current strength in games where it is a legal move; every other game plays Stockfish's best move. A new arrow starts at strength 8 and halves each round &mdash; 8 when placed (and on the opponent's reply), 4 around your next arrow, then 2, then 1, then it disappears. Placing the same arrow again adds 8 and resets its decay.</li>
           <li><strong>Checkmate scores a point</strong> for the player whose side delivered it. Draws score nothing. Finished games leave the board.</li>
           <li>You win when your lead is bigger than the number of games still running. If everything finishes level, the match is a draw.</li>
           <li><strong>Solo mode:</strong> you place every arrow. After each one, both half-moves play out back to back &mdash; no opponent arrows, just you steering 100 Stockfish games.</li>

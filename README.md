@@ -23,13 +23,13 @@ Pieces from all active games are rendered on a single board with opacity proport
 
 ### Turns
 
-Players alternate turns. Who plays white and who goes first are both chosen from the match seed at the start of the match.
+Players alternate turns. Who plays white is chosen from the match seed at the start of the match; the white owner also places the first arrow, since turn 1 resolves white's half-move in every game. (Solo mode overrides this: you place every arrow regardless of which color you own.)
 
 On your turn, you place exactly one arrow from any origin square to any destination square on the unified board. You may place an arrow on top of an existing arrow to stack it; stacking adds 8 to that arrow's cardinality and refreshes its decay from the current turn.
 
 Arrow placement is only allowed through turn 100. After that, the match plays out automatically with Stockfish and no further arrows can be placed.
 
-Arrows decay over time. Each arrow has a cardinality (starting at 8) that halves each turn after it was last placed or stacked; when it reaches zero the arrow is removed. On the placement turn an arrow with cardinality 8 pulls up to 8 games, then 4, 2, 1, then gone.
+Arrows decay over time. Each arrow has a cardinality (starting at 8) that halves once per full round (two half-moves) after it was last placed or stacked; when it reaches zero the arrow is removed. A fresh arrow pulls up to 8 games on its placement turn and on the opponent's reply, up to 4 around the owner's next arrow, then 2, then 1, then gone.
 
 ### Resolution
 
@@ -37,7 +37,7 @@ After each arrow placement, all active games advance by one half-move (one ply) 
 
 1. **Apply arrows**
    - Arrows are processed from most recently placed or stacked to least recent.
-   - For each arrow: pull up to its current decay weight (cardinality halved each turn since it was last placed or stacked) in games, each time selecting one game at random from the set of active games that has not yet advanced this turn and for which the arrow is a legal move for the side whose turn it is.
+   - For each arrow: pull up to its current decay weight (cardinality halved once per round since it was last placed or stacked) in games, each time selecting one game at random from the set of active games that has not yet advanced this turn and for which the arrow is a legal move for the side whose turn it is.
    - An arrow placed on the unified board is interpreted through the vertical flip when the black owner places it, so the same visual arrow represents the same positional idea for both players.
    - If a matching game exists, that move is made and the game is marked as advanced for this turn. Pawn promotion is always to queen. Castling and en passant are legal per standard chess rules.
 2. **Stockfish fallback**
