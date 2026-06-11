@@ -1,4 +1,6 @@
-import { joinRoom as joinNostrRoom } from 'trystero'
+import { joinRoom as joinNostrRoom, selfId } from 'trystero'
+import { joinRoom as joinMqttRoom } from 'trystero/mqtt'
+import { getRelaySockets as getMqttRelaySockets } from 'trystero/mqtt'
 import { getRelaySockets as getNostrRelaySockets } from 'trystero/nostr'
 import { joinRoom as joinTorrentRoom } from 'trystero/torrent'
 import { getRelaySockets as getTorrentRelaySockets } from 'trystero/torrent'
@@ -10,38 +12,31 @@ import {
 } from '../ports/transport'
 
 const DEFAULT_APP_ID = 'centurion-chess-chat-lab-v1'
-const GUEST_CONNECT_ATTEMPT_MS = 25_000
-const GUEST_MAX_CONNECT_ATTEMPTS = 3
+const GUEST_CONNECT_ATTEMPT_MS = 35_000
+const GUEST_MAX_CONNECT_ATTEMPTS = 5
+const GUEST_TIMER_WARMUP_MS = 6_000
 const RELAY_STATUS_INTERVAL_MS = 5_000
 const ICE_STATUS_INTERVAL_MS = 4_000
 
-type SignallingChannel = 'torrent' | 'nostr'
+type SignallingChannel = 'mqtt' | 'torrent' | 'nostr'
 type Room = ReturnType<typeof joinNostrRoom>
 type Sender = (data: unknown, targetPeers?: readonly string[]) => void
 
 /**
- * BitTorrent WebSocket trackers announce pre-built WebRTC offers immediately,
- * which is much faster and more reliable than waiting for Nostr peer discovery.
+ * One shared MQTT broker — both peers must see the same pub/sub bus. This is
+ * the most reliable path on mobile networks.
  */
-/** Verified live WebSocket trackers (others in Trystero defaults are dead or hang). */
-const TRACKER_URLS = [
-  'wss://tracker.openwebtorrent.com',
-  'wss://tracker.btorrent.xyz',
-]
+const MQTT_BROKER_URLS = ['wss://broker.emqx.io:8084/mqtt']
 
-/**
- * Nostr relays as a secondary signalling path. Trystero otherwise derives a
- * subset of its default relay list from the appId, and that subset is largely
- * dead. Both peers always use the same curated list.
- */
+/** Single tracker so host and guest cannot land on different trackers. */
+const TRACKER_URLS = ['wss://tracker.openwebtorrent.com']
+
+/** Small Nostr set as a tertiary path (large lists slow mobile connect). */
 const NOSTR_RELAY_URLS = [
   'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://relay.primal.net',
   'wss://offchain.pub',
-  'wss://relay.fountain.fm',
-  'wss://nostr.mom',
-  'wss://purplepag.es',
 ]
 
 const TURN_CONFIG: RTCIceServer[] = [
@@ -89,8 +84,15 @@ const CHANNEL_CONFIG: ReadonlyArray<{
   readonly getSockets: () => Record<string, WebSocket>
 }> = [
   {
+    channel: 'mqtt',
+    label: 'MQTT broker',
+    join: joinMqttRoom as JoinRoomFn,
+    relayUrls: MQTT_BROKER_URLS,
+    getSockets: getMqttRelaySockets,
+  },
+  {
     channel: 'torrent',
-    label: 'BitTorrent trackers',
+    label: 'BitTorrent tracker',
     join: joinTorrentRoom as JoinRoomFn,
     relayUrls: TRACKER_URLS,
     getSockets: getTorrentRelaySockets,
@@ -117,6 +119,10 @@ function summarizeIceStates(peers: Record<string, RTCPeerConnection>): string {
     .join('; ')
 }
 
+function socketEndpoint(url: string): string {
+  return url.replace(/^wss?:\/\//, '').split('/')[0] ?? url
+}
+
 function summarizeSocketHealth(
   label: string,
   sockets: Record<string, WebSocket>,
@@ -125,10 +131,20 @@ function summarizeSocketHealth(
   if (entries.length === 0) {
     return `${label}: none connected yet`
   }
-  const openCount = entries.filter(
-    ([, socket]) => socket.readyState === WebSocket.OPEN,
-  ).length
-  return `${label}: ${openCount}/${entries.length} open`
+  const open = entries
+    .filter(([, socket]) => socket.readyState === WebSocket.OPEN)
+    .map(([url]) => socketEndpoint(url))
+  const pending = entries
+    .filter(([, socket]) => socket.readyState !== WebSocket.OPEN)
+    .map(([url]) => socketEndpoint(url))
+  const parts = [`${open.length}/${entries.length} open`]
+  if (open.length > 0) {
+    parts.push(`up: ${open.join(', ')}`)
+  }
+  if (pending.length > 0) {
+    parts.push(`pending: ${pending.join(', ')}`)
+  }
+  return `${label}: ${parts.join('; ')}`
 }
 
 export class TrysteroTransportAdapter implements TransportPort {
@@ -139,6 +155,7 @@ export class TrysteroTransportAdapter implements TransportPort {
   private currentStatus: TransportStatus = 'disconnected'
   private readonly appId: string
   private guestConnectTimer: ReturnType<typeof setTimeout> | null = null
+  private guestWarmupTimer: ReturnType<typeof setTimeout> | null = null
   private relayStatusTimer: ReturnType<typeof setInterval> | null = null
   private iceStatusTimer: ReturnType<typeof setInterval> | null = null
   private guestConnectAttempt = 0
@@ -212,7 +229,7 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   private async teardownRooms(): Promise<void> {
-    this.clearGuestConnectTimer()
+    this.clearGuestTimers()
     this.clearMonitoringTimers()
     this.openGeneration += 1
     const rooms = [...this.rooms.values()]
@@ -225,10 +242,14 @@ export class TrysteroTransportAdapter implements TransportPort {
     await this.leavePromise
   }
 
-  private clearGuestConnectTimer(): void {
+  private clearGuestTimers(): void {
     if (this.guestConnectTimer !== null) {
       clearTimeout(this.guestConnectTimer)
       this.guestConnectTimer = null
+    }
+    if (this.guestWarmupTimer !== null) {
+      clearTimeout(this.guestWarmupTimer)
+      this.guestWarmupTimer = null
     }
   }
 
@@ -244,27 +265,34 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   private startGuestConnectTimer(): void {
-    this.clearGuestConnectTimer()
+    this.clearGuestTimers()
     const attempt = this.guestConnectAttempt + 1
-    this.guestConnectTimer = setTimeout(() => {
-      this.guestConnectTimer = null
+    this.guestWarmupTimer = setTimeout(() => {
+      this.guestWarmupTimer = null
       if (this.isHost || this.currentStatus !== 'connecting') {
         return
       }
-      if (attempt < GUEST_MAX_CONNECT_ATTEMPTS) {
+      this.logRelayStatus()
+      this.guestConnectTimer = setTimeout(() => {
+        this.guestConnectTimer = null
+        if (this.isHost || this.currentStatus !== 'connecting') {
+          return
+        }
+        if (attempt < GUEST_MAX_CONNECT_ATTEMPTS) {
+          this.log(
+            `WebRTC handshake timed out (${GUEST_CONNECT_ATTEMPT_MS / 1000}s, attempt ${attempt}/${GUEST_MAX_CONNECT_ATTEMPTS}). Retrying…`,
+          )
+          this.guestConnectAttempt = attempt
+          void this.retryGuestConnect()
+          return
+        }
         this.log(
-          `WebRTC handshake timed out (${GUEST_CONNECT_ATTEMPT_MS / 1000}s, attempt ${attempt}/${GUEST_MAX_CONNECT_ATTEMPTS}). Retrying…`,
+          `Timed out waiting for WebRTC peer connection after ${GUEST_MAX_CONNECT_ATTEMPTS} attempts. Confirm the host is still waiting and try Wi‑Fi.`,
         )
-        this.guestConnectAttempt = attempt
-        void this.retryGuestConnect()
-        return
-      }
-      this.log(
-        `Timed out waiting for WebRTC peer connection after ${GUEST_MAX_CONNECT_ATTEMPTS} attempts. Confirm the host is still waiting and try Wi‑Fi.`,
-      )
-      this.setStatus('error')
-      void this.teardownRooms()
-    }, GUEST_CONNECT_ATTEMPT_MS)
+        this.setStatus('error')
+        void this.teardownRooms()
+      }, GUEST_CONNECT_ATTEMPT_MS)
+    }, GUEST_TIMER_WARMUP_MS)
   }
 
   private async retryGuestConnect(): Promise<void> {
@@ -345,7 +373,7 @@ export class TrysteroTransportAdapter implements TransportPort {
     }
 
     this.log(
-      `Opening match room id=${roomId} via BitTorrent trackers + Nostr relays${attemptLabel}`,
+      `Opening match room id=${roomId} (peer ${selfId}) via MQTT + tracker + Nostr${attemptLabel}`,
     )
 
     for (const { channel, label, join, relayUrls } of CHANNEL_CONFIG) {
@@ -390,7 +418,7 @@ export class TrysteroTransportAdapter implements TransportPort {
     this.startGuestMonitoring()
 
     this.log(
-      'Guest waiting for host via trackers and Nostr (host must still be on the waiting screen).',
+      'Guest waiting for host (host must still be on the waiting screen with this code).',
     )
     this.startGuestConnectTimer()
   }
@@ -416,7 +444,7 @@ export class TrysteroTransportAdapter implements TransportPort {
 
       this.activeChannel = channel
       this.sendFn = send as Sender
-      this.clearGuestConnectTimer()
+      this.clearGuestTimers()
       this.clearMonitoringTimers()
       this.log(`${label}: peer joined (${peerId})`)
       this.setStatus('connected')

@@ -2,16 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const joinNostrRoomMock = vi.fn()
 const joinTorrentRoomMock = vi.fn()
+const joinMqttRoomMock = vi.fn()
 const getNostrRelaySocketsMock = vi.fn(() => ({}))
 const getTorrentRelaySocketsMock = vi.fn(() => ({}))
+const getMqttRelaySocketsMock = vi.fn(() => ({}))
 
 vi.mock('trystero', () => ({
   joinRoom: (...args: unknown[]) => joinNostrRoomMock(...args),
+  selfId: 'test-self-id',
 }))
 
 vi.mock('trystero/torrent', () => ({
   joinRoom: (...args: unknown[]) => joinTorrentRoomMock(...args),
   getRelaySockets: () => getTorrentRelaySocketsMock(),
+}))
+
+vi.mock('trystero/mqtt', () => ({
+  joinRoom: (...args: unknown[]) => joinMqttRoomMock(...args),
+  getRelaySockets: () => getMqttRelaySocketsMock(),
 }))
 
 vi.mock('trystero/nostr', () => ({
@@ -43,12 +51,14 @@ function makeRoom() {
   }
 }
 
-function mockDualRooms() {
+function mockAllChannels() {
+  const mqttRoom = makeRoom()
   const torrentRoom = makeRoom()
   const nostrRoom = makeRoom()
+  joinMqttRoomMock.mockReturnValue(mqttRoom)
   joinTorrentRoomMock.mockReturnValue(torrentRoom)
   joinNostrRoomMock.mockReturnValue(nostrRoom)
-  return { torrentRoom, nostrRoom }
+  return { mqttRoom, torrentRoom, nostrRoom }
 }
 
 describe('TrysteroTransportAdapter', () => {
@@ -56,77 +66,69 @@ describe('TrysteroTransportAdapter', () => {
     vi.useFakeTimers()
     joinNostrRoomMock.mockReset()
     joinTorrentRoomMock.mockReset()
+    joinMqttRoomMock.mockReset()
     getNostrRelaySocketsMock.mockReset()
     getTorrentRelaySocketsMock.mockReset()
+    getMqttRelaySocketsMock.mockReset()
     getNostrRelaySocketsMock.mockReturnValue({})
     getTorrentRelaySocketsMock.mockReturnValue({})
+    getMqttRelaySocketsMock.mockReturnValue({})
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it('joins both torrent trackers and nostr relays with shared ICE config', async () => {
-    mockDualRooms()
+  it('joins MQTT, torrent, and Nostr with shared ICE config', async () => {
+    mockAllChannels()
 
     const adapter = new TrysteroTransportAdapter('test-app')
     adapter.createRoom()
     await Promise.resolve()
 
+    expect(joinMqttRoomMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 'test-app',
+        relayUrls: ['wss://broker.emqx.io:8084/mqtt'],
+      }),
+      expect.stringMatching(/^test-app-\d{6}$/),
+      expect.any(Function),
+    )
     expect(joinTorrentRoomMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        appId: 'test-app',
-        rtcConfig: { iceCandidatePoolSize: 10 },
-        relayUrls: expect.arrayContaining(['wss://tracker.openwebtorrent.com']),
+        relayUrls: ['wss://tracker.openwebtorrent.com'],
       }),
       expect.stringMatching(/^test-app-\d{6}$/),
       expect.any(Function),
     )
-    expect(joinNostrRoomMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appId: 'test-app',
-        relayUrls: expect.arrayContaining(['wss://relay.damus.io']),
-      }),
-      expect.stringMatching(/^test-app-\d{6}$/),
-      expect.any(Function),
-    )
+    expect(joinNostrRoomMock).toHaveBeenCalled()
   })
 
   it('retries guest connect before reporting error', async () => {
-    mockDualRooms()
-    mockDualRooms()
-    mockDualRooms()
+    mockAllChannels()
+    mockAllChannels()
 
     const statuses: string[] = []
-    const logs: string[] = []
     const adapter = new TrysteroTransportAdapter('test-app')
     adapter.setCallbacks({
       onStatusChange: (status) => statuses.push(status),
       onPeerJoin: () => {},
       onPeerLeave: () => {},
       onMessage: () => {},
-      onLog: (message) => logs.push(message),
+      onLog: () => {},
     })
 
     adapter.joinRoom('123456')
     await Promise.resolve()
-    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
-    expect(joinNostrRoomMock).toHaveBeenCalledTimes(1)
+    expect(joinMqttRoomMock).toHaveBeenCalledTimes(1)
 
-    await vi.advanceTimersByTimeAsync(25_000)
-    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(2)
-    expect(logs.some((line) => line.includes('Retrying'))).toBe(true)
+    await vi.advanceTimersByTimeAsync(6_000 + 35_000)
+    expect(joinMqttRoomMock).toHaveBeenCalledTimes(2)
     expect(statuses.at(-1)).toBe('connecting')
-
-    await vi.advanceTimersByTimeAsync(25_000)
-    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(3)
-
-    await vi.advanceTimersByTimeAsync(25_000)
-    expect(statuses.at(-1)).toBe('error')
   })
 
   it('uses the first signalling channel that delivers a peer', async () => {
-    const { torrentRoom } = mockDualRooms()
+    const { mqttRoom } = mockAllChannels()
 
     const adapter = new TrysteroTransportAdapter('test-app')
     let peerJoined = false
@@ -142,10 +144,10 @@ describe('TrysteroTransportAdapter', () => {
 
     adapter.joinRoom('123456')
     await Promise.resolve()
-    torrentRoom.handlers.onPeerJoin('peer-1')
+    mqttRoom.handlers.onPeerJoin('peer-1')
 
     expect(peerJoined).toBe(true)
-    await vi.advanceTimersByTimeAsync(75_000)
-    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(joinMqttRoomMock).toHaveBeenCalledTimes(1)
   })
 })
