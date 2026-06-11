@@ -184,10 +184,11 @@
     <details id="centurion-connection-log-panel" class="centurion-connection-log panel" open>
       <summary>Connection log</summary>
       <p class="centurion-connection-log-hint">
-        Multiplayer uses Trystero over Nostr relays and WebRTC. Host should reach
-        <strong>waiting</strong>; guest should reach <strong>connected</strong> then
-        <strong>Peer joined</strong>. Guests retry automatically up to three times.
-        If it still fails, try Wi‑Fi, disable VPN, or confirm the host is still waiting.
+        Multiplayer uses Trystero over BitTorrent trackers, Nostr relays, and WebRTC.
+        Host should reach <strong>waiting</strong> and keep this page open; guest should
+        reach <strong>connected</strong> then <strong>Peer joined</strong>. Guests retry
+        automatically up to three times. If it still fails, confirm the host is still
+        waiting with the same code, then try Wi‑Fi or disable VPN.
       </p>
       <ol id="centurion-connection-log-list" class="centurion-connection-log-list"></ol>
       <button type="button" class="btn btn-outline" id="centurion-connection-log-clear">Clear log</button>

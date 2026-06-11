@@ -1,5 +1,7 @@
-import { joinRoom } from 'trystero'
-import { getRelaySockets } from 'trystero/nostr'
+import { joinRoom as joinNostrRoom } from 'trystero'
+import { getRelaySockets as getNostrRelaySockets } from 'trystero/nostr'
+import { joinRoom as joinTorrentRoom } from 'trystero/torrent'
+import { getRelaySockets as getTorrentRelaySockets } from 'trystero/torrent'
 import {
   NOOP_TRANSPORT_CALLBACKS,
   type TransportCallbacks,
@@ -8,33 +10,40 @@ import {
 } from '../ports/transport'
 
 const DEFAULT_APP_ID = 'centurion-chess-chat-lab-v1'
-const GUEST_CONNECT_ATTEMPT_MS = 20_000
+const GUEST_CONNECT_ATTEMPT_MS = 25_000
 const GUEST_MAX_CONNECT_ATTEMPTS = 3
 const RELAY_STATUS_INTERVAL_MS = 5_000
 const ICE_STATUS_INTERVAL_MS = 4_000
 
+type SignallingChannel = 'torrent' | 'nostr'
+type Room = ReturnType<typeof joinNostrRoom>
+type Sender = (data: unknown, targetPeers?: readonly string[]) => void
+
 /**
- * Explicit signalling relays. Trystero otherwise derives a subset of its
- * default relay list from the appId, and the subset our appIds land on
- * is largely dead (expired certs, defunct hosts), which made matchmaking
- * silently hang. These are large, long-lived public relays; both peers
- * always use the same list.
+ * BitTorrent WebSocket trackers announce pre-built WebRTC offers immediately,
+ * which is much faster and more reliable than waiting for Nostr peer discovery.
  */
-const RELAY_URLS = [
+const TRACKER_URLS = [
+  'wss://tracker.webtorrent.dev',
+  'wss://tracker.openwebtorrent.com',
+  'wss://tracker.btorrent.xyz',
+]
+
+/**
+ * Nostr relays as a secondary signalling path. Trystero otherwise derives a
+ * subset of its default relay list from the appId, and that subset is largely
+ * dead. Both peers always use the same curated list.
+ */
+const NOSTR_RELAY_URLS = [
   'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://relay.primal.net',
   'wss://offchain.pub',
   'wss://relay.fountain.fm',
   'wss://nostr.mom',
-  'wss://relay.nostr.band',
   'wss://purplepag.es',
 ]
 
-/**
- * Public STUN/TURN for networks that block direct WebRTC (mobile CGNAT, VPN,
- * corporate firewalls). Includes TURNS (TLS) and TCP transports for strict NAT.
- */
 const TURN_CONFIG: RTCIceServer[] = [
   {
     urls: 'stun:openrelay.metered.ca:80',
@@ -56,23 +65,44 @@ const RTC_CONFIG: RTCConfiguration = {
   iceCandidatePoolSize: 10,
 }
 
-type Room = ReturnType<typeof joinRoom>
-type Sender = (data: unknown, targetPeers?: readonly string[]) => void
+type JoinRoomFn = (
+  config: {
+    appId: string
+    turnConfig: RTCIceServer[]
+    rtcConfig: RTCConfiguration
+    relayUrls: string[]
+  },
+  roomId: string,
+  onJoinError?: (details: {
+    error: string
+    appId: string
+    roomId: string
+    peerId: string
+  }) => void,
+) => Room
 
-function relayReadyStateLabel(readyState: number): string {
-  switch (readyState) {
-    case WebSocket.CONNECTING:
-      return 'connecting'
-    case WebSocket.OPEN:
-      return 'open'
-    case WebSocket.CLOSING:
-      return 'closing'
-    case WebSocket.CLOSED:
-      return 'closed'
-    default:
-      return `unknown(${readyState})`
-  }
-}
+const CHANNEL_CONFIG: ReadonlyArray<{
+  readonly channel: SignallingChannel
+  readonly label: string
+  readonly join: JoinRoomFn
+  readonly relayUrls: readonly string[]
+  readonly getSockets: () => Record<string, WebSocket>
+}> = [
+  {
+    channel: 'torrent',
+    label: 'BitTorrent trackers',
+    join: joinTorrentRoom as JoinRoomFn,
+    relayUrls: TRACKER_URLS,
+    getSockets: getTorrentRelaySockets,
+  },
+  {
+    channel: 'nostr',
+    label: 'Nostr relays',
+    join: joinNostrRoom as JoinRoomFn,
+    relayUrls: NOSTR_RELAY_URLS,
+    getSockets: getNostrRelaySockets,
+  },
+]
 
 function summarizeIceStates(peers: Record<string, RTCPeerConnection>): string {
   const entries = Object.entries(peers)
@@ -87,8 +117,23 @@ function summarizeIceStates(peers: Record<string, RTCPeerConnection>): string {
     .join('; ')
 }
 
+function summarizeSocketHealth(
+  label: string,
+  sockets: Record<string, WebSocket>,
+): string {
+  const entries = Object.entries(sockets)
+  if (entries.length === 0) {
+    return `${label}: none connected yet`
+  }
+  const openCount = entries.filter(
+    ([, socket]) => socket.readyState === WebSocket.OPEN,
+  ).length
+  return `${label}: ${openCount}/${entries.length} open`
+}
+
 export class TrysteroTransportAdapter implements TransportPort {
-  private room: Room | null = null
+  private rooms = new Map<SignallingChannel, Room>()
+  private activeChannel: SignallingChannel | null = null
   private sendFn: Sender | null = null
   private callbacks: TransportCallbacks = NOOP_TRANSPORT_CALLBACKS
   private currentStatus: TransportStatus = 'disconnected'
@@ -97,6 +142,8 @@ export class TrysteroTransportAdapter implements TransportPort {
   private relayStatusTimer: ReturnType<typeof setInterval> | null = null
   private iceStatusTimer: ReturnType<typeof setInterval> | null = null
   private guestConnectAttempt = 0
+  private leavePromise: Promise<void> = Promise.resolve()
+  private openGeneration = 0
 
   code = ''
   isHost = false
@@ -114,31 +161,31 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   createRoom(): string {
-    this.teardownRoom()
+    this.disconnect()
     this.code = TrysteroTransportAdapter.generateCode()
     this.isHost = true
     this.guestConnectAttempt = 0
     this.setStatus('connecting')
-    this.openRoom()
+    void this.openRoom()
     return this.code
   }
 
   hostRoom(code: string): void {
-    this.teardownRoom()
+    this.disconnect()
     this.code = code
     this.isHost = true
     this.guestConnectAttempt = 0
     this.setStatus('connecting')
-    this.openRoom()
+    void this.openRoom()
   }
 
   joinRoom(code: string): void {
-    this.teardownRoom()
+    this.disconnect()
     this.code = code
     this.isHost = false
     this.guestConnectAttempt = 0
     this.setStatus('connecting')
-    this.openRoom()
+    void this.openRoom()
   }
 
   send(data: unknown): void {
@@ -146,23 +193,36 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   disconnect(): void {
-    this.teardownRoom()
+    void this.teardownRooms()
     this.currentStatus = 'disconnected'
     this.code = ''
     this.isHost = false
     this.guestConnectAttempt = 0
+    this.activeChannel = null
+    this.sendFn = null
   }
 
   private log(message: string): void {
     this.callbacks.onLog?.(message)
   }
 
-  private teardownRoom(): void {
+  private scheduleLeave(room: Room): Promise<void> {
+    this.leavePromise = this.leavePromise.then(() => room.leave())
+    return this.leavePromise
+  }
+
+  private async teardownRooms(): Promise<void> {
     this.clearGuestConnectTimer()
     this.clearMonitoringTimers()
-    this.room?.leave()
-    this.room = null
+    this.openGeneration += 1
+    const rooms = [...this.rooms.values()]
+    this.rooms.clear()
+    this.activeChannel = null
     this.sendFn = null
+    for (const room of rooms) {
+      await this.scheduleLeave(room)
+    }
+    await this.leavePromise
   }
 
   private clearGuestConnectTimer(): void {
@@ -196,23 +256,20 @@ export class TrysteroTransportAdapter implements TransportPort {
           `WebRTC handshake timed out (${GUEST_CONNECT_ATTEMPT_MS / 1000}s, attempt ${attempt}/${GUEST_MAX_CONNECT_ATTEMPTS}). Retrying…`,
         )
         this.guestConnectAttempt = attempt
-        this.retryGuestConnect()
+        void this.retryGuestConnect()
         return
       }
       this.log(
-        `Timed out waiting for WebRTC peer connection after ${GUEST_MAX_CONNECT_ATTEMPTS} attempts. Try another network or disable VPN.`,
+        `Timed out waiting for WebRTC peer connection after ${GUEST_MAX_CONNECT_ATTEMPTS} attempts. Confirm the host is still waiting and try Wi‑Fi.`,
       )
       this.setStatus('error')
-      this.teardownRoom()
+      void this.teardownRooms()
     }, GUEST_CONNECT_ATTEMPT_MS)
   }
 
-  private retryGuestConnect(): void {
-    this.clearMonitoringTimers()
-    this.room?.leave()
-    this.room = null
-    this.sendFn = null
-    this.openRoom()
+  private async retryGuestConnect(): Promise<void> {
+    await this.teardownRooms()
+    await this.openRoom()
   }
 
   private setStatus(status: TransportStatus): void {
@@ -221,26 +278,23 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   private logRelayStatus(): void {
-    const sockets = getRelaySockets()
-    const entries = Object.entries(sockets)
-    if (entries.length === 0) {
-      this.log('Nostr relays: none connected yet.')
-      return
+    for (const { label, getSockets } of CHANNEL_CONFIG) {
+      this.log(summarizeSocketHealth(label, getSockets()))
     }
-    const openCount = entries.filter(
-      ([, socket]) => (socket as WebSocket).readyState === WebSocket.OPEN,
-    ).length
-    this.log(
-      `Nostr relays: ${openCount}/${entries.length} open (${entries.map(([url, socket]) => `${url.split('//')[1]}:${relayReadyStateLabel((socket as WebSocket).readyState)}`).join(', ')})`,
-    )
   }
 
   private logIceStatus(): void {
-    if (!this.room || this.currentStatus !== 'connecting') {
+    if (this.currentStatus !== 'connecting') {
       return
     }
-    const peers = this.room.getPeers()
-    this.log(`WebRTC negotiation: ${summarizeIceStates(peers)}`)
+    const summaries = CHANNEL_CONFIG.map(({ channel, label }) => {
+      const room = this.rooms.get(channel)
+      if (!room) {
+        return `${label}: not joined`
+      }
+      return `${label}: ${summarizeIceStates(room.getPeers())}`
+    })
+    this.log(`WebRTC negotiation — ${summaries.join(' | ')}`)
   }
 
   private startMonitoring(): void {
@@ -261,74 +315,122 @@ export class TrysteroTransportAdapter implements TransportPort {
     }
   }
 
-  private openRoom(): void {
+  private async openRoom(): Promise<void> {
+    await this.leavePromise
     const roomId = `${this.appId}-${this.code}`
+    const generation = this.openGeneration
     const attemptLabel =
       !this.isHost && this.guestConnectAttempt > 0
         ? ` (retry ${this.guestConnectAttempt + 1}/${GUEST_MAX_CONNECT_ATTEMPTS})`
         : ''
 
-    try {
-      this.room = joinRoom(
-        {
-          appId: this.appId,
-          turnConfig: TURN_CONFIG,
-          rtcConfig: RTC_CONFIG,
-          relayUrls: RELAY_URLS,
-        },
-        roomId,
-        (details) => {
-          this.log(
-            `Trystero join error (peer ${details.peerId}): ${details.error}`,
-          )
-          if (!this.isHost && this.currentStatus === 'connecting') {
-            this.setStatus('error')
-          }
-        },
-      )
-    } catch (error: unknown) {
-      this.log(
-        `Trystero joinRoom threw: ${error instanceof Error ? error.message : String(error)}`,
-      )
+    const joinConfig = {
+      appId: this.appId,
+      turnConfig: TURN_CONFIG,
+      rtcConfig: RTC_CONFIG,
+    }
+
+    this.log(
+      `Opening match room id=${roomId} via BitTorrent trackers + Nostr relays${attemptLabel}`,
+    )
+
+    for (const { channel, label, join, relayUrls } of CHANNEL_CONFIG) {
+      try {
+        const room = join(
+          { ...joinConfig, relayUrls: [...relayUrls] },
+          roomId,
+          (details) => {
+            this.log(
+              `${label} join error (peer ${details.peerId}): ${details.error}`,
+            )
+            if (!this.isHost && this.currentStatus === 'connecting') {
+              this.setStatus('error')
+            }
+          },
+        )
+        if (generation !== this.openGeneration) {
+          await room.leave()
+          continue
+        }
+        this.rooms.set(channel, room)
+        this.wireRoom(room, channel, label)
+        this.log(`${label}: joined room`)
+      } catch (error: unknown) {
+        this.log(
+          `${label} joinRoom threw: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+
+    if (this.rooms.size === 0) {
       this.setStatus('error')
       return
     }
 
-    this.log(`Joined Trystero room id=${roomId}${attemptLabel}`)
     this.startMonitoring()
-
-    const [send, receive] = this.room.makeAction('chat')
-    this.sendFn = send as Sender
-
-    receive((data: unknown) => {
-      this.callbacks.onMessage(data)
-    })
-
-    this.room.onPeerJoin((peerId) => {
-      this.clearGuestConnectTimer()
-      this.clearMonitoringTimers()
-      this.log(`Trystero onPeerJoin: peer ${peerId}`)
-      this.setStatus('connected')
-      this.callbacks.onPeerJoin()
-    })
-
-    this.room.onPeerLeave((peerId) => {
-      this.log(`Trystero onPeerLeave: peer ${peerId}`)
-      this.setStatus(this.isHost ? 'waiting' : 'disconnected')
-      this.callbacks.onPeerLeave()
-    })
 
     if (this.isHost) {
       this.setStatus('waiting')
-      this.log('Host room ready; waiting for guest to connect.')
+      this.log(
+        'Host room ready; waiting for guest. Keep this page open until they join.',
+      )
       this.clearMonitoringTimers()
       return
     }
 
     this.log(
-      'Guest waiting for WebRTC handshake (needs open Nostr relays + peer route).',
+      'Guest waiting for host via trackers and Nostr (host must still be on the waiting screen).',
     )
     this.startGuestConnectTimer()
+  }
+
+  private wireRoom(
+    room: Room,
+    channel: SignallingChannel,
+    label: string,
+  ): void {
+    const [send, receive] = room.makeAction('chat')
+
+    receive((data: unknown) => {
+      if (this.activeChannel !== null && this.activeChannel !== channel) {
+        return
+      }
+      this.callbacks.onMessage(data)
+    })
+
+    room.onPeerJoin((peerId) => {
+      if (this.activeChannel !== null && this.activeChannel !== channel) {
+        return
+      }
+
+      this.activeChannel = channel
+      this.sendFn = send as Sender
+      this.clearGuestConnectTimer()
+      this.clearMonitoringTimers()
+      this.log(`${label}: peer joined (${peerId})`)
+      this.setStatus('connected')
+
+      for (const [otherChannel, otherRoom] of this.rooms) {
+        if (otherChannel === channel) {
+          continue
+        }
+        this.rooms.delete(otherChannel)
+        void this.scheduleLeave(otherRoom)
+      }
+
+      this.callbacks.onPeerJoin()
+    })
+
+    room.onPeerLeave((peerId) => {
+      if (this.activeChannel !== null && this.activeChannel !== channel) {
+        return
+      }
+      this.log(`${label}: peer left (${peerId})`)
+      this.activeChannel = null
+      this.sendFn = null
+      this.setStatus(this.isHost ? 'waiting' : 'disconnected')
+      this.callbacks.onPeerLeave()
+    })
   }
 
   private static generateCode(): string {
