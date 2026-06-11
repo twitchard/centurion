@@ -184,12 +184,11 @@
     <details id="centurion-connection-log-panel" class="centurion-connection-log panel" open>
       <summary>Connection log</summary>
       <p class="centurion-connection-log-hint">
-        Multiplayer uses Trystero over BitTorrent trackers, Nostr relays, and WebRTC.
-        Host should reach <strong>waiting</strong> and keep this page open; guest should
-        reach <strong>connected</strong> then <strong>Peer joined</strong>. Guests retry
-        automatically up to three times. Both players need the latest build (see the
-        build id in the log). Hard-refresh each browser, confirm the host is still
-        waiting with the same code, then try Wi‑Fi or disable VPN.
+        Multiplayer uses Trystero over an MQTT broker, a BitTorrent tracker, Nostr
+        relays, and WebRTC. Host should reach <strong>waiting</strong> and keep this page
+        open; guest should reach <strong>connected</strong> then <strong>Peer joined</strong>.
+        Check the log for <strong>MQTT broker: 1/1 open</strong> on both devices. Guests
+        retry automatically. Hard-refresh each browser if the build id looks stale.
       </p>
       <ol id="centurion-connection-log-list" class="centurion-connection-log-list"></ol>
       <button type="button" class="btn btn-outline" id="centurion-connection-log-clear">Clear log</button>
