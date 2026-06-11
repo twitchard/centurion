@@ -1034,7 +1034,7 @@ function renderCenturion(model: CenturionModel): void {
           : `Joining match ${model.code}...`
       return
     case 'waiting': {
-      const base = `New match created. Share code ${model.code} to invite your opponent.`
+      const base = `New match created. Share code ${model.code} to invite your opponent. Keep this page open until they join.`
       centurionStatusCopy.textContent =
         model.notice === null ? base : `${base} ${model.notice}`
       return
