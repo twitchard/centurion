@@ -8,7 +8,10 @@ import {
 } from '../ports/transport'
 
 const DEFAULT_APP_ID = 'centurion-chess-chat-lab-v1'
-const GUEST_CONNECT_TIMEOUT_MS = 45_000
+const GUEST_CONNECT_ATTEMPT_MS = 20_000
+const GUEST_MAX_CONNECT_ATTEMPTS = 3
+const RELAY_STATUS_INTERVAL_MS = 5_000
+const ICE_STATUS_INTERVAL_MS = 4_000
 
 /**
  * Explicit signalling relays. Trystero otherwise derives a subset of its
@@ -24,26 +27,34 @@ const RELAY_URLS = [
   'wss://offchain.pub',
   'wss://relay.fountain.fm',
   'wss://nostr.mom',
+  'wss://relay.nostr.band',
+  'wss://purplepag.es',
 ]
 
-/** Public TURN relay for networks that block direct WebRTC (e.g. mobile CGNAT). */
-const OPENRELAY_TURN = [
+/**
+ * Public STUN/TURN for networks that block direct WebRTC (mobile CGNAT, VPN,
+ * corporate firewalls). Includes TURNS (TLS) and TCP transports for strict NAT.
+ */
+const TURN_CONFIG: RTCIceServer[] = [
   {
-    urls: 'turn:openrelay.metered.ca:80',
+    urls: 'stun:openrelay.metered.ca:80',
+  },
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:80?transport=tcp',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+      'turns:openrelay.metered.ca:443',
+    ],
     username: 'openrelayproject',
     credential: 'openrelayproject',
   },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-] as const
+]
+
+const RTC_CONFIG: RTCConfiguration = {
+  iceCandidatePoolSize: 10,
+}
 
 type Room = ReturnType<typeof joinRoom>
 type Sender = (data: unknown, targetPeers?: readonly string[]) => void
@@ -63,6 +74,19 @@ function relayReadyStateLabel(readyState: number): string {
   }
 }
 
+function summarizeIceStates(peers: Record<string, RTCPeerConnection>): string {
+  const entries = Object.entries(peers)
+  if (entries.length === 0) {
+    return 'no peer negotiations yet'
+  }
+  return entries
+    .map(
+      ([id, pc]) =>
+        `${id.slice(0, 8)}… ice=${pc.iceConnectionState} conn=${pc.connectionState}`,
+    )
+    .join('; ')
+}
+
 export class TrysteroTransportAdapter implements TransportPort {
   private room: Room | null = null
   private sendFn: Sender | null = null
@@ -70,6 +94,9 @@ export class TrysteroTransportAdapter implements TransportPort {
   private currentStatus: TransportStatus = 'disconnected'
   private readonly appId: string
   private guestConnectTimer: ReturnType<typeof setTimeout> | null = null
+  private relayStatusTimer: ReturnType<typeof setInterval> | null = null
+  private iceStatusTimer: ReturnType<typeof setInterval> | null = null
+  private guestConnectAttempt = 0
 
   code = ''
   isHost = false
@@ -87,28 +114,31 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   createRoom(): string {
-    this.disconnect()
+    this.teardownRoom()
     this.code = TrysteroTransportAdapter.generateCode()
     this.isHost = true
+    this.guestConnectAttempt = 0
     this.setStatus('connecting')
-    this.connect()
+    this.openRoom()
     return this.code
   }
 
   hostRoom(code: string): void {
-    this.disconnect()
+    this.teardownRoom()
     this.code = code
     this.isHost = true
+    this.guestConnectAttempt = 0
     this.setStatus('connecting')
-    this.connect()
+    this.openRoom()
   }
 
   joinRoom(code: string): void {
-    this.disconnect()
+    this.teardownRoom()
     this.code = code
     this.isHost = false
+    this.guestConnectAttempt = 0
     this.setStatus('connecting')
-    this.connect()
+    this.openRoom()
   }
 
   send(data: unknown): void {
@@ -116,17 +146,23 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   disconnect(): void {
-    this.clearGuestConnectTimer()
-    this.room?.leave()
-    this.room = null
-    this.sendFn = null
+    this.teardownRoom()
     this.currentStatus = 'disconnected'
     this.code = ''
     this.isHost = false
+    this.guestConnectAttempt = 0
   }
 
   private log(message: string): void {
     this.callbacks.onLog?.(message)
+  }
+
+  private teardownRoom(): void {
+    this.clearGuestConnectTimer()
+    this.clearMonitoringTimers()
+    this.room?.leave()
+    this.room = null
+    this.sendFn = null
   }
 
   private clearGuestConnectTimer(): void {
@@ -136,21 +172,47 @@ export class TrysteroTransportAdapter implements TransportPort {
     }
   }
 
+  private clearMonitoringTimers(): void {
+    if (this.relayStatusTimer !== null) {
+      clearInterval(this.relayStatusTimer)
+      this.relayStatusTimer = null
+    }
+    if (this.iceStatusTimer !== null) {
+      clearInterval(this.iceStatusTimer)
+      this.iceStatusTimer = null
+    }
+  }
+
   private startGuestConnectTimer(): void {
     this.clearGuestConnectTimer()
+    const attempt = this.guestConnectAttempt + 1
     this.guestConnectTimer = setTimeout(() => {
       this.guestConnectTimer = null
       if (this.isHost || this.currentStatus !== 'connecting') {
         return
       }
+      if (attempt < GUEST_MAX_CONNECT_ATTEMPTS) {
+        this.log(
+          `WebRTC handshake timed out (${GUEST_CONNECT_ATTEMPT_MS / 1000}s, attempt ${attempt}/${GUEST_MAX_CONNECT_ATTEMPTS}). Retrying…`,
+        )
+        this.guestConnectAttempt = attempt
+        this.retryGuestConnect()
+        return
+      }
       this.log(
-        'Timed out waiting for WebRTC peer connection (45s). Try another network or disable VPN.',
+        `Timed out waiting for WebRTC peer connection after ${GUEST_MAX_CONNECT_ATTEMPTS} attempts. Try another network or disable VPN.`,
       )
       this.setStatus('error')
-      this.room?.leave()
-      this.room = null
-      this.sendFn = null
-    }, GUEST_CONNECT_TIMEOUT_MS)
+      this.teardownRoom()
+    }, GUEST_CONNECT_ATTEMPT_MS)
+  }
+
+  private retryGuestConnect(): void {
+    this.clearMonitoringTimers()
+    this.room?.leave()
+    this.room = null
+    this.sendFn = null
+    this.openRoom()
   }
 
   private setStatus(status: TransportStatus): void {
@@ -165,20 +227,53 @@ export class TrysteroTransportAdapter implements TransportPort {
       this.log('Nostr relays: none connected yet.')
       return
     }
-    for (const [url, socket] of entries) {
-      const readyState = (socket as WebSocket).readyState
-      this.log(`Nostr relay ${url}: ${relayReadyStateLabel(readyState)}`)
+    const openCount = entries.filter(
+      ([, socket]) => (socket as WebSocket).readyState === WebSocket.OPEN,
+    ).length
+    this.log(
+      `Nostr relays: ${openCount}/${entries.length} open (${entries.map(([url, socket]) => `${url.split('//')[1]}:${relayReadyStateLabel((socket as WebSocket).readyState)}`).join(', ')})`,
+    )
+  }
+
+  private logIceStatus(): void {
+    if (!this.room || this.currentStatus !== 'connecting') {
+      return
+    }
+    const peers = this.room.getPeers()
+    this.log(`WebRTC negotiation: ${summarizeIceStates(peers)}`)
+  }
+
+  private startMonitoring(): void {
+    this.clearMonitoringTimers()
+    setTimeout(() => this.logRelayStatus(), 2_000)
+    this.relayStatusTimer = setInterval(() => {
+      if (this.currentStatus !== 'connecting') {
+        this.clearMonitoringTimers()
+        return
+      }
+      this.logRelayStatus()
+    }, RELAY_STATUS_INTERVAL_MS)
+    if (!this.isHost) {
+      this.iceStatusTimer = setInterval(
+        () => this.logIceStatus(),
+        ICE_STATUS_INTERVAL_MS,
+      )
     }
   }
 
-  private connect(): void {
+  private openRoom(): void {
     const roomId = `${this.appId}-${this.code}`
+    const attemptLabel =
+      !this.isHost && this.guestConnectAttempt > 0
+        ? ` (retry ${this.guestConnectAttempt + 1}/${GUEST_MAX_CONNECT_ATTEMPTS})`
+        : ''
 
     try {
       this.room = joinRoom(
         {
           appId: this.appId,
-          turnConfig: [...OPENRELAY_TURN],
+          turnConfig: TURN_CONFIG,
+          rtcConfig: RTC_CONFIG,
           relayUrls: RELAY_URLS,
         },
         roomId,
@@ -199,8 +294,8 @@ export class TrysteroTransportAdapter implements TransportPort {
       return
     }
 
-    this.log(`Joined Trystero room id=${roomId}`)
-    window.setTimeout(() => this.logRelayStatus(), 2_000)
+    this.log(`Joined Trystero room id=${roomId}${attemptLabel}`)
+    this.startMonitoring()
 
     const [send, receive] = this.room.makeAction('chat')
     this.sendFn = send as Sender
@@ -211,6 +306,7 @@ export class TrysteroTransportAdapter implements TransportPort {
 
     this.room.onPeerJoin((peerId) => {
       this.clearGuestConnectTimer()
+      this.clearMonitoringTimers()
       this.log(`Trystero onPeerJoin: peer ${peerId}`)
       this.setStatus('connected')
       this.callbacks.onPeerJoin()
@@ -225,6 +321,7 @@ export class TrysteroTransportAdapter implements TransportPort {
     if (this.isHost) {
       this.setStatus('waiting')
       this.log('Host room ready; waiting for guest to connect.')
+      this.clearMonitoringTimers()
       return
     }
 
