@@ -437,7 +437,9 @@ canvas {
   display: block;
   margin: 0 auto 10px;
   width: auto;
+  max-width: 100%;
   height: clamp(120px, 24vh, 180px);
+  object-fit: contain;
   filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
   /* Gold halo lifts the dark piece off the dark basalt panel. */
   background: radial-gradient(
