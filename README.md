@@ -20,11 +20,13 @@ Multiplayer is serverless WebRTC. Two things have to succeed for a match to conn
 1. **Signalling** — the peers find each other through public BitTorrent WebSocket trackers and Nostr relays (both joined in parallel and kept open as redundant paths).
 2. **NAT traversal** — the browsers negotiate a direct connection via STUN. When both networks refuse direct traffic (cellular carriers, CGNAT, strict home routers), WebRTC needs a **TURN relay**, and there are no credential-free public TURN servers.
 
-Out of the box the app is STUN-only, which works for most home-network pairings but not all. To enable TURN, set `VITE_TURN_CREDENTIALS_URL` at build time to an endpoint that returns a JSON array of `RTCIceServer` objects:
+Out of the box the app is STUN-only, which works for most home-network pairings but not all. To enable TURN, configure one of these at build time:
 
-- Easiest (free): create a free [Metered](https://www.metered.ca/stun-turn) account (20 GB relay/month) and use its credentials URL: `https://<your-app>.metered.live/api/v1/turn/credentials?apiKey=<key>`.
-- For the GitHub Pages deploy, add that URL as a repository secret named `VITE_TURN_CREDENTIALS_URL`; the deploy workflow passes it to the build.
-- Locally: `VITE_TURN_CREDENTIALS_URL=… bun run dev`.
+- `VITE_METERED_API_KEY` — an API key for the project's free [Metered](https://www.metered.ca/stun-turn) account (app name `centurion`, 20 GB relay/month); the credentials URL is derived from it. This is what the GitHub Pages deploy uses, via a repository secret of the same name.
+- `VITE_TURN_CREDENTIALS_URL` — any endpoint that returns a JSON array of `RTCIceServer` objects; overrides the Metered key if both are set.
+- Locally: `VITE_METERED_API_KEY=… bun run dev`.
+
+Note that with a static deploy the value is baked into the published bundle, so it is visible to visitors; the only exposure is relay bandwidth on the free quota.
 
 If the endpoint is unreachable at room-open time the app logs it and falls back to STUN-only rather than failing.
 

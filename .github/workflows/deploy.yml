@@ -43,6 +43,7 @@ jobs:
         run: bun run build
         env:
           VITE_TURN_CREDENTIALS_URL: ${{ secrets.VITE_TURN_CREDENTIALS_URL }}
+          VITE_METERED_API_KEY: ${{ secrets.VITE_METERED_API_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

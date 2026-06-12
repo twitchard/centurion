@@ -260,6 +260,27 @@ describe('TrysteroTransportAdapter', () => {
     vi.unstubAllGlobals()
   })
 
+  it('derives the Metered credentials URL from VITE_METERED_API_KEY', async () => {
+    mockDualRooms()
+    vi.stubEnv('VITE_METERED_API_KEY', 'test-key')
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => [],
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = new TrysteroTransportAdapter('test-app')
+    adapter.createRoom()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://centurion.metered.live/api/v1/turn/credentials?apiKey=test-key',
+      expect.anything(),
+    )
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
   it('continues STUN-only when the TURN credentials fetch fails', async () => {
     mockDualRooms()
     vi.stubGlobal(

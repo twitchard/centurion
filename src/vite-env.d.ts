@@ -7,6 +7,11 @@ interface ImportMetaEnv {
    * multiplayer is STUN-only and fails on NATs that require a relay.
    */
   readonly VITE_TURN_CREDENTIALS_URL?: string
+  /**
+   * Alternative to VITE_TURN_CREDENTIALS_URL: a Metered API key for the
+   * "centurion" Metered app, from which the credentials URL is derived.
+   */
+  readonly VITE_METERED_API_KEY?: string
 }
 
 declare const __MULTIPLAYER_BUILD_ID__: string

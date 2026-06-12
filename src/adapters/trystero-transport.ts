@@ -54,6 +54,23 @@ const NOSTR_RELAY_URLS = [
  * a JSON array of RTCIceServer objects. Without it the app is STUN-only.
  */
 const TURN_FETCH_TIMEOUT_MS = 5_000
+const METERED_APP_SUBDOMAIN = 'centurion'
+
+/**
+ * An explicit credentials URL wins; otherwise a Metered API key (free tier)
+ * selects that Metered app's standard credentials endpoint.
+ */
+function defaultTurnCredentialsUrl(): string | undefined {
+  const explicitUrl = import.meta.env.VITE_TURN_CREDENTIALS_URL?.trim()
+  if (explicitUrl) {
+    return explicitUrl
+  }
+  const meteredApiKey = import.meta.env.VITE_METERED_API_KEY?.trim()
+  if (meteredApiKey) {
+    return `https://${METERED_APP_SUBDOMAIN}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(meteredApiKey)}`
+  }
+  return undefined
+}
 
 function isIceServer(value: unknown): value is RTCIceServer {
   if (typeof value !== 'object' || value === null || !('urls' in value)) {
@@ -173,8 +190,7 @@ export class TrysteroTransportAdapter implements TransportPort {
 
   constructor(
     appId: string = DEFAULT_APP_ID,
-    turnCredentialsUrl: string | undefined = import.meta.env
-      .VITE_TURN_CREDENTIALS_URL,
+    turnCredentialsUrl: string | undefined = defaultTurnCredentialsUrl(),
   ) {
     this.appId = appId
     const trimmed = turnCredentialsUrl?.trim()
