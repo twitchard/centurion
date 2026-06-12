@@ -127,7 +127,15 @@ type Listener = (event: FakeEvent) => void
 interface FakeEvent {
   readonly target: FakeElement
   readonly key?: string
+  readonly clientX?: number
+  readonly clientY?: number
   preventDefault(): void
+}
+
+interface FakeEventInit {
+  readonly key?: string
+  readonly clientX?: number
+  readonly clientY?: number
 }
 
 interface FakeStyle extends Record<string, string> {
@@ -294,14 +302,14 @@ class FakeElement {
     this.dispatch('click')
   }
 
-  dispatch(type: string, key?: string): void {
+  dispatch(type: string, init: FakeEventInit = {}): void {
     const handlers = this.listeners.get(type)
     if (handlers === undefined) {
       return
     }
     const event: FakeEvent = {
       target: this,
-      ...(key !== undefined && { key }),
+      ...init,
       preventDefault: () => {
         return
       },
@@ -362,6 +370,30 @@ class FakeCanvasElement extends FakeHTMLElement {
       return null
     }
     return this.context as unknown as CanvasRenderingContext2D
+  }
+
+  getBoundingClientRect(): {
+    left: number
+    top: number
+    width: number
+    height: number
+  } {
+    return {
+      left: 0,
+      top: 0,
+      width: this.clientWidth,
+      height: this.clientHeight,
+    }
+  }
+
+  /** Click the center of a square like 'e2' (white-at-bottom view). */
+  clickSquare(square: string): void {
+    const col = square.charCodeAt(0) - 'a'.charCodeAt(0)
+    const rowFromTop = 8 - Number(square[1])
+    this.dispatch('click', {
+      clientX: ((col + 0.5) / 8) * this.clientWidth,
+      clientY: ((rowFromTop + 0.5) / 8) * this.clientHeight,
+    })
   }
 }
 
@@ -594,13 +626,10 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-score-line', 'element'],
     ['centurion-score-p1', 'element'],
     ['centurion-score-p2', 'element'],
-    ['centurion-active-line', 'element'],
     ['centurion-turn-line', 'element'],
     ['centurion-session-notice', 'element'],
     ['centurion-result-banner', 'element'],
-    ['centurion-arrow-input', 'input'],
     ['centurion-board-hint', 'element'],
-    ['centurion-submit-arrow-btn', 'button'],
     ['centurion-resolution-summary', 'element'],
     ['centurion-game-replay', 'element'],
     ['centurion-game-select', 'select'],
@@ -613,8 +642,6 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-replay-end', 'button'],
     ['centurion-arrow-history', 'element'],
     ['centurion-leave-btn', 'button'],
-    ['centurion-mode-pieces', 'button'],
-    ['centurion-mode-letters', 'button'],
     ['centurion-connection-log-list', 'element'],
     ['centurion-connection-log-clear', 'button'],
   ]
@@ -842,33 +869,31 @@ describe('main app wiring', () => {
     const scoreP2 = documentRef.getElementById(
       'centurion-score-p2',
     ) as FakeHTMLElement
-    const activeLine = documentRef.getElementById(
-      'centurion-active-line',
-    ) as FakeHTMLElement
     const turnLine = documentRef.getElementById(
       'centurion-turn-line',
     ) as FakeHTMLElement
-    expect(scoreP1.textContent).toBe('Player 1 (gold) 0')
-    expect(scoreP2.textContent).toBe('0 Player 2 (crimson)')
-    expect(activeLine.textContent).toBe('100 of 100 games active')
+    expect(scoreP1.textContent).toBe('Gold 0')
+    expect(scoreP2.textContent).toBe('0 Crimson')
     expect(turnLine.textContent).toContain('Turn 1')
+    expect(turnLine.textContent).toContain('100/100 games')
 
-    const arrowInput = documentRef.getElementById(
-      'centurion-arrow-input',
-    ) as FakeInputElement
-    const submitButton = documentRef.getElementById(
-      'centurion-submit-arrow-btn',
-    ) as FakeButtonElement
+    const boardCanvas = documentRef.getElementById(
+      'centurion-canvas',
+    ) as FakeCanvasElement
+    const boardHint = documentRef.getElementById(
+      'centurion-board-hint',
+    ) as FakeHTMLElement
     const history = documentRef.getElementById(
       'centurion-arrow-history',
     ) as FakeHTMLElement
 
-    arrowInput.value = 'e2->e4'
-    arrowInput.dispatch('input')
-    submitButton.click()
+    expect(boardHint.textContent).toContain('Tap the start square')
+    boardCanvas.clickSquare('e2')
+    expect(boardHint.textContent).toContain('tap the destination')
+    boardCanvas.clickSquare('e4')
 
     // The arrow phase is synchronous; Stockfish (mocked) answers async.
-    expect(turnLine.textContent).toContain('resolving')
+    expect(turnLine.textContent).toContain('Resolving')
     await vi.waitFor(() => {
       expect(turnLine.textContent).toContain('Turn 2')
     })

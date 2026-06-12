@@ -305,10 +305,6 @@ canvas {
   overflow: hidden;
 }
 
-.board-mode-toggle--centered {
-  align-self: center;
-}
-
 .board-mode-toggle button {
   border: none;
   background: transparent;
@@ -720,28 +716,22 @@ canvas {
   color: var(--gold-pale);
 }
 
-.centurion-type-move summary {
-  cursor: pointer;
-  font-size: 0.82rem;
-  color: var(--ink-faint);
-}
-
-.centurion-type-move-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  margin-top: 8px;
-}
-
 .centurion-scoreboard {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 6px 12px;
   border: 1px solid var(--bronze);
   border-radius: 4px;
   background: var(--bg-deep);
   box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.12);
+}
+
+.centurion-turn-line {
+  font-size: 0.82rem;
+  color: var(--ink-dim);
 }
 
 .centurion-score-line {
@@ -832,6 +822,11 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* The author display above would otherwise defeat the hidden attribute. */
+.centurion-game-replay[hidden] {
+  display: none;
 }
 
 .centurion-game-select {

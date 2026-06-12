@@ -29,13 +29,11 @@ import {
 } from './core/match/animate'
 import { decodeMatchWireMessage } from './core/match/codec'
 import {
-  ARROW_PLACEMENT_LAST_TURN,
   type MatchState,
   type PlayerId,
   activeGameCount,
   activePlacer,
   canPlaceArrows,
-  sideToMove,
 } from './core/match/model'
 import {
   describeGameReplayLabel,
@@ -160,13 +158,10 @@ const centurionShareButton = button('centurion-share-btn')
 const centurionCopyLinkButton = button('centurion-copy-link-btn')
 const centurionScoreP1 = element('centurion-score-p1')
 const centurionScoreP2 = element('centurion-score-p2')
-const centurionActiveLine = element('centurion-active-line')
 const centurionTurnLine = element('centurion-turn-line')
 const centurionSessionNotice = element('centurion-session-notice')
 const centurionResultBanner = element('centurion-result-banner')
-const centurionArrowInput = input('centurion-arrow-input')
 const centurionBoardHint = element('centurion-board-hint')
-const centurionSubmitArrowButton = button('centurion-submit-arrow-btn')
 const centurionResolutionSummary = element('centurion-resolution-summary')
 const centurionArrowHistory = element('centurion-arrow-history')
 const centurionLeaveButton = button('centurion-leave-btn')
@@ -191,20 +186,18 @@ const centurionConnectionLogList = element(
 ) as HTMLOListElement
 const centurionConnectionLogClear = button('centurion-connection-log-clear')
 
-// Pieces/Letters is a pure view preference shared by every board.
+// Pieces/Letters is a lab-only view preference; the game board always
+// draws pieces.
 const displayModeButtons: ReadonlyArray<{
   readonly button: HTMLButtonElement
   readonly mode: PieceDisplayMode
 }> = [
   { button: button('superposition-mode-pieces'), mode: 'pieces' },
   { button: button('superposition-mode-letters'), mode: 'letters' },
-  { button: button('centurion-mode-pieces'), mode: 'pieces' },
-  { button: button('centurion-mode-letters'), mode: 'letters' },
 ]
 
 function applyPieceDisplayMode(mode: PieceDisplayMode): void {
   superpositionRenderer.displayMode = mode
-  centurionRenderer.displayMode = mode
   for (const entry of displayModeButtons) {
     entry.button.classList.toggle('active', entry.mode === mode)
   }
@@ -657,26 +650,39 @@ function playerLabel(session: MatchSession, player: PlayerId): string {
   return base
 }
 
-function describePlacer(session: MatchSession): string {
+function scoreboardLabel(session: MatchSession, player: PlayerId): string {
+  if (session.mode.tag === 'solo') {
+    return player === 1 ? 'You' : 'The field'
+  }
+  if (session.mode.tag === 'remote') {
+    return session.mode.you === player ? 'You' : 'Opponent'
+  }
+  return player === 1 ? 'Gold' : 'Crimson'
+}
+
+function turnStatusText(session: MatchSession): string {
   const match = session.match
+  if (match.phase.tag === 'finished') {
+    return 'Match over'
+  }
+  const games = `${activeGameCount(match)}/${match.gameCount} games`
   if (session.resolving !== null) {
-    return `Turn ${match.turn}: Stockfish (depth ${ENGINE_DEPTH}) is resolving ${session.resolving.pending.length} game(s)...`
+    return `Turn ${match.turn} · ${games} · Resolving...`
   }
   if (!canPlaceArrows(match)) {
-    return `Turn ${match.turn}: arrow placement closed after turn ${ARROW_PLACEMENT_LAST_TURN}; Stockfish is playing out the match.`
+    return `Turn ${match.turn} · ${games} · Engine playout`
   }
   if (session.mode.tag === 'solo') {
-    return `Turn ${match.turn}: place an arrow, then both half-moves play out.`
+    return `Turn ${match.turn} · ${games} · Place an arrow`
   }
   const placer = activePlacer(match)
-  const color = sideToMove(match)
   const who =
     session.mode.tag === 'remote'
       ? placer === session.mode.you
-        ? `You (${playerColorName(placer)}) place`
-        : `Opponent (${playerColorName(placer)}) places`
-      : `Player ${placer} (${playerColorName(placer)}) places`
-  return `Turn ${match.turn}: ${who} an arrow, then all games advance (${color} to move).`
+        ? 'Your turn'
+        : "Opponent's turn"
+      : `${scoreboardLabel(session, placer)} places`
+  return `Turn ${match.turn} · ${games} · ${who}`
 }
 
 function describeResult(session: MatchSession, match: MatchState): string {
@@ -708,36 +714,35 @@ function resolutionSummaryText(match: MatchState): string {
   return `${base} Decided: P1 +${summary.p1Wins}, P2 +${summary.p2Wins}, draws +${summary.draws}.`
 }
 
+/**
+ * Tap coaching only runs for the first few turns; after that the board
+ * highlight is enough and the hint line stays empty (except for errors).
+ */
+const TAP_HINT_LAST_TURN = 4
+
 function boardHintText(session: MatchSession): string {
   const match = session.match
-  if (match.phase.tag === 'finished') {
-    return session.gameReplay === null
-      ? 'Match over.'
-      : 'Match over. Review a finished game below.'
-  }
   if (session.inputError !== null) {
     return session.inputError
   }
-  if (session.resolving !== null) {
-    return `Stockfish is resolving ${session.resolving.pending.length} game(s)...`
-  }
-  if (!canPlaceArrows(match)) {
-    return 'Arrow placement is closed; Stockfish is playing out the remaining games.'
+  if (
+    match.phase.tag === 'finished' ||
+    session.resolving !== null ||
+    !canPlaceArrows(match) ||
+    match.turn > TAP_HINT_LAST_TURN
+  ) {
+    return ''
   }
   if (
     session.mode.tag === 'remote' &&
     activePlacer(match) !== session.mode.you
   ) {
-    return 'Waiting for your opponent...'
+    return ''
   }
   if (session.selectedSquare !== null) {
-    return `From ${squareName(session.selectedSquare)} - now tap the destination.`
+    return `From ${squareName(session.selectedSquare)} - tap the destination.`
   }
-  const placer =
-    session.mode.tag === 'local'
-      ? `Player ${activePlacer(match)} (${playerColorName(activePlacer(match))})`
-      : 'You'
-  return `${placer}: tap the origin square of your arrow.`
+  return 'Tap the start square of your arrow.'
 }
 
 function renderGameReplay(session: MatchSession): void {
@@ -919,11 +924,9 @@ function renderCenturionSession(session: MatchSession): void {
   const match = session.match
   const viewer = sessionViewer(session)
 
-  centurionScoreP1.textContent = `${playerLabel(session, 1)} ${match.scores.p1}`
-  centurionScoreP2.textContent = `${match.scores.p2} ${playerLabel(session, 2)}`
-  centurionActiveLine.textContent = `${activeGameCount(match)} of ${match.gameCount} games active`
-  centurionTurnLine.textContent =
-    match.phase.tag === 'finished' ? 'Match over.' : describePlacer(session)
+  centurionScoreP1.textContent = `${scoreboardLabel(session, 1)} ${match.scores.p1}`
+  centurionScoreP2.textContent = `${match.scores.p2} ${scoreboardLabel(session, 2)}`
+  centurionTurnLine.textContent = turnStatusText(session)
 
   centurionSessionNotice.textContent = session.notice ?? ''
   centurionBoardHint.textContent = boardHintText(session)
@@ -942,15 +945,6 @@ function renderCenturionSession(session: MatchSession): void {
   const result = describeResult(session, match)
   centurionResultBanner.textContent = result
   centurionResultBanner.style.display = result.length > 0 ? 'block' : 'none'
-
-  if (centurionArrowInput.value !== session.arrowInput) {
-    centurionArrowInput.value = session.arrowInput
-  }
-
-  const yourTurn =
-    session.mode.tag !== 'remote' || activePlacer(match) === session.mode.you
-  centurionSubmitArrowButton.disabled =
-    match.phase.tag === 'finished' || !yourTurn || session.resolving !== null
 
   centurionResolutionSummary.textContent = resolutionSummaryText(match)
 
@@ -1217,22 +1211,6 @@ function bindEvents(): void {
       tag: 'join-code-updated',
       value: (event.target as HTMLInputElement).value,
     })
-  })
-  centurionArrowInput.addEventListener('input', (event) => {
-    dispatchCenturion({
-      tag: 'arrow-input-updated',
-      value: (event.target as HTMLInputElement).value,
-    })
-  })
-  centurionArrowInput.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter') {
-      return
-    }
-    event.preventDefault()
-    dispatchCenturion({ tag: 'arrow-submit-requested' })
-  })
-  centurionSubmitArrowButton.addEventListener('click', () => {
-    dispatchCenturion({ tag: 'arrow-submit-requested' })
   })
   centurionLeaveButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'leave-session-requested' })

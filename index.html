@@ -156,37 +156,19 @@
 
     <div id="centurion-session" class="feature-layout centurion-session">
       <div class="centurion-board-area">
-        <p id="centurion-board-hint" class="centurion-board-hint"></p>
+        <div id="centurion-scoreboard" class="centurion-scoreboard">
+          <div id="centurion-score-line" class="centurion-score-line"><span id="centurion-score-p1" class="centurion-score-p1"></span><span class="centurion-score-divider"> : </span><span id="centurion-score-p2" class="centurion-score-p2"></span></div>
+          <div id="centurion-turn-line" class="centurion-turn-line"></div>
+        </div>
         <div class="panel board-panel" id="centurion-board-panel">
           <canvas id="centurion-canvas"></canvas>
         </div>
-        <div class="board-mode-toggle board-mode-toggle--centered" role="group" aria-label="Piece display mode">
-          <button type="button" id="centurion-mode-pieces">Pieces</button>
-          <button type="button" id="centurion-mode-letters">Letters</button>
-        </div>
+        <p id="centurion-board-hint" class="centurion-board-hint"></p>
       </div>
       <div class="panel controls-panel">
-        <div id="centurion-scoreboard" class="centurion-scoreboard">
-          <div id="centurion-score-line" class="centurion-score-line"><span id="centurion-score-p1" class="centurion-score-p1"></span><span class="centurion-score-divider"> : </span><span id="centurion-score-p2" class="centurion-score-p2"></span></div>
-          <div id="centurion-active-line" class="centurion-meta-line"></div>
-          <div id="centurion-turn-line" class="centurion-meta-line"></div>
-        </div>
         <p id="centurion-session-notice" class="centurion-session-notice"></p>
         <div id="centurion-result-banner" class="centurion-result-banner"></div>
         <div id="centurion-resolution-summary" class="centurion-meta-line"></div>
-        <details class="centurion-type-move">
-          <summary>Type a move instead (e.g. e2-&gt;e4)</summary>
-          <div class="centurion-type-move-row">
-            <input
-              id="centurion-arrow-input"
-              type="text"
-              placeholder="e2->e4"
-              spellcheck="false"
-              autocomplete="off"
-            >
-            <button class="btn btn-secondary" id="centurion-submit-arrow-btn">Place Arrow</button>
-          </div>
-        </details>
         <div id="centurion-game-replay" class="centurion-game-replay" hidden>
           <div class="centurion-section-label">Review a game</div>
           <select id="centurion-game-select" class="centurion-game-select" aria-label="Choose a game to review"></select>
