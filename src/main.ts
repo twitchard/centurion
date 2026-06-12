@@ -62,7 +62,6 @@ import { encodeCenturionForPersistence } from './features/centurion-match/persis
 import { ReplayBoard } from './features/centurion-match/replay-board'
 import {
   type CenturionMsg,
-  LOBBY_COPY,
   updateCenturion,
 } from './features/centurion-match/update'
 import type {
@@ -1022,7 +1021,7 @@ function renderCenturion(model: CenturionModel): void {
 
   switch (model.tag) {
     case 'lobby':
-      centurionStatusCopy.textContent = model.notice ?? LOBBY_COPY
+      centurionStatusCopy.textContent = model.notice ?? ''
       if (centurionJoinCodeInput.value !== model.joinCodeInput) {
         centurionJoinCodeInput.value = model.joinCodeInput
       }

@@ -90,6 +90,17 @@
     </header>
 
     <div id="centurion-lobby" class="centurion-shell panel">
+      <div class="centurion-hero">
+        <img
+          class="centurion-hero-art"
+          src="./src/assets/centurion-knight.png"
+          alt="Chess knight wearing a Roman centurion helmet"
+          width="252"
+          height="437"
+        >
+        <p class="centurion-tagline">A hundred games of chess<em>&mdash; at once</em></p>
+        <p class="centurion-tagline-sub">Steer a hundred Stockfish engines, one arrow at a time</p>
+      </div>
       <p id="centurion-status-copy"></p>
       <div class="centurion-controls">
         <button class="btn btn-primary" id="centurion-solo-btn">Solo (just place arrows)</button>
@@ -111,19 +122,33 @@
         </div>
         <button class="btn btn-outline" id="centurion-cancel-btn">Cancel</button>
       </div>
-      <details class="centurion-rules">
-        <summary>How to play</summary>
-        <ul>
-          <li>You and your opponent are playing <strong>100 games of chess at once</strong>: one of you plays white in every game, the other black, chosen at random when the match starts. The white side places the first arrow.</li>
-          <li>All games appear stacked on one board. <strong>Your pieces are drawn white, your opponent's black</strong> &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square; numbers and arrows are tinted by player: <strong>gold for player 1, crimson for player 2</strong>.</li>
-          <li>If you play black, your view is flipped so your pieces start nearest you, and your arrow is read through that flip: drawing e2&rarr;e4 on your view means e7&rarr;e5 in the games.</li>
-          <li>On your turn, place <strong>one arrow</strong>: tap its start square, then its end square. Arrows are permanent and shared &mdash; they can move your opponent's games too.</li>
-          <li>After each arrow, <strong>every game advances one half-move</strong>. Arrows act newest first: each pulls up to its current strength in games where it is a legal move; every other game plays Stockfish's best move. A new arrow starts at strength 8 and halves each round &mdash; 8 when placed (and on the opponent's reply), 4 around your next arrow, then 2, then 1, then it disappears. Placing the same arrow again adds 8 and resets its decay.</li>
-          <li><strong>Checkmate scores a point</strong> for the player whose side delivered it. Draws score nothing. Finished games leave the board.</li>
-          <li>You win when your lead is bigger than the number of games still running. If everything finishes level, the match is a draw.</li>
-          <li><strong>Solo mode:</strong> you place every arrow. After each one, both half-moves play out back to back &mdash; no opponent arrows, just you steering 100 Stockfish games.</li>
-        </ul>
-      </details>
+      <section class="centurion-rules" aria-labelledby="centurion-rules-heading">
+        <h3 id="centurion-rules-heading" class="centurion-rules-heading">Rules of Engagement</h3>
+        <ol class="centurion-rules-list">
+          <li><strong>A hundred engines.</strong> You have a hundred chess engines (Stockfish, depth&nbsp;5), each playing a game against your opponent's engine.</li>
+          <li><strong>One arrow per turn.</strong> Your arrow overrides the moves chosen by the engines &mdash; of either player &mdash; in games where it is a legal move.</li>
+          <li><strong>Arrows linger, but decay.</strong> An arrow sways up to eight games on the move after you place it, and half as many each turn after that. You can stack arrows to recharge them.</li>
+          <li><strong>Majority wins.</strong> Take the majority of the undrawn games and the match is yours.</li>
+          <li><strong>The playout.</strong> After 100 moves you place no more arrows. The engines play it out.</li>
+        </ol>
+        <details class="centurion-rules-details">
+          <summary>The fine print</summary>
+          <dl class="centurion-rules-dl">
+            <dt>Resolution order</dt>
+            <dd>After each arrow, every game advances one half-move. Arrows act newest first: each pulls up to its current strength in randomly chosen games where it is a legal move, and a game moved by one arrow this turn is skipped by the rest. Every untouched game plays Stockfish's best move.</dd>
+            <dt>Decay schedule</dt>
+            <dd>A new arrow starts at strength 8 and halves each round: 8 when placed (and on the opponent's reply), 4 around your next arrow, then 2, then 1, then it disappears. Placing the same arrow again adds 8 and resets its decay.</dd>
+            <dt>Reading the board</dt>
+            <dd>All games appear stacked on one board. Your pieces are drawn white and your opponent's black &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square; numbers and arrows are tinted gold for player&nbsp;1 and crimson for player&nbsp;2. If you play black, your view is flipped and your arrow is read through that flip: drawing e2&rarr;e4 on your view means e7&rarr;e5 in the games.</dd>
+            <dt>Scoring</dt>
+            <dd>Checkmate scores a point for the side that delivered it. Draws score nothing, and finished games leave the board. The match ends early once a player's lead exceeds the number of games still running; if everything finishes level, the match is a draw.</dd>
+            <dt>Who plays white</dt>
+            <dd>One of you plays white in every game, the other black, chosen at random when the match starts. The white side places the first arrow: tap a start square, then an end square.</dd>
+            <dt>Solo mode</dt>
+            <dd>You place every arrow. After each one, both half-moves play out back to back &mdash; no opponent arrows, just you steering a hundred Stockfish games.</dd>
+          </dl>
+        </details>
+      </section>
       <p class="centurion-labs-foot" id="centurion-labs-foot">
         <button type="button" class="centurion-labs-link" id="centurion-open-labs-btn">Labs</button>
       </p>
@@ -181,7 +206,7 @@
       </div>
     </div>
 
-    <details id="centurion-connection-log-panel" class="centurion-connection-log panel" open>
+    <details id="centurion-connection-log-panel" class="centurion-connection-log panel">
       <summary>Connection log</summary>
       <p class="centurion-connection-log-hint">
         Multiplayer uses Trystero over BitTorrent trackers, Nostr relays, and WebRTC.

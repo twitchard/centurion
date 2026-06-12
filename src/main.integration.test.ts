@@ -741,7 +741,7 @@ describe('main app wiring', () => {
     ) as FakeButtonElement
 
     expect(centurion.style.display).toBe('flex')
-    expect(statusCopy.textContent).toContain('multiplayer match')
+    expect(statusCopy.textContent).toBe('')
 
     // While hosting, the lobby actions are locked until cancelled.
     newMatchButton.click()
@@ -782,7 +782,7 @@ describe('main app wiring', () => {
 
     expect(labsMenu.style.display).toBe('none')
     expect(centurion.style.display).toBe('flex')
-    expect(statusCopy.textContent).toContain('multiplayer match')
+    expect(statusCopy.textContent).toBe('')
 
     newMatchButton.click()
     expect(statusCopy.textContent).toContain('Share code')

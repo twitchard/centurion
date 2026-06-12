@@ -412,21 +412,99 @@ canvas {
   letter-spacing: 1px;
 }
 
+/* The lobby doubles as the landing page; let it scroll past one
+   viewport instead of clipping under body's overflow:hidden. */
+#screen-centurion-match {
+  overflow-y: auto;
+}
+
 .centurion-shell {
   align-self: center;
   justify-self: center;
+  flex-shrink: 0;
   margin: 14px;
   max-width: 720px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 18px clamp(12px, 4vw, 28px) 16px;
   border-top: 3px double var(--bronze);
   border-bottom: 3px double var(--bronze);
 }
 
+.centurion-hero {
+  text-align: center;
+  padding-top: 4px;
+}
+
+.centurion-hero-art {
+  display: block;
+  margin: 0 auto 10px;
+  width: auto;
+  height: clamp(120px, 24vh, 180px);
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
+  /* Gold halo lifts the dark piece off the dark basalt panel. */
+  background: radial-gradient(
+    closest-side,
+    rgba(201, 162, 39, 0.18),
+    transparent
+  );
+  border-radius: 50%;
+}
+
+.centurion-tagline {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 4.2vw, 1.9rem);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+}
+
+.centurion-tagline em {
+  display: block;
+  font-style: normal;
+  font-size: 0.72em;
+  letter-spacing: 3px;
+  color: var(--crimson-text);
+}
+
+/* Gold standard-bar flourish, echoing the menu title's vexillum. */
+.centurion-tagline::after {
+  content: "";
+  display: block;
+  margin: 0.6rem auto 0;
+  width: 9rem;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--gold) 18%,
+    var(--gold-pale) 50%,
+    var(--gold) 82%,
+    transparent
+  );
+}
+
+.centurion-tagline-sub {
+  margin-top: 0.55rem;
+  font-variant: small-caps;
+  letter-spacing: 1.5px;
+  color: var(--ink-dim);
+}
+
 #centurion-status-copy {
   line-height: 1.45;
+  text-align: center;
+  font-size: 0.9rem;
   color: var(--ink);
+}
+
+/* Idle lobby has no status; don't leave an empty gap for it. */
+#centurion-status-copy:empty {
+  display: none;
 }
 
 .centurion-controls {
@@ -456,14 +534,28 @@ canvas {
   max-width: 720px;
   align-self: center;
   justify-self: center;
+  flex-shrink: 0;
   width: calc(100% - 28px);
+}
+
+/* Collapsed, the log shrinks to a quiet footnote; the panel chrome
+   only appears once it is expanded. */
+.centurion-connection-log:not([open]) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .centurion-connection-log summary {
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  color: var(--ink-dim);
+  text-align: center;
+  color: var(--ink-faint);
+}
+
+.centurion-connection-log summary:hover {
+  color: var(--gold-pale);
 }
 
 .centurion-connection-log-hint {
@@ -512,23 +604,95 @@ canvas {
   color: var(--gold-pale);
 }
 
-.centurion-rules summary {
-  cursor: pointer;
-  font-size: 0.9rem;
+.centurion-rules {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 14px;
+}
+
+.centurion-rules-heading {
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
   font-weight: 600;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  text-align: center;
   color: var(--gold-pale);
+}
+
+.centurion-rules-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: rule;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.centurion-rules-list li {
+  counter-increment: rule;
+  position: relative;
+  padding-left: 2.9rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+/* Roman numerals for a Roman game. */
+.centurion-rules-list li::before {
+  content: counter(rule, upper-roman);
+  position: absolute;
+  left: 0;
+  top: 0.05rem;
+  width: 2.2rem;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.centurion-rules-list strong {
+  color: var(--ink);
+}
+
+.centurion-rules-details {
+  margin-top: 14px;
+}
+
+.centurion-rules-details summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-faint);
   font-variant: small-caps;
   letter-spacing: 1px;
 }
 
-.centurion-rules ul {
+.centurion-rules-details summary:hover {
+  color: var(--gold-pale);
+}
+
+.centurion-rules-dl {
   margin: 10px 0 0;
-  padding-left: 1.2rem;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  font-size: 0.86rem;
-  line-height: 1.45;
+  gap: 4px;
+}
+
+.centurion-rules-dl dt {
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant: small-caps;
+  letter-spacing: 0.5px;
+  color: var(--gold-pale);
+}
+
+.centurion-rules-dl dd {
+  margin: 0 0 8px;
+  font-size: 0.84rem;
+  line-height: 1.5;
   color: var(--ink-dim);
 }
 
