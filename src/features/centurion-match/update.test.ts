@@ -186,7 +186,38 @@ describe('pass and play', () => {
 })
 
 describe('solo mode', () => {
-  it('plays two half-turns per arrow with no opponent arrow', () => {
+  /**
+   * Drive a full solo turn: the player's arrow, the white-ply engine
+   * answer, the auto black ply, leaving the Centurion's trap pending.
+   */
+  function soloTurnToTrap(): ReturnType<typeof updateCenturion> {
+    const [pendingFirst, firstCommands] = apply(
+      initCenturionModel(),
+      { tag: 'solo-requested', seed: 21 },
+      { tag: 'board-square-clicked', square: sq('e2') },
+      { tag: 'board-square-clicked', square: sq('e4') },
+    )
+    const [pendingSecond, secondCommands] = apply(
+      pendingFirst,
+      engineAnswer(firstCommands),
+    )
+    return apply(pendingSecond, engineAnswer(secondCommands))
+  }
+
+  function trapAnswer(
+    commands: ReturnType<typeof updateCenturion>[1],
+  ): CenturionMsg {
+    const compute = commands.find((cmd) => cmd.tag === 'compute-worst-moves')
+    if (compute === undefined || compute.tag !== 'compute-worst-moves') {
+      throw new Error('expected a compute-worst-moves command')
+    }
+    return {
+      tag: 'worst-moves-computed',
+      moves: compute.fens.map(firstLegalUci),
+    }
+  }
+
+  it('plays two half-turns per arrow, then the Centurion lays a trap', () => {
     const [pendingFirst, firstCommands] = apply(
       initCenturionModel(),
       { tag: 'solo-requested', seed: 21 },
@@ -197,6 +228,8 @@ describe('solo mode', () => {
       throw new Error('expected playing state')
     }
     expect(pendingFirst.session.mode).toEqual({ tag: 'solo' })
+    // The player always owns white in solo.
+    expect(pendingFirst.session.match.games[0]?.whiteOwner).toBe(1)
 
     // First engine answer settles the white ply, then the black ply
     // begins automatically with another engine command.
@@ -210,23 +243,87 @@ describe('solo mode', () => {
     expect(pendingSecond.session.match.turn).toBe(2)
     expect(pendingSecond.session.resolving).not.toBeNull()
 
-    const [model, finalCommands] = apply(
+    // The black ply settles into the Centurion's trap computation.
+    const [pendingTrap, trapCommands] = apply(
       pendingSecond,
       engineAnswer(secondCommands),
     )
+    if (pendingTrap.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(pendingTrap.session.match.turn).toBe(3)
+    expect(pendingTrap.session.resolving).toBeNull()
+    expect(pendingTrap.session.trap).not.toBeNull()
+    expect(trapCommands.map((cmd) => cmd.tag)).toEqual(['compute-worst-moves'])
+
+    const [model, finalCommands] = apply(pendingTrap, trapAnswer(trapCommands))
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
     }
     expect(finalCommands).toEqual([])
-    expect(model.session.match.turn).toBe(3)
-    expect(model.session.resolving).toBeNull()
-    // One arrow total, every arrow yours, both plies played everywhere.
-    expect(model.session.match.arrows).toHaveLength(1)
+    expect(model.session.trap).toBeNull()
+    // Your arrow plus the Centurion's trap, stamped with its half-turn
+    // so it pulls at full weight on your reply.
+    expect(model.session.match.arrows).toHaveLength(2)
     expect(model.session.match.arrows[0]?.owner).toBe(1)
+    expect(model.session.match.arrows[1]?.owner).toBe(2)
+    expect(model.session.match.arrows[1]?.placedTurn).toBe(2)
     for (const game of model.session.match.games) {
       expect(game.position.fullmoves).toBe(2)
       expect(game.position.turn).toBe('white')
     }
+  })
+
+  it('blocks input while the trap is pending', () => {
+    const [pendingTrap] = soloTurnToTrap()
+    if (pendingTrap.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    const [clicked, clickCommands] = apply(pendingTrap, {
+      tag: 'board-square-clicked',
+      square: sq('d2'),
+    })
+    if (clicked.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(clicked.session.selectedSquare).toBeNull()
+    expect(clickCommands).toEqual([])
+
+    const [submitted] = apply(
+      pendingTrap,
+      { tag: 'arrow-input-updated', value: 'd2->d4' },
+      { tag: 'arrow-submit-requested' },
+    )
+    if (submitted.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(submitted.session.match.turn).toBe(3)
+    expect(submitted.session.inputError).toContain('Centurion')
+  })
+
+  it('skips the trap arrow when the worst-move search fails', () => {
+    const [pendingTrap] = soloTurnToTrap()
+    const [model] = apply(pendingTrap, {
+      tag: 'worst-moves-failed',
+      message: 'worker crashed.',
+    })
+    if (model.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(model.session.trap).toBeNull()
+    expect(model.session.match.arrows).toHaveLength(1)
+    expect(model.session.notice).toContain('worker crashed')
+
+    // The player can place the next arrow normally afterwards.
+    const [next] = apply(
+      model,
+      { tag: 'board-square-clicked', square: sq('d2') },
+      { tag: 'board-square-clicked', square: sq('d4') },
+    )
+    if (next.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(next.session.resolving).not.toBeNull()
   })
 })
 

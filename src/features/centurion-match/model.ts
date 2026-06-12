@@ -16,11 +16,22 @@ export interface GameReplayState {
   readonly ply: number
 }
 
+/**
+ * The solo opponent's pending trap arrow: the ids of the games whose
+ * worst moves are being computed, aligned with the FENs sent to the
+ * engine. Input is blocked until the arrow lands, like `resolving`.
+ */
+export interface TrapPending {
+  readonly gameIds: readonly number[]
+}
+
 export interface MatchSession {
   readonly mode: SessionMode
   readonly match: MatchState
   /** Non-null while Stockfish is computing this turn's fallback moves. */
   readonly resolving: PendingResolution | null
+  /** Non-null while the solo opponent's trap arrow is being computed. */
+  readonly trap: TrapPending | null
   readonly selectedSquare: BoardSquare | null
   readonly arrowInput: string
   readonly inputError: string | null

@@ -45,7 +45,7 @@ export type PersistedCenturion =
 export function encodeSessionForPersistence(
   session: MatchSession,
 ): PersistedMatchSession | null {
-  if (session.resolving !== null) {
+  if (session.resolving !== null || session.trap !== null) {
     return null
   }
   return {
@@ -69,6 +69,7 @@ export function decodePersistedSession(
     mode: persisted.mode,
     match,
     resolving: null,
+    trap: null,
     selectedSquare: persisted.selectedSquare,
     arrowInput: persisted.arrowInput,
     inputError: null,

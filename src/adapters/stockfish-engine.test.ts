@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { parseBestMoveLine, planSearches } from './stockfish-engine'
+import {
+  parseBestMoveLine,
+  parseMultiPvLine,
+  planSearches,
+} from './stockfish-engine'
 
 describe('planSearches', () => {
   it('collapses duplicate positions into one search each', () => {
@@ -44,5 +48,32 @@ describe('parseBestMoveLine', () => {
 
   it('rejects the no-move marker', () => {
     expect(parseBestMoveLine('bestmove (none)')).toBeNull()
+  })
+})
+
+describe('parseMultiPvLine', () => {
+  it('extracts the rank and root move from a ranked info line', () => {
+    expect(
+      parseMultiPvLine(
+        'info depth 5 seldepth 7 multipv 3 score cp -42 nodes 999 nps 9000 time 12 pv g1h3 d7d5 b1c3',
+      ),
+    ).toEqual({ rank: 3, move: 'g1h3' })
+    expect(
+      parseMultiPvLine('info depth 2 multipv 17 score mate -1 pv f2f3 e7e5'),
+    ).toEqual({ rank: 17, move: 'f2f3' })
+  })
+
+  it('does not mistake "multipv" itself for the pv keyword', () => {
+    expect(
+      parseMultiPvLine('info depth 5 multipv 12 score cp 0 pv a2a3'),
+    ).toEqual({ rank: 12, move: 'a2a3' })
+  })
+
+  it('ignores unranked engine output', () => {
+    expect(
+      parseMultiPvLine('info depth 5 currmove e2e4 currmovenumber 1'),
+    ).toBeNull()
+    expect(parseMultiPvLine('info depth 5 score cp 30 pv e2e4')).toBeNull()
+    expect(parseMultiPvLine('bestmove e2e4')).toBeNull()
   })
 })

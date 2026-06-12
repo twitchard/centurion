@@ -14,6 +14,7 @@ describe('centurion persistence', () => {
       mode: { tag: 'solo' as const },
       match,
       resolving: null,
+      trap: null,
       selectedSquare: null,
       arrowInput: '',
       inputError: null,
@@ -42,6 +43,7 @@ describe('centurion persistence', () => {
         arrowMoves: 0,
         pending: [{ gameId: 0, fen: 'x' }],
       },
+      trap: null,
       selectedSquare: null,
       arrowInput: '',
       inputError: null,
@@ -52,6 +54,22 @@ describe('centurion persistence', () => {
     expect(
       encodeCenturionForPersistence({ tag: 'playing', session }),
     ).toBeNull()
+  })
+
+  it('skips sessions while the Centurion is placing a trap arrow', () => {
+    const match = initMatch(1, { gameCount: 1 })
+    const session = {
+      mode: { tag: 'solo' as const },
+      match,
+      resolving: null,
+      trap: { gameIds: [0] },
+      selectedSquare: null,
+      arrowInput: '',
+      inputError: null,
+      notice: null,
+      gameReplay: null,
+    }
+    expect(encodeSessionForPersistence(session)).toBeNull()
   })
 
   it('encodes a waiting room with pending seed', () => {

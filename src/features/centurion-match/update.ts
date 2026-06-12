@@ -6,8 +6,11 @@ import {
   ARROW_PLACEMENT_LAST_TURN,
   type Arrow,
   type BoardSquare,
+  type MatchGame,
   type MatchState,
+  type PlayerId,
   activePlacer,
+  addBoardArrow,
   canPlaceArrows,
   initMatch,
   otherPlayer,
@@ -24,6 +27,7 @@ import {
   decodeMatchSnapshot,
   encodeMatchState,
 } from '../../core/match/snapshot'
+import { chooseTrapArrow, trapTargets } from '../../core/match/trap'
 import { parseArrowList } from '../../core/superposition/parse-arrow-list'
 import { type UpdateResult, assertNever, noCmd } from '../../core/update'
 import type { TransportStatus } from '../../ports/transport'
@@ -56,6 +60,11 @@ export type CenturionMsg =
       readonly moves: readonly string[]
     }
   | { readonly tag: 'engine-moves-failed'; readonly message: string }
+  | {
+      readonly tag: 'worst-moves-computed'
+      readonly moves: readonly string[]
+    }
+  | { readonly tag: 'worst-moves-failed'; readonly message: string }
   | { readonly tag: 'leave-session-requested' }
   | {
       readonly tag: 'transport-status-changed'
@@ -87,6 +96,10 @@ export type CenturionCmd =
       readonly tag: 'compute-engine-moves'
       readonly fens: readonly string[]
     }
+  | {
+      readonly tag: 'compute-worst-moves'
+      readonly fens: readonly string[]
+    }
   | { readonly tag: 'share-invite'; readonly code: string }
   | { readonly tag: 'copy-invite'; readonly code: string }
 
@@ -99,6 +112,10 @@ const ARROWLESS_PHASE_COPY =
 const OUT_OF_SYNC_COPY =
   'Received an out-of-sync message from the opponent; the match may have diverged.'
 const RESOLVING_COPY = 'Stockfish is resolving the turn...'
+const TRAP_COPY = 'The Centurion is placing its trap arrow...'
+
+/** In solo mode the human is always player 1; the Centurion is player 2. */
+const SOLO_OPPONENT: PlayerId = 2
 
 function sanitizeJoinCode(value: string): string {
   return value.replace(/\D/g, '').slice(0, 6)
@@ -123,6 +140,7 @@ function startSession(
     mode,
     match,
     resolving: null,
+    trap: null,
     selectedSquare: null,
     arrowInput: '',
     inputError: null,
@@ -284,11 +302,42 @@ function driveAutoResolution(
 }
 
 /**
+ * Solo mode's opponent. Once the black half-turn settles, the Centurion
+ * studies the positions the player is about to face and lays a trap: an
+ * arrow on the move Stockfish ranks worst in a plurality of the games.
+ * The arrow is a white move, so it pulls nothing on the Centurion's own
+ * half-turns; it lies in wait to drag the player's games into the
+ * blunder, racing the player's newer (and therefore higher-priority)
+ * arrows.
+ */
+function beginTrapPlacement(
+  session: MatchSession,
+): UpdateResult<CenturionModel, CenturionCmd> {
+  const match = session.match
+  if (
+    session.mode.tag !== 'solo' ||
+    match.turn % 2 !== 1 ||
+    match.turn === 1 ||
+    !canPlaceArrows(match)
+  ) {
+    return noCmd(playing(session))
+  }
+  const targets = trapTargets(match)
+  if (targets.gameIds.length === 0) {
+    return noCmd(playing(session))
+  }
+  return [
+    playing({ ...session, trap: { gameIds: targets.gameIds } }),
+    [{ tag: 'compute-worst-moves', fens: targets.fens }],
+  ]
+}
+
+/**
  * Solo mode: after the player's arrow resolves the white half-turn, the
- * black half-turn plays out immediately with no new arrow. After turn
- * 100, every ply auto-plays with no new arrows. Returns the settled
- * session, or a new resolving state plus the engine command for the
- * next automatic ply.
+ * black half-turn plays out immediately with no new arrow, then the
+ * Centurion places its trap arrow. After turn 100, every ply auto-plays
+ * with no new arrows. Returns the settled session, or a new pending
+ * state plus the engine command for the next automatic step.
  */
 function continueAfterResolution(
   session: MatchSession,
@@ -296,7 +345,7 @@ function continueAfterResolution(
 ): UpdateResult<CenturionModel, CenturionCmd> {
   const settled = withFinishedReplay(session, match)
   if (!shouldChainAutoResolution(session, match)) {
-    return noCmd(playing(settled))
+    return beginTrapPlacement(settled)
   }
   if (
     isArrowlessPhase(match) &&
@@ -313,7 +362,11 @@ function submitArrow(
   visualFrom: BoardSquare,
   visualTo: BoardSquare,
 ): UpdateResult<CenturionModel, CenturionCmd> {
-  if (session.match.phase.tag === 'finished' || session.resolving !== null) {
+  if (
+    session.match.phase.tag === 'finished' ||
+    session.resolving !== null ||
+    session.trap !== null
+  ) {
     return noCmd(playing(session))
   }
   if (!canPlaceArrows(session.match)) {
@@ -422,8 +475,10 @@ export function updateCenturion(
       if (model.tag !== 'lobby') {
         return noCmd(model)
       }
-      // You are always player 1 (gold); every arrow is yours.
-      const match = initMatch(msg.seed, { firstPlacer: 1 })
+      // You are always player 1 (gold) and own white: you arrow each
+      // white half-turn, the black half-turn auto-plays, and the
+      // Centurion (player 2) answers with a trap arrow.
+      const match = initMatch(msg.seed, { firstPlacer: 1, whitePlayer: 1 })
       return noCmd(playing(startSession(match, { tag: 'solo' })))
     }
 
@@ -466,7 +521,7 @@ export function updateCenturion(
       if (session.match.phase.tag === 'finished') {
         return noCmd(model)
       }
-      if (session.resolving !== null) {
+      if (session.resolving !== null || session.trap !== null) {
         return noCmd(model)
       }
       if (!canPlaceArrows(session.match)) {
@@ -502,6 +557,9 @@ export function updateCenturion(
       const session = model.session
       if (session.resolving !== null) {
         return noCmd(withSession(model, { inputError: RESOLVING_COPY }))
+      }
+      if (session.trap !== null) {
+        return noCmd(withSession(model, { inputError: TRAP_COPY }))
       }
       if (!canPlaceArrows(session.match)) {
         return noCmd(withSession(model, { inputError: ARROWLESS_PHASE_COPY }))
@@ -569,6 +627,57 @@ export function updateCenturion(
         withSession(model, {
           resolving: null,
           notice: `Engine error: ${msg.message} Turn abandoned; place your arrow again.`,
+        }),
+      )
+    }
+
+    case 'worst-moves-computed': {
+      if (model.tag !== 'playing') {
+        return noCmd(model)
+      }
+      const session = model.session
+      const trap = session.trap
+      if (trap === null) {
+        return noCmd(model)
+      }
+      const match = session.match
+      if (msg.moves.length !== trap.gameIds.length) {
+        return noCmd(withSession(model, { trap: null }))
+      }
+      const games: MatchGame[] = []
+      for (const gameId of trap.gameIds) {
+        const game = match.games.find((entry) => entry.id === gameId)
+        if (game === undefined) {
+          return noCmd(withSession(model, { trap: null }))
+        }
+        games.push(game)
+      }
+      const arrow = chooseTrapArrow(games, msg.moves)
+      if (arrow === null) {
+        return noCmd(withSession(model, { trap: null }))
+      }
+      // The arrow belongs to the Centurion's half-turn that just
+      // resolved (turn - 1), so it decays in step with the player's
+      // arrows: full pull on the player's reply, halved each round.
+      const arrows = addBoardArrow(
+        match.arrows,
+        arrow,
+        SOLO_OPPONENT,
+        match.turn - 1,
+      )
+      return noCmd(
+        playing({ ...session, trap: null, match: { ...match, arrows } }),
+      )
+    }
+
+    case 'worst-moves-failed': {
+      if (model.tag !== 'playing' || model.session.trap === null) {
+        return noCmd(model)
+      }
+      return noCmd(
+        withSession(model, {
+          trap: null,
+          notice: `Engine error: ${msg.message} The Centurion skipped its trap arrow.`,
         }),
       )
     }

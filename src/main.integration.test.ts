@@ -118,6 +118,10 @@ vi.mock('./adapters/stockfish-engine', () => {
         throw new Error(`No legal move in ${fen}`)
       })
     }
+
+    async worstMoves(fens: readonly string[]): Promise<readonly string[]> {
+      return this.bestMoves(fens)
+    }
   }
   return { StockfishEngineAdapter: MockStockfishEngineAdapter }
 })

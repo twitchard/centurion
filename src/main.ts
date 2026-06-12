@@ -503,6 +503,19 @@ function runCommand(command: AppCmd): void {
             },
           )
           return
+        case 'compute-worst-moves':
+          centurionEngine.worstMoves(command.cmd.fens, ENGINE_DEPTH).then(
+            (moves) => {
+              dispatchCenturion({ tag: 'worst-moves-computed', moves })
+            },
+            (error: unknown) => {
+              dispatchCenturion({
+                tag: 'worst-moves-failed',
+                message: error instanceof Error ? error.message : String(error),
+              })
+            },
+          )
+          return
         default:
           assertNever(command.cmd)
           return
@@ -641,7 +654,7 @@ function renderChatLab(model: ChatLabModel): void {
 
 function playerLabel(session: MatchSession, player: PlayerId): string {
   if (session.mode.tag === 'solo') {
-    return player === 1 ? 'You' : 'The field'
+    return player === 1 ? 'You' : 'The Centurion'
   }
   if (session.mode.tag === 'remote') {
     return session.mode.you === player ? 'You' : 'Opponent'
@@ -657,6 +670,9 @@ function matchMetaText(session: MatchSession): string {
   const games = `${activeGameCount(match)}/${match.gameCount} games`
   if (session.resolving !== null) {
     return `Turn ${match.turn} · ${games} · Resolving...`
+  }
+  if (session.trap !== null) {
+    return `Turn ${match.turn} · ${games} · The Centurion is laying a trap...`
   }
   if (!canPlaceArrows(match)) {
     return `Turn ${match.turn} · ${games} · Engine playout`
@@ -707,6 +723,7 @@ function boardHintText(session: MatchSession): string {
   if (
     match.phase.tag === 'finished' ||
     session.resolving !== null ||
+    session.trap !== null ||
     !canPlaceArrows(match) ||
     match.turn > TAP_HINT_LAST_TURN
   ) {

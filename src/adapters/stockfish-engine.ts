@@ -4,6 +4,12 @@ import type { EnginePort } from '../ports/engine'
 
 const SEARCH_TIMEOUT_MS = 30_000
 
+/**
+ * Stockfish caps MultiPV at 256, comfortably above the legal-move
+ * maximum (~218), so a full-MultiPV search ranks every root move.
+ */
+const MULTIPV_ALL = 256
+
 export function parseBestMoveLine(line: string): string | null {
   const match = /^bestmove\s+(\S+)/.exec(line)
   if (match === null) {
@@ -14,6 +20,25 @@ export function parseBestMoveLine(line: string): string | null {
     return null
   }
   return move
+}
+
+export interface MultiPvInfo {
+  readonly rank: number
+  readonly move: string
+}
+
+/** Extract the rank and root move from a MultiPV `info` line. */
+export function parseMultiPvLine(line: string): MultiPvInfo | null {
+  const match = /^info\b.*?\bmultipv (\d+)\b.*?\bpv (\S+)/.exec(line)
+  if (match === null) {
+    return null
+  }
+  const rank = Number(match[1])
+  const move = match[2]
+  if (move === undefined || !Number.isFinite(rank)) {
+    return null
+  }
+  return { rank, move }
 }
 
 export interface SearchPlan {
@@ -61,12 +86,34 @@ export class StockfishEngineAdapter implements EnginePort {
     fens: readonly string[],
     depth: number,
   ): Promise<readonly string[]> {
+    return this.runBatch(fens, 1, (worker, fen) =>
+      this.search(worker, fen, depth),
+    )
+  }
+
+  worstMoves(
+    fens: readonly string[],
+    depth: number,
+  ): Promise<readonly string[]> {
+    return this.runBatch(fens, MULTIPV_ALL, (worker, fen) =>
+      this.searchWorst(worker, fen, depth),
+    )
+  }
+
+  private runBatch(
+    fens: readonly string[],
+    multiPv: number,
+    searchOne: (worker: Worker, fen: string) => Promise<string>,
+  ): Promise<readonly string[]> {
     const run = this.chain.then(async () => {
       const worker = await this.initWorker()
+      // Every batch states its own MultiPV, so best- and worst-move
+      // batches can interleave without leaking the option.
+      worker.postMessage(`setoption name MultiPV value ${multiPv}`)
       const plan = planSearches(fens)
       const uniqueMoves: string[] = []
       for (const fen of plan.unique) {
-        uniqueMoves.push(await this.search(worker, fen, depth))
+        uniqueMoves.push(await searchOne(worker, fen))
       }
       return plan.indices.map((index) => {
         const move = uniqueMoves[index]
@@ -128,6 +175,44 @@ export class StockfishEngineAdapter implements EnginePort {
         this.lineHandler = null
         clearTimeout(timeout)
         resolve(move)
+      }
+      worker.postMessage(`position fen ${fen}`)
+      worker.postMessage(`go depth ${depth}`)
+    })
+  }
+
+  /**
+   * With MultiPV covering every root move, the engine streams one
+   * ranked `info` line per move per iteration; the highest rank at the
+   * final iteration is the worst move. Later lines overwrite earlier
+   * ones per rank, and every iteration ranks the same move count, so
+   * the map ends holding the deepest ranking.
+   */
+  private searchWorst(
+    worker: Worker,
+    fen: string,
+    depth: number,
+  ): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const ranked = new Map<number, string>()
+      const timeout = setTimeout(() => {
+        this.lineHandler = null
+        reject(new Error('Stockfish search timed out'))
+      }, SEARCH_TIMEOUT_MS)
+      this.lineHandler = (line) => {
+        const info = parseMultiPvLine(line)
+        if (info !== null) {
+          ranked.set(info.rank, info.move)
+          return
+        }
+        const best = parseBestMoveLine(line)
+        if (best === null) {
+          return
+        }
+        this.lineHandler = null
+        clearTimeout(timeout)
+        const worstRank = Math.max(0, ...ranked.keys())
+        resolve(ranked.get(worstRank) ?? best)
       }
       worker.postMessage(`position fen ${fen}`)
       worker.postMessage(`go depth ${depth}`)
