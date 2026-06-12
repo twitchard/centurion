@@ -156,12 +156,17 @@
 
     <div id="centurion-session" class="feature-layout centurion-session">
       <div class="centurion-board-area">
-        <div id="centurion-scoreboard" class="centurion-scoreboard">
-          <div id="centurion-score-line" class="centurion-score-line"><span id="centurion-score-p1" class="centurion-score-p1"></span><span class="centurion-score-divider"> : </span><span id="centurion-score-p2" class="centurion-score-p2"></span></div>
-          <div id="centurion-turn-line" class="centurion-turn-line"></div>
+        <div id="centurion-bar-top" class="centurion-player-bar">
+          <span id="centurion-score-top" class="centurion-player-score"></span>
+          <span id="centurion-status-top" class="centurion-player-status"></span>
+          <span id="centurion-meta-line" class="centurion-bar-meta"></span>
         </div>
         <div class="panel board-panel" id="centurion-board-panel">
           <canvas id="centurion-canvas"></canvas>
+        </div>
+        <div id="centurion-bar-bottom" class="centurion-player-bar">
+          <span id="centurion-score-bottom" class="centurion-player-score"></span>
+          <span id="centurion-status-bottom" class="centurion-player-status"></span>
         </div>
         <p id="centurion-board-hint" class="centurion-board-hint"></p>
       </div>

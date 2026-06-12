@@ -716,39 +716,59 @@ canvas {
   color: var(--gold-pale);
 }
 
-.centurion-scoreboard {
+/*
+ * One bar per side, hugging the board like chess clocks: the bottom bar
+ * is the viewer's, the top bar the opponent's. The active placer's bar
+ * lights up in their tint instead of naming the teams.
+ */
+.centurion-player-bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 16px;
-  padding: 6px 12px;
-  border: 1px solid var(--bronze);
+  gap: 14px;
+  padding: 4px 12px;
+  border: 1px solid var(--panel-border);
   border-radius: 4px;
   background: var(--bg-deep);
-  box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.12);
 }
 
-.centurion-turn-line {
+.centurion-player-bar--active-p1 {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.35);
+}
+
+.centurion-player-bar--active-p2 {
+  border-color: var(--crimson-bright);
+  box-shadow: inset 0 0 0 1px rgba(173, 49, 40, 0.45);
+}
+
+.centurion-player-score {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  min-width: 1.5ch;
+}
+
+/* Player identity colors, matching the board's arrows and counts. */
+.centurion-player-score--p1 {
+  color: var(--gold-bright);
+}
+
+.centurion-player-score--p2 {
+  color: var(--crimson-text);
+}
+
+.centurion-player-status {
+  flex: 1;
   font-size: 0.82rem;
   color: var(--ink-dim);
 }
 
-.centurion-score-line {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: var(--ink-dim);
-}
-
-/* Player identity colors, matching the board's arrows and counts. */
-.centurion-score-p1 {
-  color: var(--gold-bright);
-}
-
-.centurion-score-p2 {
-  color: var(--crimson-text);
+.centurion-bar-meta {
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+  text-align: right;
 }
 
 .centurion-meta-line {

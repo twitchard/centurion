@@ -623,10 +623,13 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-share-row', 'element'],
     ['centurion-share-btn', 'button'],
     ['centurion-copy-link-btn', 'button'],
-    ['centurion-score-line', 'element'],
-    ['centurion-score-p1', 'element'],
-    ['centurion-score-p2', 'element'],
-    ['centurion-turn-line', 'element'],
+    ['centurion-bar-top', 'element'],
+    ['centurion-bar-bottom', 'element'],
+    ['centurion-score-top', 'element'],
+    ['centurion-score-bottom', 'element'],
+    ['centurion-status-top', 'element'],
+    ['centurion-status-bottom', 'element'],
+    ['centurion-meta-line', 'element'],
     ['centurion-session-notice', 'element'],
     ['centurion-result-banner', 'element'],
     ['centurion-board-hint', 'element'],
@@ -863,19 +866,31 @@ describe('main app wiring', () => {
     expect(lobby.style.display).toBe('none')
     expect(session.style.display).toBe('grid')
 
-    const scoreP1 = documentRef.getElementById(
-      'centurion-score-p1',
+    const scoreTop = documentRef.getElementById(
+      'centurion-score-top',
     ) as FakeHTMLElement
-    const scoreP2 = documentRef.getElementById(
-      'centurion-score-p2',
+    const scoreBottom = documentRef.getElementById(
+      'centurion-score-bottom',
     ) as FakeHTMLElement
-    const turnLine = documentRef.getElementById(
-      'centurion-turn-line',
+    const statusTop = documentRef.getElementById(
+      'centurion-status-top',
     ) as FakeHTMLElement
-    expect(scoreP1.textContent).toBe('Gold 0')
-    expect(scoreP2.textContent).toBe('0 Crimson')
-    expect(turnLine.textContent).toContain('Turn 1')
-    expect(turnLine.textContent).toContain('100/100 games')
+    const statusBottom = documentRef.getElementById(
+      'centurion-status-bottom',
+    ) as FakeHTMLElement
+    const metaLine = documentRef.getElementById(
+      'centurion-meta-line',
+    ) as FakeHTMLElement
+    expect(scoreTop.textContent).toBe('0')
+    expect(scoreBottom.textContent).toBe('0')
+    expect(metaLine.textContent).toContain('Turn 1')
+    expect(metaLine.textContent).toContain('100/100 games')
+    // Pass-and-play: exactly one side is prompted to place.
+    expect(
+      [statusTop.textContent, statusBottom.textContent].filter(
+        (text) => text === 'Place an arrow',
+      ),
+    ).toHaveLength(1)
 
     const boardCanvas = documentRef.getElementById(
       'centurion-canvas',
@@ -893,9 +908,9 @@ describe('main app wiring', () => {
     boardCanvas.clickSquare('e4')
 
     // The arrow phase is synchronous; Stockfish (mocked) answers async.
-    expect(turnLine.textContent).toContain('Resolving')
+    expect(metaLine.textContent).toContain('Resolving')
     await vi.waitFor(() => {
-      expect(turnLine.textContent).toContain('Turn 2')
+      expect(metaLine.textContent).toContain('Turn 2')
     })
     expect(history.scrollHeight).toBeGreaterThan(0)
 

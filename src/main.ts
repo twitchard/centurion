@@ -156,9 +156,13 @@ const centurionCancelButton = button('centurion-cancel-btn')
 const centurionShareRow = element('centurion-share-row')
 const centurionShareButton = button('centurion-share-btn')
 const centurionCopyLinkButton = button('centurion-copy-link-btn')
-const centurionScoreP1 = element('centurion-score-p1')
-const centurionScoreP2 = element('centurion-score-p2')
-const centurionTurnLine = element('centurion-turn-line')
+const centurionBarTop = element('centurion-bar-top')
+const centurionBarBottom = element('centurion-bar-bottom')
+const centurionScoreTop = element('centurion-score-top')
+const centurionScoreBottom = element('centurion-score-bottom')
+const centurionStatusTop = element('centurion-status-top')
+const centurionStatusBottom = element('centurion-status-bottom')
+const centurionMetaLine = element('centurion-meta-line')
 const centurionSessionNotice = element('centurion-session-notice')
 const centurionResultBanner = element('centurion-result-banner')
 const centurionBoardHint = element('centurion-board-hint')
@@ -635,32 +639,17 @@ function renderChatLab(model: ChatLabModel): void {
   chatSendButton.disabled = !connected || model.draft.trim().length === 0
 }
 
-function playerColorName(player: PlayerId): string {
-  return player === 1 ? 'gold' : 'crimson'
-}
-
 function playerLabel(session: MatchSession, player: PlayerId): string {
-  if (session.mode.tag === 'solo') {
-    return player === 1 ? 'You (gold)' : 'The field'
-  }
-  const base = `Player ${player} (${playerColorName(player)})`
-  if (session.mode.tag === 'remote' && session.mode.you === player) {
-    return `${base} (you)`
-  }
-  return base
-}
-
-function scoreboardLabel(session: MatchSession, player: PlayerId): string {
   if (session.mode.tag === 'solo') {
     return player === 1 ? 'You' : 'The field'
   }
   if (session.mode.tag === 'remote') {
     return session.mode.you === player ? 'You' : 'Opponent'
   }
-  return player === 1 ? 'Gold' : 'Crimson'
+  return `Player ${player}`
 }
 
-function turnStatusText(session: MatchSession): string {
+function matchMetaText(session: MatchSession): string {
   const match = session.match
   if (match.phase.tag === 'finished') {
     return 'Match over'
@@ -672,17 +661,7 @@ function turnStatusText(session: MatchSession): string {
   if (!canPlaceArrows(match)) {
     return `Turn ${match.turn} · ${games} · Engine playout`
   }
-  if (session.mode.tag === 'solo') {
-    return `Turn ${match.turn} · ${games} · Place an arrow`
-  }
-  const placer = activePlacer(match)
-  const who =
-    session.mode.tag === 'remote'
-      ? placer === session.mode.you
-        ? 'Your turn'
-        : "Opponent's turn"
-      : `${scoreboardLabel(session, placer)} places`
-  return `Turn ${match.turn} · ${games} · ${who}`
+  return `Turn ${match.turn} · ${games}`
 }
 
 function describeResult(session: MatchSession, match: MatchState): string {
@@ -924,9 +903,59 @@ function renderCenturionSession(session: MatchSession): void {
   const match = session.match
   const viewer = sessionViewer(session)
 
-  centurionScoreP1.textContent = `${scoreboardLabel(session, 1)} ${match.scores.p1}`
-  centurionScoreP2.textContent = `${match.scores.p2} ${scoreboardLabel(session, 2)}`
-  centurionTurnLine.textContent = turnStatusText(session)
+  // No team names: the bar under the board is the viewer's side, the bar
+  // above it is the opponent's, mirroring how the pieces are drawn.
+  const topPlayer: PlayerId = viewer === 1 ? 2 : 1
+  const scoreOf = (player: PlayerId): number =>
+    player === 1 ? match.scores.p1 : match.scores.p2
+  centurionScoreTop.textContent = String(scoreOf(topPlayer))
+  centurionScoreBottom.textContent = String(scoreOf(viewer))
+  centurionMetaLine.textContent = matchMetaText(session)
+
+  const placing =
+    match.phase.tag === 'active' &&
+    session.resolving === null &&
+    canPlaceArrows(match)
+      ? activePlacer(match)
+      : null
+  const sides: ReadonlyArray<{
+    readonly bar: HTMLElement
+    readonly score: HTMLElement
+    readonly status: HTMLElement
+    readonly player: PlayerId
+  }> = [
+    {
+      bar: centurionBarTop,
+      score: centurionScoreTop,
+      status: centurionStatusTop,
+      player: topPlayer,
+    },
+    {
+      bar: centurionBarBottom,
+      score: centurionScoreBottom,
+      status: centurionStatusBottom,
+      player: viewer,
+    },
+  ]
+  for (const side of sides) {
+    const active = placing === side.player
+    // Scores wear the same tint as that player's arrows and counts.
+    side.score.classList.toggle('centurion-player-score--p1', side.player === 1)
+    side.score.classList.toggle('centurion-player-score--p2', side.player === 2)
+    side.bar.classList.toggle(
+      'centurion-player-bar--active-p1',
+      active && side.player === 1,
+    )
+    side.bar.classList.toggle(
+      'centurion-player-bar--active-p2',
+      active && side.player === 2,
+    )
+    side.status.textContent = active
+      ? session.mode.tag === 'remote' && side.player !== session.mode.you
+        ? 'Their turn...'
+        : 'Place an arrow'
+      : ''
+  }
 
   centurionSessionNotice.textContent = session.notice ?? ''
   centurionBoardHint.textContent = boardHintText(session)
