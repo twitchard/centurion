@@ -11,7 +11,7 @@ Run `bun install` then `bun run dev` and open the app.
 - **/** — Centurion Chess. Pass & Play starts a hot-seat match immediately; New Multiplayer Match creates a room code for a WebRTC peer (via Trystero), and Join with code connects to one.
 - **/labs** — developer labs: the Superposition Board Lab (render arbitrary FEN/arrow sets) and the P2P Chat Lab (transport smoke test).
 
-Solo mode pits you against **the Centurion**: you own white and place an arrow each turn, both half-moves play out with Stockfish filling the gaps, and after each black reply the Centurion answers with a **trap arrow** — the move Stockfish ranks *worst* (full-MultiPV, lowest line) in a plurality of your games. The trap is a white move, so it pulls nothing on the Centurion's own half-turn; it lies in wait on your reply, dragging up to its full weight in games into the blunder. Your newer arrow always pulls first, so each turn is a race: save the games you can, and stack or out-place the traps you can't defuse.
+Solo mode pits you against the computer: you own white and place an arrow each turn, both half-moves play out with Stockfish filling the gaps, and after each black reply the computer answers with a **trap arrow** — the move Stockfish ranks *worst* (full-MultiPV, lowest line) in a plurality of your games. The trap is a white move, so it pulls nothing on the computer's own half-turn; it lies in wait on your reply, dragging up to its full weight in games into the blunder. Your newer arrow always pulls first, so each turn is a race: save the games you can, and stack or out-place the traps you can't defuse.
 
 Place an arrow by clicking its origin and destination squares on the board (or typing notation like `e2->e4`). Each player sees the board from their own perspective; player 2's view is rank-flipped, so the same visual arrow means the same positional idea for both sides.
 
@@ -44,7 +44,7 @@ Each resolved turn replays as a ~2 second animation: pieces pulled by arrows sli
 
 ### Turns
 
-Players alternate turns. Who plays white is chosen from the match seed at the start of the match; the white owner also places the first arrow, since turn 1 resolves white's half-move in every game. (Solo mode overrides this: you always own white and place every arrow, while the Centurion lays a trap arrow after each black half-turn.)
+Players alternate turns. Who plays white is chosen from the match seed at the start of the match; the white owner also places the first arrow, since turn 1 resolves white's half-move in every game. (Solo mode overrides this: you always own white and place every arrow, while the computer lays a trap arrow after each black half-turn.)
 
 On your turn, you place exactly one arrow from any origin square to any destination square on the unified board. You may place an arrow on top of an existing arrow to stack it; stacking adds 8 to that arrow's cardinality and refreshes its decay from the current turn.
 

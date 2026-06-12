@@ -152,14 +152,27 @@ export function matchGameToPgn(
   return makePgn(pgnGame)
 }
 
-export function describeGameReplayLabel(game: MatchGame): string {
-  const counts = gameMoveSourceCounts(game)
-  return `Game ${game.id + 1} (${counts.arrow} arrow / ${counts.engine} engine, ${describeGameResult(game)}, ${game.moves.length} plies)`
+export interface PlayerNames {
+  readonly p1: string
+  readonly p2: string
 }
 
-export function describeGameResult(game: MatchGame): string {
+const DEFAULT_PLAYER_NAMES: PlayerNames = { p1: 'P1', p2: 'P2' }
+
+export function describeGameReplayLabel(
+  game: MatchGame,
+  names: PlayerNames = DEFAULT_PLAYER_NAMES,
+): string {
+  const counts = gameMoveSourceCounts(game)
+  return `Game ${game.id + 1} (${counts.arrow} arrow / ${counts.engine} engine, ${describeGameResult(game, names)}, ${game.moves.length} plies)`
+}
+
+export function describeGameResult(
+  game: MatchGame,
+  names: PlayerNames = DEFAULT_PLAYER_NAMES,
+): string {
   if (game.status.tag === 'won') {
-    return `P${game.status.by} won`
+    return `${game.status.by === 1 ? names.p1 : names.p2} won`
   }
   if (game.status.tag === 'drawn') {
     return `draw (${game.status.reason})`

@@ -298,7 +298,7 @@ describe('solo mode', () => {
       throw new Error('expected playing state')
     }
     expect(submitted.session.match.turn).toBe(3)
-    expect(submitted.session.inputError).toContain('Centurion')
+    expect(submitted.session.inputError).toContain('Computer')
   })
 
   it('skips the trap arrow when the worst-move search fails', () => {

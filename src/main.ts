@@ -654,12 +654,20 @@ function renderChatLab(model: ChatLabModel): void {
 
 function playerLabel(session: MatchSession, player: PlayerId): string {
   if (session.mode.tag === 'solo') {
-    return player === 1 ? 'You' : 'The Centurion'
+    return player === 1 ? 'You' : 'Computer'
   }
   if (session.mode.tag === 'remote') {
     return session.mode.you === player ? 'You' : 'Opponent'
   }
   return `Player ${player}`
+}
+
+/** Compact per-player label for score chips and one-line summaries. */
+function scoreLabel(session: MatchSession, player: PlayerId): string {
+  if (session.mode.tag === 'local') {
+    return `P${player}`
+  }
+  return playerLabel(session, player)
 }
 
 function matchMetaText(session: MatchSession): string {
@@ -672,7 +680,7 @@ function matchMetaText(session: MatchSession): string {
     return `Turn ${match.turn} · ${games} · Resolving...`
   }
   if (session.trap !== null) {
-    return `Turn ${match.turn} · ${games} · The Centurion is laying a trap...`
+    return `Turn ${match.turn} · ${games} · Computer is laying a trap...`
   }
   if (!canPlaceArrows(match)) {
     return `Turn ${match.turn} · ${games} · Engine playout`
@@ -685,19 +693,18 @@ function describeResult(session: MatchSession, match: MatchState): string {
     return ''
   }
   const winner = match.phase.winner
+  const score = `${match.scores.p1} : ${match.scores.p2}`
   if (winner === 'draw') {
-    return `Match drawn ${match.scores.p1} : ${match.scores.p2}.`
+    return `Match drawn ${score}.`
   }
-  if (session.mode.tag === 'remote') {
-    return winner === session.mode.you
-      ? `You win the match ${match.scores.p1} : ${match.scores.p2}!`
-      : `${playerLabel(session, winner)} wins ${match.scores.p1} : ${match.scores.p2}.`
-  }
-  return `Player ${winner} wins the match ${match.scores.p1} : ${match.scores.p2}!`
+  const label = playerLabel(session, winner)
+  return label === 'You'
+    ? `You win the match ${score}!`
+    : `${label} wins the match ${score}.`
 }
 
-function resolutionSummaryText(match: MatchState): string {
-  const summary = match.lastResolution
+function resolutionSummaryText(session: MatchSession): string {
+  const summary = session.match.lastResolution
   if (summary === null) {
     return 'No turns resolved yet.'
   }
@@ -706,7 +713,7 @@ function resolutionSummaryText(match: MatchState): string {
   if (decided === 0) {
     return base
   }
-  return `${base} Decided: P1 +${summary.p1Wins}, P2 +${summary.p2Wins}, draws +${summary.draws}.`
+  return `${base} Decided: ${scoreLabel(session, 1)} +${summary.p1Wins}, ${scoreLabel(session, 2)} +${summary.p2Wins}, draws +${summary.draws}.`
 }
 
 /**
@@ -768,7 +775,10 @@ function renderGameReplay(session: MatchSession): void {
     for (const game of sortedGames) {
       const option = document.createElement('option')
       option.value = String(game.id)
-      option.textContent = describeGameReplayLabel(game)
+      option.textContent = describeGameReplayLabel(game, {
+        p1: scoreLabel(session, 1),
+        p2: scoreLabel(session, 2),
+      })
       centurionGameSelect.appendChild(option)
     }
   }
@@ -992,7 +1002,7 @@ function renderCenturionSession(session: MatchSession): void {
   centurionResultBanner.textContent = result
   centurionResultBanner.style.display = result.length > 0 ? 'block' : 'none'
 
-  centurionResolutionSummary.textContent = resolutionSummaryText(match)
+  centurionResolutionSummary.textContent = resolutionSummaryText(session)
 
   centurionArrowHistory.innerHTML = ''
   for (const boardArrow of [...match.arrows].reverse()) {
@@ -1000,7 +1010,7 @@ function renderCenturionSession(session: MatchSession): void {
     item.className = `centurion-arrow-entry centurion-arrow-entry--player-${boardArrow.owner}`
     const from = squareName(toCanonicalSquare(viewer, boardArrow.from))
     const to = squareName(toCanonicalSquare(viewer, boardArrow.to))
-    item.textContent = `T${boardArrow.placedTurn} P${boardArrow.owner}: ${from}->${to} (×${boardArrow.cardinality})`
+    item.textContent = `T${boardArrow.placedTurn} ${scoreLabel(session, boardArrow.owner)}: ${from}->${to} (×${boardArrow.cardinality})`
     centurionArrowHistory.appendChild(item)
   }
 

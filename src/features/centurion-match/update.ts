@@ -112,7 +112,7 @@ const ARROWLESS_PHASE_COPY =
 const OUT_OF_SYNC_COPY =
   'Received an out-of-sync message from the opponent; the match may have diverged.'
 const RESOLVING_COPY = 'Stockfish is resolving the turn...'
-const TRAP_COPY = 'The Centurion is placing its trap arrow...'
+const TRAP_COPY = 'Computer is placing its trap arrow...'
 
 /** In solo mode the human is always player 1; the Centurion is player 2. */
 const SOLO_OPPONENT: PlayerId = 2
@@ -677,7 +677,7 @@ export function updateCenturion(
       return noCmd(
         withSession(model, {
           trap: null,
-          notice: `Engine error: ${msg.message} The Centurion skipped its trap arrow.`,
+          notice: `Engine error: ${msg.message} Computer skipped its trap arrow.`,
         }),
       )
     }
