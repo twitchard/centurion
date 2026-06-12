@@ -26,6 +26,7 @@ type Sender = (data: unknown, targetPeers?: readonly string[]) => void
 /** Verified live WebSocket trackers (others in Trystero defaults are dead or hang). */
 const TRACKER_URLS = [
   'wss://tracker.openwebtorrent.com',
+  'wss://tracker.webtorrent.dev',
   'wss://tracker.btorrent.xyz',
 ]
 
@@ -44,22 +45,40 @@ const NOSTR_RELAY_URLS = [
   'wss://purplepag.es',
 ]
 
-const TURN_CONFIG: RTCIceServer[] = [
-  {
-    urls: 'stun:openrelay.metered.ca:80',
-  },
-  {
-    urls: [
-      'turn:openrelay.metered.ca:80',
-      'turn:openrelay.metered.ca:80?transport=tcp',
-      'turn:openrelay.metered.ca:443',
-      'turn:openrelay.metered.ca:443?transport=tcp',
-      'turns:openrelay.metered.ca:443',
-    ],
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-]
+/**
+ * Trystero already supplies Google + Cloudflare STUN by default. TURN relay
+ * (needed when both NATs refuse direct traffic, e.g. cellular or CGNAT) has
+ * no credential-free public servers, so credentials are fetched at runtime
+ * from an endpoint configured via VITE_TURN_CREDENTIALS_URL — e.g. a free
+ * Metered account's `…/api/v1/turn/credentials?apiKey=…` URL, which returns
+ * a JSON array of RTCIceServer objects. Without it the app is STUN-only.
+ */
+const TURN_FETCH_TIMEOUT_MS = 5_000
+
+function isIceServer(value: unknown): value is RTCIceServer {
+  if (typeof value !== 'object' || value === null || !('urls' in value)) {
+    return false
+  }
+  const urls = (value as { urls: unknown }).urls
+  return (
+    typeof urls === 'string' ||
+    (Array.isArray(urls) && urls.every((url) => typeof url === 'string'))
+  )
+}
+
+async function fetchTurnServers(url: string): Promise<RTCIceServer[]> {
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(TURN_FETCH_TIMEOUT_MS),
+  })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+  const body: unknown = await response.json()
+  if (!Array.isArray(body) || !body.every(isIceServer)) {
+    throw new Error('expected a JSON array of RTCIceServer objects')
+  }
+  return body
+}
 
 const RTC_CONFIG: RTCConfiguration = {
   iceCandidatePoolSize: 10,
@@ -134,10 +153,14 @@ function summarizeSocketHealth(
 export class TrysteroTransportAdapter implements TransportPort {
   private rooms = new Map<SignallingChannel, Room>()
   private activeChannel: SignallingChannel | null = null
+  private connectedChannels = new Set<SignallingChannel>()
+  private senders = new Map<SignallingChannel, Sender>()
   private sendFn: Sender | null = null
   private callbacks: TransportCallbacks = NOOP_TRANSPORT_CALLBACKS
   private currentStatus: TransportStatus = 'disconnected'
   private readonly appId: string
+  private readonly turnCredentialsUrl: string | undefined
+  private turnServersPromise: Promise<RTCIceServer[]> | null = null
   private guestConnectTimer: ReturnType<typeof setTimeout> | null = null
   private relayStatusTimer: ReturnType<typeof setInterval> | null = null
   private iceStatusTimer: ReturnType<typeof setInterval> | null = null
@@ -148,8 +171,14 @@ export class TrysteroTransportAdapter implements TransportPort {
   code = ''
   isHost = false
 
-  constructor(appId: string = DEFAULT_APP_ID) {
+  constructor(
+    appId: string = DEFAULT_APP_ID,
+    turnCredentialsUrl: string | undefined = import.meta.env
+      .VITE_TURN_CREDENTIALS_URL,
+  ) {
     this.appId = appId
+    const trimmed = turnCredentialsUrl?.trim()
+    this.turnCredentialsUrl = trimmed ? trimmed : undefined
   }
 
   get status(): TransportStatus {
@@ -218,6 +247,8 @@ export class TrysteroTransportAdapter implements TransportPort {
     const rooms = [...this.rooms.values()]
     this.rooms.clear()
     this.activeChannel = null
+    this.connectedChannels.clear()
+    this.senders.clear()
     this.sendFn = null
     for (const room of rooms) {
       await this.scheduleLeave(room)
@@ -329,6 +360,21 @@ export class TrysteroTransportAdapter implements TransportPort {
     }, 10_000)
   }
 
+  private async resolveTurnServers(url: string): Promise<RTCIceServer[]> {
+    this.turnServersPromise ??= fetchTurnServers(url)
+    try {
+      const servers = await this.turnServersPromise
+      this.log(`TURN relay credentials loaded (${servers.length} entries).`)
+      return servers
+    } catch (error: unknown) {
+      this.turnServersPromise = null
+      this.log(
+        `TURN credentials fetch failed (${error instanceof Error ? error.message : String(error)}); continuing STUN-only.`,
+      )
+      return []
+    }
+  }
+
   private async openRoom(): Promise<void> {
     await this.leavePromise
     const roomId = `${this.appId}-${this.code}`
@@ -338,14 +384,22 @@ export class TrysteroTransportAdapter implements TransportPort {
         ? ` (retry ${this.guestConnectAttempt + 1}/${GUEST_MAX_CONNECT_ATTEMPTS})`
         : ''
 
+    const turnConfig =
+      this.turnCredentialsUrl === undefined
+        ? []
+        : await this.resolveTurnServers(this.turnCredentialsUrl)
+    if (generation !== this.openGeneration) {
+      return
+    }
+
     const joinConfig = {
       appId: this.appId,
-      turnConfig: TURN_CONFIG,
+      turnConfig,
       rtcConfig: RTC_CONFIG,
     }
 
     this.log(
-      `Opening match room id=${roomId} via BitTorrent trackers + Nostr relays${attemptLabel}`,
+      `Opening match room id=${roomId} via BitTorrent trackers + Nostr relays${attemptLabel} (${turnConfig.length > 0 ? 'TURN relay enabled' : 'no TURN relay configured — direct/STUN only'})`,
     )
 
     for (const { channel, label, join, relayUrls } of CHANNEL_CONFIG) {
@@ -395,22 +449,32 @@ export class TrysteroTransportAdapter implements TransportPort {
     this.startGuestConnectTimer()
   }
 
+  /**
+   * Both signalling channels stay joined for the whole session and act as
+   * redundant paths to the same peer. Messages are accepted from either
+   * channel (each message is sent exactly once, on the preferred channel),
+   * and if the preferred channel's connection dies while the other is still
+   * up, sending fails over instead of dropping the match. Tearing down the
+   * "losing" channel is what the previous design did, and it raced: each
+   * side could commit to a different channel and close the room the other
+   * side was using.
+   */
   private wireRoom(
     room: Room,
     channel: SignallingChannel,
     label: string,
   ): void {
     const [send, receive] = room.makeAction('chat')
+    this.senders.set(channel, send as Sender)
 
     receive((data: unknown) => {
-      if (this.activeChannel !== null && this.activeChannel !== channel) {
-        return
-      }
       this.callbacks.onMessage(data)
     })
 
     room.onPeerJoin((peerId) => {
-      if (this.activeChannel !== null && this.activeChannel !== channel) {
+      this.connectedChannels.add(channel)
+      if (this.activeChannel !== null) {
+        this.log(`${label}: redundant path connected (${peerId})`)
         return
       }
 
@@ -420,22 +484,28 @@ export class TrysteroTransportAdapter implements TransportPort {
       this.clearMonitoringTimers()
       this.log(`${label}: peer joined (${peerId})`)
       this.setStatus('connected')
-
-      for (const [otherChannel, otherRoom] of this.rooms) {
-        if (otherChannel === channel) {
-          continue
-        }
-        this.rooms.delete(otherChannel)
-        void this.scheduleLeave(otherRoom)
-      }
-
       this.callbacks.onPeerJoin()
     })
 
     room.onPeerLeave((peerId) => {
-      if (this.activeChannel !== null && this.activeChannel !== channel) {
+      this.connectedChannels.delete(channel)
+      if (this.activeChannel !== channel) {
+        this.log(`${label}: redundant path lost (${peerId})`)
         return
       }
+
+      const fallback = CHANNEL_CONFIG.find((config) =>
+        this.connectedChannels.has(config.channel),
+      )
+      if (fallback) {
+        this.activeChannel = fallback.channel
+        this.sendFn = this.senders.get(fallback.channel) ?? null
+        this.log(
+          `${label}: peer left (${peerId}); failing over to ${fallback.label}`,
+        )
+        return
+      }
+
       this.log(`${label}: peer left (${peerId})`)
       this.activeChannel = null
       this.sendFn = null

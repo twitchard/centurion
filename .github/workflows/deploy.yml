@@ -41,6 +41,8 @@ jobs:
 
       - name: Build
         run: bun run build
+        env:
+          VITE_TURN_CREDENTIALS_URL: ${{ secrets.VITE_TURN_CREDENTIALS_URL }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

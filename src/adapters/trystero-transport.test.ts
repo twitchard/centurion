@@ -148,4 +148,148 @@ describe('TrysteroTransportAdapter', () => {
     await vi.advanceTimersByTimeAsync(75_000)
     expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps both channels joined and fires onPeerJoin only once', async () => {
+    const { torrentRoom, nostrRoom } = mockDualRooms()
+
+    const adapter = new TrysteroTransportAdapter('test-app')
+    let joins = 0
+    adapter.setCallbacks({
+      onStatusChange: () => {},
+      onPeerJoin: () => {
+        joins += 1
+      },
+      onPeerLeave: () => {},
+      onMessage: () => {},
+      onLog: () => {},
+    })
+
+    adapter.createRoom()
+    await Promise.resolve()
+    torrentRoom.handlers.onPeerJoin('peer-1')
+    nostrRoom.handlers.onPeerJoin('peer-1')
+
+    expect(joins).toBe(1)
+    expect(torrentRoom.leave).not.toHaveBeenCalled()
+    expect(nostrRoom.leave).not.toHaveBeenCalled()
+  })
+
+  it('delivers messages arriving on the non-active channel', async () => {
+    const { torrentRoom, nostrRoom } = mockDualRooms()
+
+    const adapter = new TrysteroTransportAdapter('test-app')
+    const received: unknown[] = []
+    adapter.setCallbacks({
+      onStatusChange: () => {},
+      onPeerJoin: () => {},
+      onPeerLeave: () => {},
+      onMessage: (data) => received.push(data),
+      onLog: () => {},
+    })
+
+    adapter.joinRoom('123456')
+    await Promise.resolve()
+    torrentRoom.handlers.onPeerJoin('peer-1')
+
+    const nostrReceiveHandler = nostrRoom.receive.mock.calls[0]?.[0] as (
+      data: unknown,
+    ) => void
+    nostrReceiveHandler({ move: 'e2->e4' })
+
+    expect(received).toEqual([{ move: 'e2->e4' }])
+  })
+
+  it('fails over to the surviving channel when the active one drops', async () => {
+    const { torrentRoom, nostrRoom } = mockDualRooms()
+
+    const adapter = new TrysteroTransportAdapter('test-app')
+    const statuses: string[] = []
+    let leaves = 0
+    adapter.setCallbacks({
+      onStatusChange: (status) => statuses.push(status),
+      onPeerJoin: () => {},
+      onPeerLeave: () => {
+        leaves += 1
+      },
+      onMessage: () => {},
+      onLog: () => {},
+    })
+
+    adapter.joinRoom('123456')
+    await Promise.resolve()
+    torrentRoom.handlers.onPeerJoin('peer-1')
+    nostrRoom.handlers.onPeerJoin('peer-1')
+
+    torrentRoom.handlers.onPeerLeave('peer-1')
+    expect(leaves).toBe(0)
+    expect(statuses.at(-1)).toBe('connected')
+
+    adapter.send({ move: 'e2->e4' })
+    expect(nostrRoom.send).toHaveBeenCalledWith({ move: 'e2->e4' })
+    expect(torrentRoom.send).not.toHaveBeenCalled()
+
+    nostrRoom.handlers.onPeerLeave('peer-1')
+    expect(leaves).toBe(1)
+    expect(statuses.at(-1)).toBe('disconnected')
+  })
+
+  it('fetches TURN credentials when a credentials URL is configured', async () => {
+    mockDualRooms()
+    const turnServers = [
+      { urls: 'turn:relay.example.com:443', username: 'u', credential: 'c' },
+    ]
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => turnServers,
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = new TrysteroTransportAdapter(
+      'test-app',
+      'https://turn.example.com/credentials',
+    )
+    adapter.createRoom()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(joinTorrentRoomMock).toHaveBeenCalledWith(
+      expect.objectContaining({ turnConfig: turnServers }),
+      expect.any(String),
+      expect.any(Function),
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('continues STUN-only when the TURN credentials fetch fails', async () => {
+    mockDualRooms()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network down')
+      }),
+    )
+
+    const logs: string[] = []
+    const adapter = new TrysteroTransportAdapter(
+      'test-app',
+      'https://turn.example.com/credentials',
+    )
+    adapter.setCallbacks({
+      onStatusChange: () => {},
+      onPeerJoin: () => {},
+      onPeerLeave: () => {},
+      onMessage: () => {},
+      onLog: (message) => logs.push(message),
+    })
+    adapter.createRoom()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(joinTorrentRoomMock).toHaveBeenCalledWith(
+      expect.objectContaining({ turnConfig: [] }),
+      expect.any(String),
+      expect.any(Function),
+    )
+    expect(logs.some((line) => line.includes('STUN-only'))).toBe(true)
+    vi.unstubAllGlobals()
+  })
 })
