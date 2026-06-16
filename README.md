@@ -19,8 +19,25 @@ Place an arrow by clicking its origin and destination squares on the board (or t
 
 Multiplayer is serverless WebRTC. Two things have to succeed for a match to connect:
 
-1. **Signalling** — the peers find each other through public BitTorrent WebSocket trackers and Nostr relays (both joined in parallel and kept open as redundant paths).
+1. **Signalling** — the peers find each other through a signalling channel. The app joins all available channels in parallel and keeps them open as redundant paths.
 2. **NAT traversal** — the browsers negotiate a direct connection via STUN. When both networks refuse direct traffic (cellular carriers, CGNAT, strict home routers), WebRTC needs a **TURN relay**, and there are no credential-free public TURN servers.
+
+### Signalling channels
+
+By default the only channels are public BitTorrent WebSocket trackers and Nostr relays. These work on open networks but are frequently blocked by content filters, parental-control DNS, and some ISPs — their domains read as "torrent / peer-to-peer." If signalling never connects (the log shows `0/N open` for the whole attempt), that is almost always the cause.
+
+The fix is to add **Firebase Realtime Database** as a signalling channel. It rides on a Google domain (`*.firebasedatabase.app`) that filters essentially never block, and it is free with nothing to host:
+
+1. Create a free Firebase project at [console.firebase.google.com](https://console.firebase.google.com) and add a **Realtime Database** (any region).
+2. In the database's **Rules**, allow read/write under Trystero's signalling path (these are ephemeral signalling blobs, not game data):
+   ```json
+   { "rules": { "__trystero__": { ".read": true, ".write": true } } }
+   ```
+3. Copy the database URL (e.g. `https://your-project-default-rtdb.firebaseio.com`) and set it as the build variable `VITE_FIREBASE_DATABASE_URL` — as a GitHub repository secret of that name for the Pages deploy, or `VITE_FIREBASE_DATABASE_URL=… bun run dev` locally.
+
+When set, Firebase becomes the preferred channel (trackers and Nostr stay on as fallback), and the Firebase SDK is loaded only in that case. If it is unconfigured or unreachable, the app silently uses the other channels.
+
+### TURN relay
 
 Out of the box the app is STUN-only, which works for most home-network pairings but not all. To enable TURN, configure one of these at build time:
 

@@ -44,6 +44,7 @@ jobs:
         env:
           VITE_TURN_CREDENTIALS_URL: ${{ secrets.VITE_TURN_CREDENTIALS_URL }}
           VITE_METERED_API_KEY: ${{ secrets.VITE_METERED_API_KEY }}
+          VITE_FIREBASE_DATABASE_URL: ${{ secrets.VITE_FIREBASE_DATABASE_URL }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

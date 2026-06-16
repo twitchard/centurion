@@ -2,8 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const joinNostrRoomMock = vi.fn()
 const joinTorrentRoomMock = vi.fn()
+const joinFirebaseRoomMock = vi.fn()
 const getNostrRelaySocketsMock = vi.fn(() => ({}))
 const getTorrentRelaySocketsMock = vi.fn(() => ({}))
+const initializeAppMock = vi.fn(
+  (options: { databaseURL: string }, name: string) => ({
+    name,
+    options,
+  }),
+)
 
 vi.mock('trystero', () => ({
   joinRoom: (...args: unknown[]) => joinNostrRoomMock(...args),
@@ -16,6 +23,16 @@ vi.mock('trystero/torrent', () => ({
 
 vi.mock('trystero/nostr', () => ({
   getRelaySockets: () => getNostrRelaySocketsMock(),
+}))
+
+vi.mock('trystero/firebase', () => ({
+  joinRoom: (...args: unknown[]) => joinFirebaseRoomMock(...args),
+}))
+
+vi.mock('firebase/app', () => ({
+  initializeApp: (options: { databaseURL: string }, name: string) =>
+    initializeAppMock(options, name),
+  getApps: () => [],
 }))
 
 import { TrysteroTransportAdapter } from './trystero-transport'
@@ -51,11 +68,20 @@ function mockDualRooms() {
   return { torrentRoom, nostrRoom }
 }
 
+// openRoom awaits TURN + channel resolution before joining, so drain several
+// microtask ticks to let those settle under fake timers.
+async function flushMicrotasks() {
+  for (let i = 0; i < 5; i += 1) {
+    await Promise.resolve()
+  }
+}
+
 describe('TrysteroTransportAdapter', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     joinNostrRoomMock.mockReset()
     joinTorrentRoomMock.mockReset()
+    joinFirebaseRoomMock.mockReset()
     getNostrRelaySocketsMock.mockReset()
     getTorrentRelaySocketsMock.mockReset()
     getNostrRelaySocketsMock.mockReturnValue({})
@@ -71,7 +97,7 @@ describe('TrysteroTransportAdapter', () => {
 
     const adapter = new TrysteroTransportAdapter('test-app')
     adapter.createRoom()
-    await Promise.resolve()
+    await flushMicrotasks()
 
     expect(joinTorrentRoomMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -92,6 +118,36 @@ describe('TrysteroTransportAdapter', () => {
     )
   })
 
+  it('prepends a Firebase signalling channel when a database URL is configured', async () => {
+    vi.useRealTimers()
+    mockDualRooms()
+    const firebaseRoom = makeRoom()
+    joinFirebaseRoomMock.mockReturnValue(firebaseRoom)
+
+    const adapter = new TrysteroTransportAdapter(
+      'test-app',
+      undefined,
+      'https://demo-default-rtdb.firebaseio.com',
+    )
+    adapter.createRoom()
+    await vi.waitFor(() => expect(joinFirebaseRoomMock).toHaveBeenCalled())
+
+    expect(joinFirebaseRoomMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 'test-app',
+        firebaseApp: expect.objectContaining({
+          options: { databaseURL: 'https://demo-default-rtdb.firebaseio.com' },
+        }),
+      }),
+      expect.stringMatching(/^test-app-\d{6}$/),
+      expect.any(Function),
+    )
+    // Trackers and Nostr remain joined as redundant fallback paths.
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
+    expect(joinNostrRoomMock).toHaveBeenCalledTimes(1)
+    adapter.disconnect()
+  })
+
   it('retries guest connect before reporting error', async () => {
     mockDualRooms()
     mockDualRooms()
@@ -109,7 +165,7 @@ describe('TrysteroTransportAdapter', () => {
     })
 
     adapter.joinRoom('123456')
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
     expect(joinNostrRoomMock).toHaveBeenCalledTimes(1)
 
@@ -141,7 +197,7 @@ describe('TrysteroTransportAdapter', () => {
     })
 
     adapter.joinRoom('123456')
-    await Promise.resolve()
+    await flushMicrotasks()
     torrentRoom.handlers.onPeerJoin('peer-1')
 
     expect(peerJoined).toBe(true)
@@ -165,7 +221,7 @@ describe('TrysteroTransportAdapter', () => {
     })
 
     adapter.createRoom()
-    await Promise.resolve()
+    await flushMicrotasks()
     torrentRoom.handlers.onPeerJoin('peer-1')
     nostrRoom.handlers.onPeerJoin('peer-1')
 
@@ -188,7 +244,7 @@ describe('TrysteroTransportAdapter', () => {
     })
 
     adapter.joinRoom('123456')
-    await Promise.resolve()
+    await flushMicrotasks()
     torrentRoom.handlers.onPeerJoin('peer-1')
 
     const nostrReceiveHandler = nostrRoom.receive.mock.calls[0]?.[0] as (
@@ -216,7 +272,7 @@ describe('TrysteroTransportAdapter', () => {
     })
 
     adapter.joinRoom('123456')
-    await Promise.resolve()
+    await flushMicrotasks()
     torrentRoom.handlers.onPeerJoin('peer-1')
     nostrRoom.handlers.onPeerJoin('peer-1')
 

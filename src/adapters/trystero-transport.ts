@@ -1,3 +1,4 @@
+import type { FirebaseApp } from 'firebase/app'
 import { joinRoom as joinNostrRoom } from 'trystero'
 import { getRelaySockets as getNostrRelaySockets } from 'trystero/nostr'
 import { joinRoom as joinTorrentRoom } from 'trystero/torrent'
@@ -15,7 +16,7 @@ const GUEST_MAX_CONNECT_ATTEMPTS = 3
 const RELAY_STATUS_INTERVAL_MS = 5_000
 const ICE_STATUS_INTERVAL_MS = 4_000
 
-type SignallingChannel = 'torrent' | 'nostr'
+type SignallingChannel = 'firebase' | 'torrent' | 'nostr'
 type Room = ReturnType<typeof joinNostrRoom>
 type Sender = (data: unknown, targetPeers?: readonly string[]) => void
 
@@ -97,6 +98,19 @@ async function fetchTurnServers(url: string): Promise<RTCIceServer[]> {
   return body
 }
 
+/**
+ * Firebase Realtime Database is the most reliable signalling path: it rides on
+ * a Google domain (`*.firebasedatabase.app`) that content filters and ISPs
+ * essentially never block, unlike the BitTorrent trackers and Nostr relays.
+ * It is only used when a database URL is configured via
+ * VITE_FIREBASE_DATABASE_URL, and is loaded lazily so builds without it do not
+ * pull in the Firebase SDK.
+ */
+function defaultFirebaseDatabaseUrl(): string | undefined {
+  const url = import.meta.env.VITE_FIREBASE_DATABASE_URL?.trim()
+  return url ? url : undefined
+}
+
 const RTC_CONFIG: RTCConfiguration = {
   iceCandidatePoolSize: 10,
 }
@@ -106,7 +120,8 @@ type JoinRoomFn = (
     appId: string
     turnConfig: RTCIceServer[]
     rtcConfig: RTCConfiguration
-    relayUrls: string[]
+    relayUrls?: string[]
+    firebaseApp?: FirebaseApp
   },
   roomId: string,
   onJoinError?: (details: {
@@ -117,13 +132,16 @@ type JoinRoomFn = (
   }) => void,
 ) => Room
 
-const CHANNEL_CONFIG: ReadonlyArray<{
+interface ChannelDef {
   readonly channel: SignallingChannel
   readonly label: string
   readonly join: JoinRoomFn
-  readonly relayUrls: readonly string[]
-  readonly getSockets: () => Record<string, WebSocket>
-}> = [
+  readonly relayUrls?: readonly string[]
+  readonly firebaseApp?: FirebaseApp
+  readonly getSockets?: () => Record<string, WebSocket>
+}
+
+const STATIC_CHANNELS: readonly ChannelDef[] = [
   {
     channel: 'torrent',
     label: 'BitTorrent trackers',
@@ -139,6 +157,30 @@ const CHANNEL_CONFIG: ReadonlyArray<{
     getSockets: getNostrRelaySockets,
   },
 ]
+
+/** One Firebase app per database URL, shared across adapter instances. */
+const firebaseApps = new Map<string, FirebaseApp>()
+
+async function loadFirebaseChannel(databaseURL: string): Promise<ChannelDef> {
+  const [{ joinRoom }, { initializeApp, getApps }] = await Promise.all([
+    import('trystero/firebase'),
+    import('firebase/app'),
+  ])
+  let app = firebaseApps.get(databaseURL)
+  if (!app) {
+    const name = `centurion-${databaseURL}`
+    app =
+      getApps().find((existing) => existing.name === name) ??
+      initializeApp({ databaseURL }, name)
+    firebaseApps.set(databaseURL, app)
+  }
+  return {
+    channel: 'firebase',
+    label: 'Firebase',
+    join: joinRoom as unknown as JoinRoomFn,
+    firebaseApp: app,
+  }
+}
 
 function summarizeIceStates(peers: Record<string, RTCPeerConnection>): string {
   const entries = Object.entries(peers)
@@ -177,7 +219,10 @@ export class TrysteroTransportAdapter implements TransportPort {
   private currentStatus: TransportStatus = 'disconnected'
   private readonly appId: string
   private readonly turnCredentialsUrl: string | undefined
+  private readonly firebaseDatabaseUrl: string | undefined
   private turnServersPromise: Promise<RTCIceServer[]> | null = null
+  private firebaseChannelPromise: Promise<ChannelDef | null> | null = null
+  private channels: readonly ChannelDef[] = STATIC_CHANNELS
   private guestConnectTimer: ReturnType<typeof setTimeout> | null = null
   private relayStatusTimer: ReturnType<typeof setInterval> | null = null
   private iceStatusTimer: ReturnType<typeof setInterval> | null = null
@@ -191,10 +236,13 @@ export class TrysteroTransportAdapter implements TransportPort {
   constructor(
     appId: string = DEFAULT_APP_ID,
     turnCredentialsUrl: string | undefined = defaultTurnCredentialsUrl(),
+    firebaseDatabaseUrl: string | undefined = defaultFirebaseDatabaseUrl(),
   ) {
     this.appId = appId
-    const trimmed = turnCredentialsUrl?.trim()
-    this.turnCredentialsUrl = trimmed ? trimmed : undefined
+    const trimmedTurn = turnCredentialsUrl?.trim()
+    this.turnCredentialsUrl = trimmedTurn ? trimmedTurn : undefined
+    const trimmedFirebase = firebaseDatabaseUrl?.trim()
+    this.firebaseDatabaseUrl = trimmedFirebase ? trimmedFirebase : undefined
   }
 
   get status(): TransportStatus {
@@ -325,13 +373,15 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   private logRelayStatus(): void {
-    for (const { label, getSockets } of CHANNEL_CONFIG) {
-      this.log(summarizeSocketHealth(label, getSockets()))
+    for (const { label, getSockets } of this.channels) {
+      if (getSockets) {
+        this.log(summarizeSocketHealth(label, getSockets()))
+      }
     }
   }
 
   private logIceStatus(): void {
-    const summaries = CHANNEL_CONFIG.map(({ channel, label }) => {
+    const summaries = this.channels.map(({ channel, label }) => {
       const room = this.rooms.get(channel)
       if (!room) {
         return `${label}: not joined`
@@ -376,19 +426,42 @@ export class TrysteroTransportAdapter implements TransportPort {
     }, 10_000)
   }
 
-  private async resolveTurnServers(url: string): Promise<RTCIceServer[]> {
+  private resolveTurnServers(url: string): Promise<RTCIceServer[]> {
+    // Cache the outcome (success or empty) for the adapter's lifetime so that
+    // a blocked/slow credentials endpoint only costs one timeout, not one per
+    // connection retry.
     this.turnServersPromise ??= fetchTurnServers(url)
-    try {
-      const servers = await this.turnServersPromise
-      this.log(`TURN relay credentials loaded (${servers.length} entries).`)
-      return servers
-    } catch (error: unknown) {
-      this.turnServersPromise = null
-      this.log(
-        `TURN credentials fetch failed (${error instanceof Error ? error.message : String(error)}); continuing STUN-only.`,
-      )
-      return []
+      .then((servers) => {
+        this.log(`TURN relay credentials loaded (${servers.length} entries).`)
+        return servers
+      })
+      .catch((error: unknown) => {
+        this.log(
+          `TURN credentials fetch failed (${error instanceof Error ? error.message : String(error)}); continuing STUN-only.`,
+        )
+        return []
+      })
+    return this.turnServersPromise
+  }
+
+  private async resolveChannels(): Promise<readonly ChannelDef[]> {
+    if (this.firebaseDatabaseUrl === undefined) {
+      return STATIC_CHANNELS
     }
+    const databaseUrl = this.firebaseDatabaseUrl
+    this.firebaseChannelPromise ??= loadFirebaseChannel(databaseUrl).catch(
+      (error: unknown) => {
+        this.log(
+          `Firebase signalling unavailable (${error instanceof Error ? error.message : String(error)}); using trackers + Nostr only.`,
+        )
+        this.firebaseChannelPromise = null
+        return null
+      },
+    )
+    const firebaseChannel = await this.firebaseChannelPromise
+    return firebaseChannel
+      ? [firebaseChannel, ...STATIC_CHANNELS]
+      : STATIC_CHANNELS
   }
 
   private async openRoom(): Promise<void> {
@@ -400,13 +473,16 @@ export class TrysteroTransportAdapter implements TransportPort {
         ? ` (retry ${this.guestConnectAttempt + 1}/${GUEST_MAX_CONNECT_ATTEMPTS})`
         : ''
 
-    const turnConfig =
+    const [turnConfig, channels] = await Promise.all([
       this.turnCredentialsUrl === undefined
-        ? []
-        : await this.resolveTurnServers(this.turnCredentialsUrl)
+        ? Promise.resolve<RTCIceServer[]>([])
+        : this.resolveTurnServers(this.turnCredentialsUrl),
+      this.resolveChannels(),
+    ])
     if (generation !== this.openGeneration) {
       return
     }
+    this.channels = channels
 
     const joinConfig = {
       appId: this.appId,
@@ -414,14 +490,20 @@ export class TrysteroTransportAdapter implements TransportPort {
       rtcConfig: RTC_CONFIG,
     }
 
+    const channelList = channels.map((c) => c.label).join(' + ')
     this.log(
-      `Opening match room id=${roomId} via BitTorrent trackers + Nostr relays${attemptLabel} (${turnConfig.length > 0 ? 'TURN relay enabled' : 'no TURN relay configured — direct/STUN only'})`,
+      `Opening match room id=${roomId} via ${channelList}${attemptLabel} (${turnConfig.length > 0 ? 'TURN relay enabled' : 'no TURN relay configured — direct/STUN only'})`,
     )
 
-    for (const { channel, label, join, relayUrls } of CHANNEL_CONFIG) {
+    for (const def of channels) {
+      const { channel, label, join, relayUrls, firebaseApp } = def
       try {
         const room = join(
-          { ...joinConfig, relayUrls: [...relayUrls] },
+          {
+            ...joinConfig,
+            ...(relayUrls ? { relayUrls: [...relayUrls] } : {}),
+            ...(firebaseApp ? { firebaseApp } : {}),
+          },
           roomId,
           (details) => {
             this.log(
@@ -460,20 +542,19 @@ export class TrysteroTransportAdapter implements TransportPort {
     this.startGuestMonitoring()
 
     this.log(
-      'Guest waiting for host via trackers and Nostr (host must still be on the waiting screen).',
+      `Guest waiting for host via ${channelList} (host must still be on the waiting screen).`,
     )
     this.startGuestConnectTimer()
   }
 
   /**
-   * Both signalling channels stay joined for the whole session and act as
-   * redundant paths to the same peer. Messages are accepted from either
-   * channel (each message is sent exactly once, on the preferred channel),
-   * and if the preferred channel's connection dies while the other is still
-   * up, sending fails over instead of dropping the match. Tearing down the
-   * "losing" channel is what the previous design did, and it raced: each
-   * side could commit to a different channel and close the room the other
-   * side was using.
+   * Every signalling channel stays joined for the whole session and acts as a
+   * redundant path to the same peer. Messages are accepted from any channel
+   * (each message is sent exactly once, on the preferred channel), and if the
+   * preferred channel's connection dies while another is still up, sending
+   * fails over instead of dropping the match. Tearing down the "losing"
+   * channels is what the previous design did, and it raced: each side could
+   * commit to a different channel and close the room the other side was using.
    */
   private wireRoom(
     room: Room,
@@ -510,7 +591,7 @@ export class TrysteroTransportAdapter implements TransportPort {
         return
       }
 
-      const fallback = CHANNEL_CONFIG.find((config) =>
+      const fallback = this.channels.find((config) =>
         this.connectedChannels.has(config.channel),
       )
       if (fallback) {
