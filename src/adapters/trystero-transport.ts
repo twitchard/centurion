@@ -100,15 +100,26 @@ async function fetchTurnServers(url: string): Promise<RTCIceServer[]> {
 
 /**
  * Firebase Realtime Database is the most reliable signalling path: it rides on
- * a Google domain (`*.firebasedatabase.app`) that content filters and ISPs
- * essentially never block, unlike the BitTorrent trackers and Nostr relays.
- * It is only used when a database URL is configured via
- * VITE_FIREBASE_DATABASE_URL, and is loaded lazily so builds without it do not
- * pull in the Firebase SDK.
+ * a Google domain that content filters and ISPs essentially never block,
+ * unlike the BitTorrent trackers and Nostr relays. It is loaded lazily so
+ * builds that opt out do not pull in the Firebase SDK.
+ *
+ * The default below is the project's own free database (only the ephemeral
+ * `__trystero__` signalling path is writable; no game data is stored). The URL
+ * is not a secret — like any client config it ships in the bundle, and the
+ * database rules are what gate access. Override or disable it with
+ * VITE_FIREBASE_DATABASE_URL (set it empty to turn Firebase signalling off).
  */
+const DEFAULT_FIREBASE_DATABASE_URL =
+  'https://centurion-chess-default-rtdb.firebaseio.com'
+
 function defaultFirebaseDatabaseUrl(): string | undefined {
-  const url = import.meta.env.VITE_FIREBASE_DATABASE_URL?.trim()
-  return url ? url : undefined
+  const configured = import.meta.env.VITE_FIREBASE_DATABASE_URL
+  if (configured !== undefined) {
+    const trimmed = configured.trim()
+    return trimmed ? trimmed : undefined
+  }
+  return DEFAULT_FIREBASE_DATABASE_URL
 }
 
 const RTC_CONFIG: RTCConfiguration = {

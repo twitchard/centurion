@@ -79,6 +79,8 @@ async function flushMicrotasks() {
 describe('TrysteroTransportAdapter', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    // Disable the hardcoded Firebase default so tests opt in explicitly.
+    vi.stubEnv('VITE_FIREBASE_DATABASE_URL', '')
     joinNostrRoomMock.mockReset()
     joinTorrentRoomMock.mockReset()
     joinFirebaseRoomMock.mockReset()
@@ -90,6 +92,7 @@ describe('TrysteroTransportAdapter', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllEnvs()
   })
 
   it('joins both torrent trackers and nostr relays with shared ICE config', async () => {
