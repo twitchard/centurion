@@ -80,7 +80,7 @@ describe('TrysteroTransportAdapter', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     // Disable the hardcoded Firebase default so tests opt in explicitly.
-    vi.stubEnv('VITE_FIREBASE_DATABASE_URL', '')
+    vi.stubEnv('VITE_FIREBASE_DATABASE_URL', 'off')
     joinNostrRoomMock.mockReset()
     joinTorrentRoomMock.mockReset()
     joinFirebaseRoomMock.mockReset()

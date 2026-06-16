@@ -14,9 +14,10 @@ interface ImportMetaEnv {
   readonly VITE_METERED_API_KEY?: string
   /**
    * Firebase Realtime Database URL (e.g.
-   * https://<project>-default-rtdb.firebaseio.com). When set, Firebase becomes
-   * the primary signalling channel — far more reliable than the public
-   * trackers/relays, which content filters often block.
+   * https://<project>-default-rtdb.firebaseio.com), the primary signalling
+   * channel — far more reliable than the public trackers/relays, which content
+   * filters often block. Unset/empty uses the built-in default database; set to
+   * `off` to disable Firebase signalling.
    */
   readonly VITE_FIREBASE_DATABASE_URL?: string
 }

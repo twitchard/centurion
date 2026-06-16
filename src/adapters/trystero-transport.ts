@@ -107,19 +107,25 @@ async function fetchTurnServers(url: string): Promise<RTCIceServer[]> {
  * The default below is the project's own free database (only the ephemeral
  * `__trystero__` signalling path is writable; no game data is stored). The URL
  * is not a secret — like any client config it ships in the bundle, and the
- * database rules are what gate access. Override or disable it with
- * VITE_FIREBASE_DATABASE_URL (set it empty to turn Firebase signalling off).
+ * database rules are what gate access.
+ *
+ * VITE_FIREBASE_DATABASE_URL overrides the default with another database URL.
+ * Unset or empty falls back to the default (an unset CI secret expands to an
+ * empty string, so empty must not mean "disabled"). To turn Firebase
+ * signalling off entirely, set it to `off`.
  */
 const DEFAULT_FIREBASE_DATABASE_URL =
   'https://centurion-chess-default-rtdb.firebaseio.com'
 
 function defaultFirebaseDatabaseUrl(): string | undefined {
-  const configured = import.meta.env.VITE_FIREBASE_DATABASE_URL
-  if (configured !== undefined) {
-    const trimmed = configured.trim()
-    return trimmed ? trimmed : undefined
+  const configured = import.meta.env.VITE_FIREBASE_DATABASE_URL?.trim()
+  if (!configured) {
+    return DEFAULT_FIREBASE_DATABASE_URL
   }
-  return DEFAULT_FIREBASE_DATABASE_URL
+  if (configured.toLowerCase() === 'off') {
+    return undefined
+  }
+  return configured
 }
 
 const RTC_CONFIG: RTCConfiguration = {

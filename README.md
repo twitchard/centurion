@@ -24,18 +24,18 @@ Multiplayer is serverless WebRTC. Two things have to succeed for a match to conn
 
 ### Signalling channels
 
-By default the only channels are public BitTorrent WebSocket trackers and Nostr relays. These work on open networks but are frequently blocked by content filters, parental-control DNS, and some ISPs — their domains read as "torrent / peer-to-peer." If signalling never connects (the log shows `0/N open` for the whole attempt), that is almost always the cause.
+The **preferred** channel is **Firebase Realtime Database**: it rides on a Google domain that content filters and ISPs essentially never block, unlike the public BitTorrent trackers and Nostr relays (whose domains read as "torrent / peer-to-peer" and are commonly blocked by content filters and parental-control DNS). If signalling never connects (the log shows `0/N open` for the whole attempt), a blocked tracker/relay set is almost always the cause — and Firebase is the fix.
 
-The fix is to add **Firebase Realtime Database** as a signalling channel. It rides on a Google domain (`*.firebasedatabase.app`) that filters essentially never block, and it is free with nothing to host:
+By default the app uses its own built-in free Firebase database, with trackers and Nostr kept on as fallbacks, so multiplayer works out of the box. The Firebase database URL is not a secret — like any client config it ships in the bundle, and the database [rules](https://firebase.google.com/docs/database/security) gate access (only the ephemeral `__trystero__` signalling path is writable; no game data is stored).
+
+To point at your own Firebase database instead:
 
 1. Create a free Firebase project at [console.firebase.google.com](https://console.firebase.google.com) and add a **Realtime Database** (any region).
-2. In the database's **Rules**, allow read/write under Trystero's signalling path (these are ephemeral signalling blobs, not game data):
+2. In the database's **Rules**, allow read/write under Trystero's signalling path:
    ```json
    { "rules": { "__trystero__": { ".read": true, ".write": true } } }
    ```
-3. Copy the database URL (e.g. `https://your-project-default-rtdb.firebaseio.com`) and set it as the build variable `VITE_FIREBASE_DATABASE_URL` — as a GitHub repository secret of that name for the Pages deploy, or `VITE_FIREBASE_DATABASE_URL=… bun run dev` locally.
-
-When set, Firebase becomes the preferred channel (trackers and Nostr stay on as fallback), and the Firebase SDK is loaded only in that case. If it is unconfigured or unreachable, the app silently uses the other channels.
+3. Set the build variable `VITE_FIREBASE_DATABASE_URL` to your database URL (e.g. `https://your-project-default-rtdb.firebaseio.com`) — a GitHub repository secret of that name for the Pages deploy, or `VITE_FIREBASE_DATABASE_URL=… bun run dev` locally. Unset/empty keeps the built-in default; set it to `off` to disable Firebase signalling. The Firebase SDK is loaded only when a database is in use.
 
 ### TURN relay
 
