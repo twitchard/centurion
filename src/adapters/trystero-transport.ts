@@ -13,8 +13,31 @@ import {
 const DEFAULT_APP_ID = 'centurion-chess-chat-lab-v1'
 const GUEST_CONNECT_ATTEMPT_MS = 25_000
 const GUEST_MAX_CONNECT_ATTEMPTS = 3
+/**
+ * When the connect deadline fires but a peer has already been discovered and
+ * its WebRTC handshake is still progressing, tearing the rooms down would
+ * abort a connection that may be seconds from completing — common when traffic
+ * has to fall back to a TURN relay, where ICE can take well over 25s. Instead
+ * we grant a bounded number of grace extensions before giving up on the peer
+ * and restarting discovery from scratch.
+ */
+const GUEST_NEGOTIATION_GRACE_MS = 15_000
+const GUEST_MAX_NEGOTIATION_GRACES = 2
 const RELAY_STATUS_INTERVAL_MS = 5_000
 const ICE_STATUS_INTERVAL_MS = 4_000
+
+/**
+ * RTCPeerConnection states that mean a handshake with a discovered peer is
+ * underway (or already up) rather than failed/abandoned. While any peer is in
+ * one of these states the guest keeps waiting instead of restarting discovery.
+ */
+const PROGRESSING_ICE_STATES: ReadonlySet<RTCIceConnectionState> = new Set([
+  'checking',
+  'connected',
+  'completed',
+])
+const PROGRESSING_CONNECTION_STATES: ReadonlySet<RTCPeerConnectionState> =
+  new Set(['connecting', 'connected'])
 
 type SignallingChannel = 'firebase' | 'torrent' | 'nostr'
 type Room = ReturnType<typeof joinNostrRoom>
@@ -202,7 +225,7 @@ async function loadFirebaseChannel(databaseURL: string): Promise<ChannelDef> {
 function summarizeIceStates(peers: Record<string, RTCPeerConnection>): string {
   const entries = Object.entries(peers)
   if (entries.length === 0) {
-    return 'no peer negotiations yet'
+    return 'no peer in room yet'
   }
   return entries
     .map(
@@ -244,6 +267,7 @@ export class TrysteroTransportAdapter implements TransportPort {
   private relayStatusTimer: ReturnType<typeof setInterval> | null = null
   private iceStatusTimer: ReturnType<typeof setInterval> | null = null
   private guestConnectAttempt = 0
+  private guestNegotiationGraces = 0
   private leavePromise: Promise<void> = Promise.resolve()
   private openGeneration = 0
 
@@ -357,26 +381,68 @@ export class TrysteroTransportAdapter implements TransportPort {
 
   private startGuestConnectTimer(): void {
     this.clearGuestConnectTimer()
-    const attempt = this.guestConnectAttempt + 1
-    this.guestConnectTimer = setTimeout(() => {
-      this.guestConnectTimer = null
-      if (this.isHost || this.currentStatus !== 'connecting') {
-        return
+    // Each fresh discovery attempt gets its own grace budget.
+    this.guestNegotiationGraces = 0
+    this.guestConnectTimer = setTimeout(
+      () => this.onGuestConnectDeadline(),
+      GUEST_CONNECT_ATTEMPT_MS,
+    )
+  }
+
+  /**
+   * True when at least one discovered peer's WebRTC connection is still making
+   * progress (handshaking or already up) on any channel, as opposed to no peer
+   * having been found or every peer having failed.
+   */
+  private negotiationInProgress(): boolean {
+    for (const room of this.rooms.values()) {
+      for (const pc of Object.values(room.getPeers())) {
+        if (
+          PROGRESSING_ICE_STATES.has(pc.iceConnectionState) ||
+          PROGRESSING_CONNECTION_STATES.has(pc.connectionState)
+        ) {
+          return true
+        }
       }
-      if (attempt < GUEST_MAX_CONNECT_ATTEMPTS) {
-        this.log(
-          `WebRTC handshake timed out (${GUEST_CONNECT_ATTEMPT_MS / 1000}s, attempt ${attempt}/${GUEST_MAX_CONNECT_ATTEMPTS}). Retrying…`,
-        )
-        this.guestConnectAttempt = attempt
-        void this.retryGuestConnect()
-        return
-      }
+    }
+    return false
+  }
+
+  private onGuestConnectDeadline(): void {
+    this.guestConnectTimer = null
+    if (this.isHost || this.currentStatus !== 'connecting') {
+      return
+    }
+
+    if (
+      this.negotiationInProgress() &&
+      this.guestNegotiationGraces < GUEST_MAX_NEGOTIATION_GRACES
+    ) {
+      this.guestNegotiationGraces += 1
       this.log(
-        `Timed out waiting for WebRTC peer connection after ${GUEST_MAX_CONNECT_ATTEMPTS} attempts. Confirm the host is still waiting and try Wi‑Fi.`,
+        `WebRTC peer found; handshake still in progress, waiting ${GUEST_NEGOTIATION_GRACE_MS / 1000}s longer before retrying…`,
       )
-      this.setStatus('error')
-      void this.teardownRooms()
-    }, GUEST_CONNECT_ATTEMPT_MS)
+      this.guestConnectTimer = setTimeout(
+        () => this.onGuestConnectDeadline(),
+        GUEST_NEGOTIATION_GRACE_MS,
+      )
+      return
+    }
+
+    const attempt = this.guestConnectAttempt + 1
+    if (attempt < GUEST_MAX_CONNECT_ATTEMPTS) {
+      this.log(
+        `WebRTC handshake timed out (attempt ${attempt}/${GUEST_MAX_CONNECT_ATTEMPTS}). Retrying…`,
+      )
+      this.guestConnectAttempt = attempt
+      void this.retryGuestConnect()
+      return
+    }
+    this.log(
+      `Timed out waiting for WebRTC peer connection after ${GUEST_MAX_CONNECT_ATTEMPTS} attempts. Confirm the host is still waiting and try Wi‑Fi.`,
+    )
+    this.setStatus('error')
+    void this.teardownRooms()
   }
 
   private async retryGuestConnect(): Promise<void> {

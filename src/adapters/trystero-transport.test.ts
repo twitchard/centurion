@@ -184,6 +184,83 @@ describe('TrysteroTransportAdapter', () => {
     expect(statuses.at(-1)).toBe('error')
   })
 
+  it('waits for an in-progress handshake instead of tearing down at the deadline', async () => {
+    const { torrentRoom } = mockDualRooms()
+    // A peer has been discovered and ICE is still negotiating.
+    torrentRoom.getPeers.mockReturnValue({
+      'peer-1': {
+        iceConnectionState: 'checking',
+        connectionState: 'connecting',
+      },
+    })
+
+    const logs: string[] = []
+    const adapter = new TrysteroTransportAdapter('test-app')
+    adapter.setCallbacks({
+      onStatusChange: () => {},
+      onPeerJoin: () => {},
+      onPeerLeave: () => {},
+      onMessage: () => {},
+      onLog: (message) => logs.push(message),
+    })
+
+    adapter.joinRoom('123456')
+    await flushMicrotasks()
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
+
+    // Deadline fires, but the handshake is progressing: grant grace, do not
+    // tear down and rediscover.
+    await vi.advanceTimersByTimeAsync(25_000)
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
+    expect(logs.some((line) => line.includes('still in progress'))).toBe(true)
+
+    // Second grace window — still progressing, still no rediscovery.
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
+
+    // Grace budget exhausted: now fall back to teardown + retry.
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(2)
+    expect(logs.some((line) => line.includes('Retrying'))).toBe(true)
+  })
+
+  it('connects when the in-progress peer completes during the grace window', async () => {
+    const { torrentRoom } = mockDualRooms()
+    torrentRoom.getPeers.mockReturnValue({
+      'peer-1': {
+        iceConnectionState: 'checking',
+        connectionState: 'connecting',
+      },
+    })
+
+    const adapter = new TrysteroTransportAdapter('test-app')
+    let joins = 0
+    adapter.setCallbacks({
+      onStatusChange: () => {},
+      onPeerJoin: () => {
+        joins += 1
+      },
+      onPeerLeave: () => {},
+      onMessage: () => {},
+      onLog: () => {},
+    })
+
+    adapter.joinRoom('123456')
+    await flushMicrotasks()
+
+    // Deadline fires while negotiating → grace granted, no rediscovery.
+    await vi.advanceTimersByTimeAsync(25_000)
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
+
+    // The handshake completes during the grace window.
+    torrentRoom.handlers.onPeerJoin('peer-1')
+    expect(joins).toBe(1)
+
+    // No further teardown/retry happens once connected.
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
+  })
+
   it('uses the first signalling channel that delivers a peer', async () => {
     const { torrentRoom } = mockDualRooms()
 
