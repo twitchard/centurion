@@ -35,6 +35,17 @@ vi.mock('firebase/app', () => ({
   getApps: () => [],
 }))
 
+vi.mock('firebase/database', () => ({
+  getDatabase: () => ({}),
+  ref: (_db: unknown, path: string) => ({ path }),
+  // Immediately report a live connection so the firebase channel surfaces a
+  // "connected" health line in tests.
+  onValue: (_ref: unknown, cb: (snap: { val: () => unknown }) => void) => {
+    cb({ val: () => true })
+    return () => {}
+  },
+}))
+
 import { TrysteroTransportAdapter } from './trystero-transport'
 
 function makeRoom() {
@@ -148,6 +159,35 @@ describe('TrysteroTransportAdapter', () => {
     // Trackers and Nostr remain joined as redundant fallback paths.
     expect(joinTorrentRoomMock).toHaveBeenCalledTimes(1)
     expect(joinNostrRoomMock).toHaveBeenCalledTimes(1)
+    adapter.disconnect()
+  })
+
+  it('reports Firebase connectivity in the connection log', async () => {
+    vi.useRealTimers()
+    mockDualRooms()
+    joinFirebaseRoomMock.mockReturnValue(makeRoom())
+
+    const logs: string[] = []
+    const adapter = new TrysteroTransportAdapter(
+      'test-app',
+      undefined,
+      'https://demo-default-rtdb.firebaseio.com',
+    )
+    adapter.setCallbacks({
+      onStatusChange: () => {},
+      onPeerJoin: () => {},
+      onPeerLeave: () => {},
+      onMessage: () => {},
+      onLog: (message) => logs.push(message),
+    })
+    adapter.createRoom()
+
+    // Host waiting-state monitoring logs relay/Firebase health after ~2s.
+    await vi.waitFor(
+      () =>
+        expect(logs.some((line) => line === 'Firebase: connected')).toBe(true),
+      { timeout: 4_000 },
+    )
     adapter.disconnect()
   })
 

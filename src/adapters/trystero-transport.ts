@@ -179,6 +179,13 @@ interface ChannelDef {
   readonly relayUrls?: readonly string[]
   readonly firebaseApp?: FirebaseApp
   readonly getSockets?: () => Record<string, WebSocket>
+  /**
+   * For channels without WebSocket relays (Firebase), reports whether the
+   * underlying realtime connection is currently established. `null` means the
+   * state is not yet known. Lets the connection log show that the supposedly
+   * reliable channel is actually up — otherwise its health is invisible.
+   */
+  readonly getConnectionState?: () => boolean | null
 }
 
 const STATIC_CHANNELS: readonly ChannelDef[] = [
@@ -202,9 +209,14 @@ const STATIC_CHANNELS: readonly ChannelDef[] = [
 const firebaseApps = new Map<string, FirebaseApp>()
 
 async function loadFirebaseChannel(databaseURL: string): Promise<ChannelDef> {
-  const [{ joinRoom }, { initializeApp, getApps }] = await Promise.all([
+  const [
+    { joinRoom },
+    { initializeApp, getApps },
+    { getDatabase, ref, onValue },
+  ] = await Promise.all([
     import('trystero/firebase'),
     import('firebase/app'),
+    import('firebase/database'),
   ])
   let app = firebaseApps.get(databaseURL)
   if (!app) {
@@ -214,11 +226,20 @@ async function loadFirebaseChannel(databaseURL: string): Promise<ChannelDef> {
       initializeApp({ databaseURL }, name)
     firebaseApps.set(databaseURL, app)
   }
+  // Mirror Firebase's own `.info/connected` flag so the connection log can show
+  // whether the realtime socket is actually up. trystero's firebase strategy
+  // reuses this same Database instance, so this reflects the real signalling
+  // connection, not a separate one.
+  let connected: boolean | null = null
+  onValue(ref(getDatabase(app), '.info/connected'), (snapshot) => {
+    connected = snapshot.val() === true
+  })
   return {
     channel: 'firebase',
     label: 'Firebase',
     join: joinRoom as unknown as JoinRoomFn,
     firebaseApp: app,
+    getConnectionState: () => connected,
   }
 }
 
@@ -456,9 +477,18 @@ export class TrysteroTransportAdapter implements TransportPort {
   }
 
   private logRelayStatus(): void {
-    for (const { label, getSockets } of this.channels) {
+    for (const { label, getSockets, getConnectionState } of this.channels) {
       if (getSockets) {
         this.log(summarizeSocketHealth(label, getSockets()))
+      } else if (getConnectionState) {
+        const state = getConnectionState()
+        const description =
+          state === true
+            ? 'connected'
+            : state === false
+              ? 'not connected'
+              : 'connecting…'
+        this.log(`${label}: ${description}`)
       }
     }
   }
