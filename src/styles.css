@@ -582,6 +582,12 @@ canvas {
   margin-top: 4px;
 }
 
+.centurion-connection-log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .centurion-labs-foot {
   margin: 4px 0 0;
   text-align: center;

@@ -20,6 +20,7 @@ import { updateApp } from './app/update'
 import {
   appendConnectionLog,
   clearConnectionLog,
+  connectionLogText,
   renderConnectionLog,
 } from './connection-log'
 import {
@@ -189,6 +190,7 @@ const centurionConnectionLogList = element(
   'centurion-connection-log-list',
 ) as HTMLOListElement
 const centurionConnectionLogClear = button('centurion-connection-log-clear')
+const centurionConnectionLogCopy = button('centurion-connection-log-copy')
 
 // Pieces/Letters is a lab-only view preference; the game board always
 // draws pieces.
@@ -358,6 +360,65 @@ function copyInvite(code: string): void {
       dispatchCenturion({ tag: 'invite-copy-failed' })
     },
   )
+}
+
+/**
+ * Copies text to the clipboard, falling back to a hidden textarea +
+ * execCommand for browsers/contexts where the async Clipboard API is
+ * unavailable (older mobile Safari, some in-app webviews). Resolves to
+ * whether the copy succeeded.
+ */
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard !== undefined) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // Fall through to the legacy path below.
+    }
+  }
+  if (typeof document === 'undefined') {
+    return false
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  document.body.removeChild(textarea)
+  return ok
+}
+
+let connectionLogCopyResetTimer: ReturnType<typeof setTimeout> | null = null
+
+function copyConnectionLog(): void {
+  const text = connectionLogText()
+  if (text.length === 0) {
+    flashConnectionLogCopyLabel('Log is empty')
+    return
+  }
+  void copyTextToClipboard(text).then((ok) => {
+    flashConnectionLogCopyLabel(ok ? 'Copied!' : 'Copy failed')
+  })
+}
+
+function flashConnectionLogCopyLabel(label: string): void {
+  centurionConnectionLogCopy.textContent = label
+  if (connectionLogCopyResetTimer !== null) {
+    clearTimeout(connectionLogCopyResetTimer)
+  }
+  connectionLogCopyResetTimer = setTimeout(() => {
+    centurionConnectionLogCopy.textContent = 'Copy log'
+    connectionLogCopyResetTimer = null
+  }, 1_500)
 }
 
 chatTransport.setCallbacks({
@@ -1292,6 +1353,9 @@ function bindEvents(): void {
   centurionConnectionLogClear.addEventListener('click', () => {
     clearConnectionLog()
     renderConnectionLog(centurionConnectionLogList)
+  })
+  centurionConnectionLogCopy.addEventListener('click', () => {
+    copyConnectionLog()
   })
   centurionCanvas.addEventListener('click', (event) => {
     const square = centurionSquareFromClick(event as MouseEvent)

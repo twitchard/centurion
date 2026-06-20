@@ -26,6 +26,11 @@ export function connectionLogEntries(): readonly string[] {
   return entries
 }
 
+/** The full log as a single newline-separated string, ready for the clipboard. */
+export function connectionLogText(): string {
+  return entries.join('\n')
+}
+
 export function renderConnectionLog(list: HTMLOListElement): void {
   list.innerHTML = ''
   for (const entry of entries) {

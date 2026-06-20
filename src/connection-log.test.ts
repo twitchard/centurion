@@ -3,6 +3,7 @@ import {
   appendConnectionLog,
   clearConnectionLog,
   connectionLogEntries,
+  connectionLogText,
 } from './connection-log'
 
 describe('connectionLog', () => {
@@ -13,5 +14,17 @@ describe('connectionLog', () => {
     expect(connectionLogEntries()[0]).toMatch(/hello$/)
     clearConnectionLog()
     expect(connectionLogEntries()).toEqual([])
+  })
+
+  it('joins entries into newline-separated clipboard text', () => {
+    clearConnectionLog()
+    expect(connectionLogText()).toBe('')
+    appendConnectionLog('first')
+    appendConnectionLog('second')
+    const lines = connectionLogText().split('\n')
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toMatch(/first$/)
+    expect(lines[1]).toMatch(/second$/)
+    clearConnectionLog()
   })
 })
