@@ -33,11 +33,6 @@ export type PersistedCenturion =
     }
   | {
       readonly v: typeof CENTURION_PERSISTENCE_VERSION
-      readonly tag: 'syncing'
-      readonly code: string
-    }
-  | {
-      readonly v: typeof CENTURION_PERSISTENCE_VERSION
       readonly tag: 'playing'
       readonly session: PersistedMatchSession
     }
@@ -87,13 +82,7 @@ export function encodeCenturionForPersistence(
         v: CENTURION_PERSISTENCE_VERSION,
         tag: 'waiting',
         code: model.code,
-        pendingSeed: model.pendingSeed,
-      }
-    case 'syncing':
-      return {
-        v: CENTURION_PERSISTENCE_VERSION,
-        tag: 'syncing',
-        code: model.code,
+        pendingSeed: model.seed,
       }
     case 'playing': {
       const session = encodeSessionForPersistence(model.session)
@@ -149,12 +138,6 @@ export function decodePersistedCenturion(
     }
     return raw
   }
-  if (raw.tag === 'syncing') {
-    if (typeof raw.code !== 'string') {
-      return null
-    }
-    return raw
-  }
   if (raw.tag === 'playing') {
     if (!isPersistedMatchSession(raw.session)) {
       return null
@@ -175,11 +158,9 @@ export function centurionModelFromPersistence(
       return {
         tag: 'waiting',
         code: persisted.code,
-        pendingSeed: persisted.pendingSeed >>> 0,
+        seed: persisted.pendingSeed >>> 0,
         notice: RESTORED_SESSION_COPY,
       }
-    case 'syncing':
-      return { tag: 'syncing', code: persisted.code }
     case 'playing': {
       const session = decodePersistedSession(persisted.session)
       if (session === null) {

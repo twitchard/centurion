@@ -4,89 +4,57 @@ import {
   DEFAULT_SUPERPOSITION_FEN_INPUT,
 } from './features/superposition-lab/model'
 
-vi.mock('./adapters/trystero-transport', () => {
-  type MockTransportStatus =
-    | 'disconnected'
-    | 'connecting'
-    | 'waiting'
-    | 'connected'
-    | 'error'
-
-  interface MockTransportCallbacks {
-    readonly onStatusChange: (status: MockTransportStatus) => void
-    readonly onPeerJoin: () => void
-    readonly onPeerLeave: () => void
-    readonly onMessage: (data: unknown) => void
+vi.mock('./adapters/firebase-match-room', () => {
+  interface MockRoomCallbacks {
+    readonly onOpened: () => void
+    readonly onError: (message: string) => void
+    readonly onPeerPresence: (present: boolean) => void
+    readonly onState: (state: unknown) => void
+    readonly onLog?: (message: string) => void
   }
 
-  const NOOP_CALLBACKS: MockTransportCallbacks = {
-    onStatusChange: () => {
+  const NOOP_CALLBACKS: MockRoomCallbacks = {
+    onOpened: () => {
       return
     },
-    onPeerJoin: () => {
+    onError: () => {
       return
     },
-    onPeerLeave: () => {
+    onPeerPresence: () => {
       return
     },
-    onMessage: () => {
+    onState: () => {
       return
     },
   }
 
-  class MockTransportAdapter {
-    code = ''
-    isHost = false
-    status: MockTransportStatus = 'disconnected'
-    private callbacks: MockTransportCallbacks = NOOP_CALLBACKS
+  class MockRoomAdapter {
+    private callbacks: MockRoomCallbacks = NOOP_CALLBACKS
 
-    setCallbacks(callbacks: MockTransportCallbacks): void {
+    setCallbacks(callbacks: MockRoomCallbacks): void {
       this.callbacks = callbacks
     }
 
-    createRoom(): string {
-      this.disconnect()
-      this.code = '123456'
-      this.isHost = true
-      this.setStatus('connecting')
-      this.setStatus('waiting')
-      return this.code
+    // Rooms always open instantly in tests, mirroring a reachable
+    // database; the reducer sees the same synchronous callback shape
+    // the real adapter produces asynchronously.
+    open(): void {
+      this.callbacks.onOpened()
     }
 
-    hostRoom(code: string): void {
-      this.disconnect()
-      this.code = code
-      this.isHost = true
-      this.setStatus('connecting')
-      this.setStatus('waiting')
-    }
-
-    joinRoom(code: string): void {
-      this.disconnect()
-      this.code = code
-      this.isHost = false
-      this.setStatus('connecting')
-    }
-
-    // Matches the real adapter: disconnect() resets state without
-    // emitting a status callback.
-    disconnect(): void {
-      this.code = ''
-      this.isHost = false
-      this.status = 'disconnected'
-    }
-
-    send(): void {
+    publishState(): void {
       return
     }
 
-    private setStatus(status: MockTransportStatus): void {
-      this.status = status
-      this.callbacks.onStatusChange(status)
+    leave(): void {
+      return
     }
   }
 
-  return { TrysteroTransportAdapter: MockTransportAdapter }
+  return {
+    FirebaseMatchRoomAdapter: MockRoomAdapter,
+    generateRoomCode: () => '123456',
+  }
 })
 
 vi.mock('chessground', () => ({
@@ -469,11 +437,6 @@ function setupDom(pathname = '/labs'): TestDom {
   )
   registerById(
     documentRef,
-    'screen-chat-lab',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
     'screen-centurion-match',
     (id, owner) => new FakeHTMLElement(id, owner),
   )
@@ -481,11 +444,6 @@ function setupDom(pathname = '/labs'): TestDom {
   registerById(
     documentRef,
     'labs-menu-open-superposition',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'labs-menu-open-chat',
     (id, owner) => new FakeButtonElement(id, owner),
   )
   registerById(
@@ -555,57 +513,6 @@ function setupDom(pathname = '/labs'): TestDom {
     documentRef,
     'superposition-canvas',
     (id, owner) => new FakeCanvasElement(id, owner),
-  )
-
-  registerById(
-    documentRef,
-    'chat-back-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'chat-create-room-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'chat-join-room-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'chat-disconnect-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'chat-send-btn',
-    (id, owner) => new FakeButtonElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'chat-join-code-input',
-    (id, owner) => new FakeInputElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'chat-draft-input',
-    (id, owner) => new FakeInputElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'chat-room-code',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'chat-status',
-    (id, owner) => new FakeHTMLElement(id, owner),
-  )
-  registerById(
-    documentRef,
-    'chat-log',
-    (id, owner) => new FakeHTMLElement(id, owner),
   )
 
   const centurionIds: readonly (readonly [
@@ -721,16 +628,12 @@ describe('main app wiring', () => {
     const superposition = documentRef.getElementById(
       'screen-superposition-lab',
     ) as FakeHTMLElement
-    const chat = documentRef.getElementById(
-      'screen-chat-lab',
-    ) as FakeHTMLElement
     const centurion = documentRef.getElementById(
       'screen-centurion-match',
     ) as FakeHTMLElement
 
     expect(labsMenu.style.display).toBe('flex')
     expect(superposition.style.display).toBe('none')
-    expect(chat.style.display).toBe('none')
     expect(centurion.style.display).toBe('none')
 
     const openSuperposition = documentRef.getElementById(
@@ -790,10 +693,12 @@ describe('main app wiring', () => {
     cancelButton.click()
     expect(newMatchButton.disabled).toBe(false)
 
+    // The mocked room opens instantly, so the guest lands on the
+    // waiting-for-host screen.
     joinCodeInput.value = '654321'
     joinCodeInput.dispatch('input')
     joinMatchButton.click()
-    expect(statusCopy.textContent).toBe('Joining match 654321...')
+    expect(statusCopy.textContent).toContain('Waiting for the host')
   })
 
   it('mounts the centurion lobby on initial root route', async () => {

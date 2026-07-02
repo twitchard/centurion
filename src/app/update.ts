@@ -1,18 +1,13 @@
 import { type UpdateResult, assertNever } from '../core/update'
 import { initCenturionModel } from '../features/centurion-match/model'
 import { updateCenturion } from '../features/centurion-match/update'
-import { initChatLabModel } from '../features/chat-lab/model'
-import { updateChatLab } from '../features/chat-lab/update'
 import { initSuperpositionLabModel } from '../features/superposition-lab/model'
 import { updateSuperpositionLab } from '../features/superposition-lab/update'
 import type { AppCmd, AppMsg, AppState } from './model'
 
 function cleanupCommandsFor(state: AppState): readonly AppCmd[] {
-  if (state.tag === 'chat-lab') {
-    return [{ tag: 'chat-lab', cmd: { tag: 'transport-disconnect' } }]
-  }
   if (state.tag === 'centurion-match') {
-    return [{ tag: 'centurion', cmd: { tag: 'transport-disconnect' } }]
+    return [{ tag: 'centurion', cmd: { tag: 'room-leave' } }]
   }
   return []
 }
@@ -44,12 +39,6 @@ export function updateApp(
         cleanupCommandsFor(state),
       ]
 
-    case 'open-chat-lab':
-      return [
-        { tag: 'chat-lab', model: initChatLabModel() },
-        cleanupCommandsFor(state),
-      ]
-
     case 'open-centurion-match':
       if (state.tag === 'centurion-match') {
         return [state, []]
@@ -68,17 +57,6 @@ export function updateApp(
       }
       const [nextModel] = updateSuperpositionLab(state.model, msg.msg)
       return [{ tag: 'superposition-lab', model: nextModel }, []]
-    }
-
-    case 'chat-lab-msg': {
-      if (state.tag !== 'chat-lab') {
-        return [state, []]
-      }
-      const [nextModel, commands] = updateChatLab(state.model, msg.msg)
-      return [
-        { tag: 'chat-lab', model: nextModel },
-        commands.map((cmd): AppCmd => ({ tag: 'chat-lab', cmd })),
-      ]
     }
 
     case 'centurion-msg': {

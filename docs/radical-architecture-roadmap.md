@@ -4,6 +4,8 @@ Last updated: 2026-06-10
 
 This document replaces the old incremental "top 5 improvements" approach with a full architecture reset.
 
+> **Note (2026-07):** the networking layer described below has since been rewritten. Trystero/WebRTC and the P2P Chat Lab are gone; multiplayer now syncs match snapshots through Firebase Realtime Database behind a `MatchRoomPort` (see the README's Multiplayer section). The architectural principles here (ports/adapters, Elm-style reducers, strictness) still apply.
+
 ## Why this exists
 
 The app is not reliable enough in its current form. We are shifting to:

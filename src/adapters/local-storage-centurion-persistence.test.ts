@@ -75,8 +75,9 @@ describe('local storage centurion persistence', () => {
     expect(() =>
       saveCenturionPersistence({
         v: 1,
-        tag: 'syncing',
+        tag: 'waiting',
         code: '123456',
+        pendingSeed: 7,
       }),
     ).not.toThrow()
     expect(() => clearCenturionPersistence()).not.toThrow()
@@ -85,11 +86,17 @@ describe('local storage centurion persistence', () => {
   it('round-trips a valid entry', () => {
     const store = new Map<string, string>()
     installFakeStorage(store)
-    saveCenturionPersistence({ v: 1, tag: 'syncing', code: '654321' })
+    saveCenturionPersistence({
+      v: 1,
+      tag: 'waiting',
+      code: '654321',
+      pendingSeed: 7,
+    })
     expect(loadCenturionPersistence()).toEqual({
       v: 1,
-      tag: 'syncing',
+      tag: 'waiting',
       code: '654321',
+      pendingSeed: 7,
     })
   })
 })

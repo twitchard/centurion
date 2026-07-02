@@ -2,52 +2,33 @@
 
 Two players compete across 100 simultaneous games of chess. One player is white in every game and the other is black; which player gets which color is chosen at random when the match starts. You view a single shared board displaying a superposition of all active games, and influence them by placing persistent arrows.
 
-**The full match is playable**: pass-and-play on one device, or serverless P2P multiplayer with a 6-digit match code.
+**The full match is playable**: pass-and-play on one device, or online multiplayer with a 6-digit match code.
 
 ## Playing
 
 Run `bun install` then `bun run dev` and open the app.
 
-- **/** — Centurion Chess. Pass & Play starts a hot-seat match immediately; New Multiplayer Match creates a room code for a WebRTC peer (via Trystero), and Join with code connects to one.
-- **/labs** — developer labs: the Superposition Board Lab (render arbitrary FEN/arrow sets) and the P2P Chat Lab (transport smoke test).
+- **/** — Centurion Chess. Pass & Play starts a hot-seat match immediately; New Multiplayer Match creates a 6-digit room code, and Join with code connects to it.
+- **/labs** — developer labs: the Superposition Board Lab (render arbitrary FEN/arrow sets).
 
 Solo mode pits you against the computer: you own white and place an arrow each turn, both half-moves play out with Stockfish filling the gaps, and after each black reply the computer answers with a **trap arrow** — the move Stockfish ranks *worst* (full-MultiPV, lowest line) in a plurality of your games. The trap is a white move, so it pulls nothing on the computer's own half-turn; it lies in wait on your reply, dragging up to its full weight in games into the blunder. Your newer arrow always pulls first, so each turn is a race: save the games you can, and stack or out-place the traps you can't defuse.
 
 Place an arrow by clicking its origin and destination squares on the board (or typing notation like `e2->e4`). Each player sees the board from their own perspective; player 2's view is rank-flipped, so the same visual arrow means the same positional idea for both sides.
 
-## Multiplayer connectivity
+## Multiplayer
 
-Multiplayer is serverless WebRTC. Two things have to succeed for a match to connect:
+Multiplayer syncs match state through **Firebase Realtime Database** — no WebRTC, no NAT traversal, no peer-to-peer connection. A match room is a small database record: the match seed, a presence flag per player, and the latest match snapshot. The host creates a room and shares the 6-digit code; when the guest joins, the host publishes the initial snapshot, and from then on whoever resolves a turn publishes the new state while the other player's client mirrors it. Because the room always holds the full authoritative snapshot, the two clients cannot diverge, and either player can reload or reconnect mid-match and pick up exactly where the room says the match is.
 
-1. **Signalling** — the peers find each other through a signalling channel. The app joins all available channels in parallel and keeps them open as redundant paths.
-2. **NAT traversal** — the browsers negotiate a direct connection via STUN. When both networks refuse direct traffic (cellular carriers, CGNAT, strict home routers), WebRTC needs a **TURN relay**, and there are no credential-free public TURN servers.
-
-### Signalling channels
-
-The **preferred** channel is **Firebase Realtime Database**: it rides on a Google domain that content filters and ISPs essentially never block, unlike the public BitTorrent trackers and Nostr relays (whose domains read as "torrent / peer-to-peer" and are commonly blocked by content filters and parental-control DNS). If signalling never connects (the log shows `0/N open` for the whole attempt), a blocked tracker/relay set is almost always the cause — and Firebase is the fix.
-
-By default the app uses its own built-in free Firebase database, with trackers and Nostr kept on as fallbacks, so multiplayer works out of the box. The Firebase database URL is not a secret — like any client config it ships in the bundle, and the database [rules](https://firebase.google.com/docs/database/security) gate access (only the ephemeral `__trystero__` signalling path is writable; no game data is stored).
+By default the app uses its own built-in free Firebase database, so multiplayer works out of the box. The database URL is not a secret — like any client config it ships in the bundle, and the database [rules](https://firebase.google.com/docs/database/security) gate access: only the `__trystero__` subtree is writable (the name is a relic of an earlier design, kept so existing databases need no rules change), rooms live under `__trystero__/centurion-rooms/<code>`, and they hold nothing but ephemeral match state.
 
 To point at your own Firebase database instead:
 
 1. Create a free Firebase project at [console.firebase.google.com](https://console.firebase.google.com) and add a **Realtime Database** (any region).
-2. In the database's **Rules**, allow read/write under Trystero's signalling path:
+2. In the database's **Rules**, allow read/write under the room subtree:
    ```json
    { "rules": { "__trystero__": { ".read": true, ".write": true } } }
    ```
-3. Set the build variable `VITE_FIREBASE_DATABASE_URL` to your database URL (e.g. `https://your-project-default-rtdb.firebaseio.com`) — a GitHub repository secret of that name for the Pages deploy, or `VITE_FIREBASE_DATABASE_URL=… bun run dev` locally. Unset/empty keeps the built-in default; set it to `off` to disable Firebase signalling. The Firebase SDK is loaded only when a database is in use.
-
-### TURN relay
-
-Out of the box the app is STUN-only, which works for most home-network pairings but not all. To enable TURN, configure one of these at build time:
-
-- `VITE_METERED_API_KEY` — an API key for the project's free [Metered](https://www.metered.ca/stun-turn) account (app name `centurion`, 20 GB relay/month); the credentials URL is derived from it. This is what the GitHub Pages deploy uses, via a repository secret of the same name.
-- `VITE_TURN_CREDENTIALS_URL` — any endpoint that returns a JSON array of `RTCIceServer` objects; overrides the Metered key if both are set.
-- Locally: `VITE_METERED_API_KEY=… bun run dev`.
-
-Note that with a static deploy the value is baked into the published bundle, so it is visible to visitors; the only exposure is relay bandwidth on the free quota.
-
-If the endpoint is unreachable at room-open time the app logs it and falls back to STUN-only rather than failing.
+3. Set the build variable `VITE_FIREBASE_DATABASE_URL` to your database URL (e.g. `https://your-project-default-rtdb.firebaseio.com`) — a GitHub repository secret of that name for the Pages deploy, or `VITE_FIREBASE_DATABASE_URL=… bun run dev` locally. Unset/empty keeps the built-in default; set it to `off` to disable multiplayer. The Firebase SDK is loaded only when multiplayer is actually used.
 
 ## Gameplay rules (implemented)
 
@@ -98,13 +79,13 @@ If all 100 games conclude and both players have equal scores, the match is a dra
 The app follows a strict Elm-style architecture under maximum practical TypeScript strictness — see **[docs/radical-architecture-roadmap.md](./docs/radical-architecture-roadmap.md)** for the principles and current status.
 
 - `src/core/` — pure domain logic: chess rules ([chessops](https://github.com/niklasf/chessops)), match state and arrow resolution (`core/match`), seeded RNG, parsers, codecs. Everything deterministic and testable without a browser.
-- `src/features/` — feature reducers (`centurion-match`, `chat-lab`, `superposition-lab`) plus the canvas superposition renderer.
-- `src/ports/` + `src/adapters/` — effect interfaces and their implementations: Trystero (WebRTC transport) and Stockfish (WASM in a web worker, speaking UCI).
+- `src/features/` — feature reducers (`centurion-match`, `superposition-lab`) plus the canvas superposition renderer.
+- `src/ports/` + `src/adapters/` — effect interfaces and their implementations: the Firebase match room and Stockfish (WASM in a web worker, speaking UCI).
 - `src/app/` + `src/main.ts` — top-level state machine and the imperative shell that interprets commands.
 
 Each turn resolves in two phases. The arrow phase is pure and deterministic, driven by a seeded RNG shared by both players. The engine phase is asynchronous: Stockfish computes the fallback moves for every game the arrows did not reach (about 100 searches at depth 5, roughly 100ms after warmup).
 
-Multiplayer works without a server. The host sends the guest a seed; after that the only message per turn is the placed arrow plus Stockfish's chosen moves, computed once by the player who placed the arrow. The opponent replays the deterministic arrow phase from the shared seed and applies the received engine moves after validating their legality — so the two clients stay in lockstep without requiring Stockfish itself to be bit-for-bit reproducible across machines.
+Multiplayer is shared state, not a message protocol: the player who resolves a turn publishes the full match snapshot to the room, and the opponent adopts it verbatim. That trades a little bandwidth for the entire class of out-of-sync bugs — there is nothing to replay and nothing to disagree about.
 
 ## CI checks (local mirror)
 

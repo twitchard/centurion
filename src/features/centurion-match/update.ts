@@ -1,8 +1,4 @@
 import {
-  decodeMatchWireMessage,
-  encodeMatchWireMessage,
-} from '../../core/match/codec'
-import {
   ARROW_PLACEMENT_LAST_TURN,
   type Arrow,
   type BoardSquare,
@@ -13,24 +9,23 @@ import {
   addBoardArrow,
   canPlaceArrows,
   initMatch,
-  otherPlayer,
 } from '../../core/match/model'
 import { defaultReplayGameId } from '../../core/match/pgn'
 import { toCanonicalSquare } from '../../core/match/render'
 import {
-  type PendingResolution,
   beginAutoResolution,
   beginResolution,
   completeResolution,
 } from '../../core/match/resolve'
 import {
+  type MatchSnapshot,
   decodeMatchSnapshot,
   encodeMatchState,
 } from '../../core/match/snapshot'
 import { chooseTrapArrow, trapTargets } from '../../core/match/trap'
 import { parseArrowList } from '../../core/superposition/parse-arrow-list'
 import { type UpdateResult, assertNever, noCmd } from '../../core/update'
-import type { TransportStatus } from '../../ports/transport'
+import type { RoomRole } from '../../ports/match-room'
 import {
   type CenturionModel,
   type MatchSession,
@@ -44,7 +39,11 @@ import {
 
 export type CenturionMsg =
   | { readonly tag: 'join-code-updated'; readonly value: string }
-  | { readonly tag: 'new-match-requested' }
+  | {
+      readonly tag: 'new-match-requested'
+      readonly seed: number
+      readonly code: string
+    }
   | { readonly tag: 'join-match-requested' }
   | { readonly tag: 'pass-and-play-requested'; readonly seed: number }
   | { readonly tag: 'solo-requested'; readonly seed: number }
@@ -66,20 +65,14 @@ export type CenturionMsg =
     }
   | { readonly tag: 'worst-moves-failed'; readonly message: string }
   | { readonly tag: 'leave-session-requested' }
-  | {
-      readonly tag: 'transport-status-changed'
-      readonly status: TransportStatus
-      readonly code: string
-      readonly isHost: boolean
-      readonly pendingSeed?: number
-    }
-  | { readonly tag: 'transport-peer-joined' }
+  | { readonly tag: 'room-opened' }
+  | { readonly tag: 'room-error'; readonly message: string }
+  | { readonly tag: 'room-peer-presence'; readonly present: boolean }
+  | { readonly tag: 'room-state-received'; readonly state: unknown }
   | {
       readonly tag: 'restore-session-requested'
       readonly persisted: PersistedCenturion
     }
-  | { readonly tag: 'transport-peer-left' }
-  | { readonly tag: 'transport-message-received'; readonly payload: unknown }
   | { readonly tag: 'game-replay-game-selected'; readonly gameId: number }
   | {
       readonly tag: 'game-replay-step'
@@ -87,11 +80,14 @@ export type CenturionMsg =
     }
 
 export type CenturionCmd =
-  | { readonly tag: 'transport-create-room' }
-  | { readonly tag: 'transport-host-room'; readonly code: string }
-  | { readonly tag: 'transport-join-room'; readonly code: string }
-  | { readonly tag: 'transport-disconnect' }
-  | { readonly tag: 'transport-send'; readonly payload: unknown }
+  | {
+      readonly tag: 'room-open'
+      readonly code: string
+      readonly role: RoomRole
+      readonly seed?: number
+    }
+  | { readonly tag: 'room-publish'; readonly state: MatchSnapshot }
+  | { readonly tag: 'room-leave' }
   | {
       readonly tag: 'compute-engine-moves'
       readonly fens: readonly string[]
@@ -104,13 +100,9 @@ export type CenturionCmd =
   | { readonly tag: 'copy-invite'; readonly code: string }
 
 const INVALID_JOIN_CODE_COPY = 'Enter a valid 6-digit match code.'
-const TRANSPORT_ERROR_COPY =
-  'Unable to connect to a match. Both players need the same code, the host must still be waiting, and your networks must allow WebRTC (try Wi‑Fi, disable VPN, or use the connection log below).'
 const NOT_YOUR_TURN_COPY = 'Waiting for your opponent to place an arrow.'
 const ARROWLESS_PHASE_COPY =
   'Turn 100 has passed; Stockfish is playing out the remaining games.'
-const OUT_OF_SYNC_COPY =
-  'Received an out-of-sync message from the opponent; the match may have diverged.'
 const RESOLVING_COPY = 'Stockfish is resolving the turn...'
 const TRAP_COPY = 'Computer is placing its trap arrow...'
 
@@ -167,23 +159,19 @@ function clampReplayPly(moveCount: number, ply: number): number {
   return Math.max(0, Math.min(ply, moveCount))
 }
 
-function transportRejoinCommands(
-  model: CenturionModel,
-): readonly CenturionCmd[] {
+function roomRejoinCommands(model: CenturionModel): readonly CenturionCmd[] {
   switch (model.tag) {
     case 'waiting':
-      return [{ tag: 'transport-host-room', code: model.code }]
-    case 'syncing':
-      return [{ tag: 'transport-join-room', code: model.code }]
+      return [
+        { tag: 'room-open', code: model.code, role: 'host', seed: model.seed },
+      ]
     case 'playing': {
       const mode = model.session.mode
       if (mode.tag !== 'remote') {
         return []
       }
-      if (mode.you === 1) {
-        return [{ tag: 'transport-host-room', code: mode.code }]
-      }
-      return [{ tag: 'transport-join-room', code: mode.code }]
+      const role: RoomRole = mode.you === 1 ? 'host' : 'guest'
+      return [{ tag: 'room-open', code: mode.code, role }]
     }
     default:
       return []
@@ -194,61 +182,19 @@ function isArrowlessPhase(match: MatchState): boolean {
   return match.turn > ARROW_PLACEMENT_LAST_TURN
 }
 
-function arrowSendCommands(
+/**
+ * The room holds the authoritative state: after every locally resolved
+ * turn the new snapshot is published wholesale. The opponent adopts it
+ * verbatim, so the two clients can never diverge.
+ */
+function publishCommands(
   session: MatchSession,
-  resolution: PendingResolution,
-  moves: readonly string[],
+  match: MatchState,
 ): readonly CenturionCmd[] {
   if (session.mode.tag !== 'remote') {
     return []
   }
-  const placed = resolution.arrows[resolution.arrows.length - 1]
-  if (placed === undefined) {
-    return []
-  }
-  return [
-    {
-      tag: 'transport-send',
-      payload: encodeMatchWireMessage({
-        type: 'centurion:arrow',
-        from: placed.from,
-        to: placed.to,
-        turn: placed.placedTurn,
-        moves,
-      }),
-    },
-  ]
-}
-
-function autoSendCommands(
-  session: MatchSession,
-  resolution: PendingResolution,
-  moves: readonly string[],
-): readonly CenturionCmd[] {
-  if (session.mode.tag !== 'remote') {
-    return []
-  }
-  return [
-    {
-      tag: 'transport-send',
-      payload: encodeMatchWireMessage({
-        type: 'centurion:auto',
-        turn: resolution.base.turn,
-        moves,
-      }),
-    },
-  ]
-}
-
-function resolutionSendCommands(
-  session: MatchSession,
-  resolution: PendingResolution,
-  moves: readonly string[],
-): readonly CenturionCmd[] {
-  if (isArrowlessPhase(resolution.base)) {
-    return autoSendCommands(session, resolution, moves)
-  }
-  return arrowSendCommands(session, resolution, moves)
+  return [{ tag: 'room-publish', state: encodeMatchState(match) }]
 }
 
 function placerIsYou(session: MatchSession): boolean {
@@ -333,28 +279,60 @@ function beginTrapPlacement(
 }
 
 /**
- * Solo mode: after the player's arrow resolves the white half-turn, the
- * black half-turn plays out immediately with no new arrow, then the
- * Centurion places its trap arrow. After turn 100, every ply auto-plays
- * with no new arrows. Returns the settled session, or a new pending
- * state plus the engine command for the next automatic step.
+ * A turn just resolved locally. Publish the settled state to the room
+ * (remote mode), then keep the match moving: in solo mode the black
+ * half-turn auto-plays and the Centurion places its trap arrow; after
+ * turn 100 every ply auto-plays, driven by whichever remote player is
+ * the active placer.
  */
 function continueAfterResolution(
   session: MatchSession,
   match: MatchState,
 ): UpdateResult<CenturionModel, CenturionCmd> {
+  const publish = publishCommands(session, match)
   const settled = withFinishedReplay(session, match)
-  if (!shouldChainAutoResolution(session, match)) {
+  const [model, commands] = continueSettledSession(settled, match)
+  return [model, [...publish, ...commands]]
+}
+
+function continueSettledSession(
+  settled: MatchSession,
+  match: MatchState,
+): UpdateResult<CenturionModel, CenturionCmd> {
+  if (!shouldChainAutoResolution(settled, match)) {
     return beginTrapPlacement(settled)
   }
   if (
     isArrowlessPhase(match) &&
-    session.mode.tag === 'remote' &&
+    settled.mode.tag === 'remote' &&
     !placerIsYou(settled)
   ) {
     return noCmd(playing(settled))
   }
   return driveAutoResolution(settled)
+}
+
+/**
+ * Adopt a state published by the opponent. If the engine playout after
+ * turn 100 is now ours to drive, keep it moving; publishing happens when
+ * our own resolution completes.
+ */
+function adoptRemoteState(
+  session: MatchSession,
+  match: MatchState,
+): UpdateResult<CenturionModel, CenturionCmd> {
+  const settled = withFinishedReplay(
+    { ...session, selectedSquare: null, inputError: null },
+    match,
+  )
+  if (
+    match.phase.tag === 'active' &&
+    isArrowlessPhase(match) &&
+    placerIsYou(settled)
+  ) {
+    return driveAutoResolution(settled)
+  }
+  return noCmd(playing(settled))
 }
 
 function submitArrow(
@@ -410,11 +388,7 @@ function submitArrow(
     if (match === null) {
       return noCmd(playing(session))
     }
-    const [model, commands] = continueAfterResolution(cleared, match)
-    return [
-      model,
-      [...resolutionSendCommands(session, resolution, []), ...commands],
-    ]
+    return continueAfterResolution(cleared, match)
   }
 
   return [
@@ -444,9 +418,10 @@ export function updateCenturion(
       if (model.tag !== 'lobby') {
         return noCmd(model)
       }
+      const seed = msg.seed >>> 0
       return [
-        { tag: 'connecting', role: 'host', code: '' },
-        [{ tag: 'transport-create-room' }],
+        { tag: 'connecting-host', code: msg.code, seed },
+        [{ tag: 'room-open', code: msg.code, role: 'host', seed }],
       ]
     }
 
@@ -459,8 +434,8 @@ export function updateCenturion(
         return noCmd({ ...model, notice: INVALID_JOIN_CODE_COPY })
       }
       return [
-        { tag: 'connecting', role: 'guest', code },
-        [{ tag: 'transport-join-room', code }],
+        { tag: 'connecting-guest', code },
+        [{ tag: 'room-open', code, role: 'guest' }],
       ]
     }
 
@@ -609,14 +584,7 @@ export function updateCenturion(
           }),
         )
       }
-      const [nextModel, commands] = continueAfterResolution(session, match)
-      return [
-        nextModel,
-        [
-          ...resolutionSendCommands(session, resolution, msg.moves),
-          ...commands,
-        ],
-      ]
+      return continueAfterResolution(session, match)
     }
 
     case 'engine-moves-failed': {
@@ -683,259 +651,109 @@ export function updateCenturion(
     }
 
     case 'leave-session-requested': {
-      const needsDisconnect =
-        model.tag === 'connecting' ||
+      const needsLeave =
+        model.tag === 'connecting-host' ||
+        model.tag === 'connecting-guest' ||
         model.tag === 'waiting' ||
         model.tag === 'syncing' ||
         (model.tag === 'playing' && model.session.mode.tag === 'remote')
-      return [
-        initCenturionModel(),
-        needsDisconnect ? [{ tag: 'transport-disconnect' }] : [],
-      ]
+      return [initCenturionModel(), needsLeave ? [{ tag: 'room-leave' }] : []]
     }
 
-    case 'transport-status-changed': {
-      switch (msg.status) {
-        case 'waiting': {
-          if (model.tag === 'connecting' && model.role === 'host') {
-            if (msg.pendingSeed === undefined) {
-              return noCmd(model)
-            }
-            return noCmd({
-              tag: 'waiting',
-              code: msg.code,
-              pendingSeed: msg.pendingSeed >>> 0,
-              notice: null,
-            })
+    case 'room-opened': {
+      if (model.tag === 'connecting-host') {
+        return noCmd({
+          tag: 'waiting',
+          code: model.code,
+          seed: model.seed,
+          notice: null,
+        })
+      }
+      if (model.tag === 'connecting-guest') {
+        return noCmd({ tag: 'syncing', code: model.code })
+      }
+      // Re-opening after a restore: already in the right state.
+      return noCmd(model)
+    }
+
+    case 'room-error': {
+      switch (model.tag) {
+        case 'connecting-host':
+        case 'connecting-guest':
+        case 'waiting':
+        case 'syncing':
+          return [
+            { tag: 'lobby', joinCodeInput: '', notice: msg.message },
+            [{ tag: 'room-leave' }],
+          ]
+        case 'playing':
+          if (model.session.mode.tag !== 'remote') {
+            return noCmd(model)
           }
-          if (model.tag === 'playing' && model.session.mode.tag === 'remote') {
-            return noCmd(
-              withSession(model, {
-                notice: 'Opponent disconnected.',
-              }),
-            )
-          }
-          return noCmd(model)
-        }
-        case 'connected': {
-          if (model.tag === 'connecting' && model.role === 'guest') {
-            return noCmd({ tag: 'syncing', code: msg.code })
-          }
-          return noCmd(model)
-        }
-        case 'disconnected':
-        case 'error': {
-          if (
-            model.tag === 'connecting' ||
-            model.tag === 'waiting' ||
-            model.tag === 'syncing'
-          ) {
-            return noCmd({
-              tag: 'lobby',
-              joinCodeInput: '',
-              notice: msg.status === 'error' ? TRANSPORT_ERROR_COPY : null,
-            })
-          }
-          if (model.tag === 'playing' && model.session.mode.tag === 'remote') {
-            return noCmd(
-              withSession(model, {
-                mode: { ...model.session.mode, peerConnected: false },
-                notice: 'Connection lost.',
-              }),
-            )
-          }
-          return noCmd(model)
-        }
-        case 'connecting':
-          return noCmd(model)
+          return noCmd(withSession(model, { notice: msg.message }))
         default:
-          return assertNever(msg.status)
+          return noCmd(model)
       }
     }
 
-    case 'transport-peer-joined': {
+    case 'room-peer-presence': {
       if (model.tag === 'waiting') {
-        const match = initMatch(model.pendingSeed)
+        if (!msg.present) {
+          return noCmd(model)
+        }
+        // The guest arrived: the host initialises the match and
+        // publishes the first snapshot; the guest adopts it.
+        const match = initMatch(model.seed)
         const session = startSession(match, {
           tag: 'remote',
           you: 1,
           code: model.code,
           peerConnected: true,
         })
-        return [
-          playing(session),
-          [
-            {
-              tag: 'transport-send',
-              payload: encodeMatchWireMessage({
-                type: 'centurion:start',
-                seed: model.pendingSeed,
-                gameCount: match.gameCount,
-              }),
-            },
-          ],
-        ]
+        return [playing(session), publishCommands(session, match)]
       }
       if (model.tag === 'playing' && model.session.mode.tag === 'remote') {
         const mode = model.session.mode
-        const nextSession = {
-          ...model.session,
-          mode: { ...mode, peerConnected: true },
-          notice: 'Opponent reconnected.',
+        if (mode.peerConnected === msg.present) {
+          return noCmd(model)
         }
-        if (mode.you === 1) {
-          return [
-            playing(nextSession),
-            [
-              {
-                tag: 'transport-send',
-                payload: encodeMatchWireMessage({
-                  type: 'centurion:sync',
-                  snapshot: encodeMatchState(model.session.match),
-                }),
-              },
-            ],
-          ]
-        }
-        return noCmd(playing(nextSession))
-      }
-      return noCmd(model)
-    }
-
-    case 'transport-peer-left': {
-      if (model.tag === 'playing' && model.session.mode.tag === 'remote') {
         return noCmd(
           withSession(model, {
-            mode: { ...model.session.mode, peerConnected: false },
-            notice: 'Opponent disconnected.',
+            mode: { ...mode, peerConnected: msg.present },
+            notice: msg.present
+              ? 'Opponent reconnected.'
+              : 'Opponent disconnected.',
           }),
         )
       }
-      if (model.tag === 'syncing') {
-        return noCmd({
-          tag: 'lobby',
-          joinCodeInput: '',
-          notice: 'The host left before the match started.',
-        })
-      }
       return noCmd(model)
     }
 
-    case 'transport-message-received': {
-      const wire = decodeMatchWireMessage(msg.payload)
-      if (wire === null) {
-        return noCmd(model)
-      }
-      if (wire.type === 'centurion:start') {
-        if (model.tag !== 'syncing') {
-          return noCmd(model)
-        }
-        const match = initMatch(wire.seed, { gameCount: wire.gameCount })
-        return noCmd(
-          playing(
-            startSession(match, {
-              tag: 'remote',
-              you: 2,
-              code: model.code,
-              peerConnected: true,
-            }),
-          ),
-        )
-      }
-      if (wire.type === 'centurion:sync') {
-        const match = decodeMatchSnapshot(wire.snapshot)
-        if (match === null) {
-          return noCmd(model)
-        }
-        if (model.tag === 'syncing') {
-          return noCmd(
-            playing(
-              startSession(match, {
-                tag: 'remote',
-                you: 2,
-                code: model.code,
-                peerConnected: true,
-              }),
-            ),
-          )
-        }
-        if (model.tag !== 'playing') {
-          return noCmd(model)
-        }
-        const session = model.session
-        if (session.mode.tag !== 'remote' || session.mode.you !== 2) {
-          return noCmd(model)
-        }
-        return noCmd(
-          playing(
-            withFinishedReplay(
-              {
-                ...session,
-                selectedSquare: null,
-                inputError: null,
-                notice: 'Synced with host.',
-              },
-              match,
-            ),
-          ),
-        )
-      }
-      if (model.tag !== 'playing') {
-        return noCmd(model)
-      }
-      const session = model.session
-      const mode = session.mode
-      if (mode.tag !== 'remote') {
-        return noCmd(model)
-      }
-      const opponent = otherPlayer(mode.you)
-      if (
-        wire.turn !== session.match.turn ||
-        activePlacer(session.match) !== opponent ||
-        session.match.phase.tag === 'finished'
-      ) {
-        return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
-      }
-      if (wire.type === 'centurion:auto') {
-        if (!isArrowlessPhase(session.match)) {
-          return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
-        }
-        const resolution = beginAutoResolution(session.match)
-        const match =
-          resolution === null
-            ? null
-            : completeResolution(resolution, wire.moves)
-        if (match === null) {
-          return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
-        }
-        return noCmd(
-          playing(
-            withFinishedReplay(
-              { ...session, selectedSquare: null, inputError: null },
-              match,
-            ),
-          ),
-        )
-      }
-      // The arrow phase replays deterministically from the shared rng;
-      // the opponent's Stockfish moves are validated and applied verbatim.
-      const resolution = beginResolution(session.match, {
-        from: wire.from,
-        to: wire.to,
-      })
-      const match =
-        resolution === null ? null : completeResolution(resolution, wire.moves)
+    case 'room-state-received': {
+      const match = decodeMatchSnapshot(msg.state)
       if (match === null) {
-        return noCmd(withSession(model, { notice: OUT_OF_SYNC_COPY }))
+        return noCmd(model)
       }
-      return noCmd(
-        playing(
-          withFinishedReplay(
-            { ...session, selectedSquare: null, inputError: null },
-            match,
-          ),
-        ),
-      )
+      // A guest can hear the room's existing state (an in-progress match
+      // being rejoined) before or after the open acknowledgement.
+      if (model.tag === 'syncing' || model.tag === 'connecting-guest') {
+        const session = startSession(match, {
+          tag: 'remote',
+          you: 2,
+          code: model.code,
+          peerConnected: true,
+        })
+        return adoptRemoteState(session, match)
+      }
+      if (model.tag !== 'playing' || model.session.mode.tag !== 'remote') {
+        return noCmd(model)
+      }
+      // Adopt only states that advance the match: everything else is the
+      // echo of our own publish (or stale).
+      if (match.turn <= model.session.match.turn) {
+        return noCmd(model)
+      }
+      return adoptRemoteState(model.session, match)
     }
 
     case 'restore-session-requested': {
@@ -943,7 +761,7 @@ export function updateCenturion(
       if (restored === null) {
         return noCmd(model)
       }
-      return [restored, transportRejoinCommands(restored)]
+      return [restored, roomRejoinCommands(restored)]
     }
 
     case 'game-replay-game-selected': {

@@ -76,7 +76,7 @@ describe('centurion persistence', () => {
     const encoded = encodeCenturionForPersistence({
       tag: 'waiting',
       code: '123456',
-      pendingSeed: 77,
+      seed: 77,
       notice: null,
     })
     expect(encoded).toEqual({

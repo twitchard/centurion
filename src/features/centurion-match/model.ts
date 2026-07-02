@@ -46,17 +46,22 @@ export type CenturionModel =
       readonly joinCodeInput: string
       readonly notice: string | null
     }
+  /** Host: creating the room record in the database. */
   | {
-      readonly tag: 'connecting'
-      readonly role: 'host' | 'guest'
+      readonly tag: 'connecting-host'
       readonly code: string
+      readonly seed: number
     }
+  /** Guest: looking the room up in the database. */
+  | { readonly tag: 'connecting-guest'; readonly code: string }
+  /** Host: room open, waiting for a guest to show up. */
   | {
       readonly tag: 'waiting'
       readonly code: string
-      readonly pendingSeed: number
+      readonly seed: number
       readonly notice: string | null
     }
+  /** Guest: in the room, waiting for the host to publish the first state. */
   | { readonly tag: 'syncing'; readonly code: string }
   | { readonly tag: 'playing'; readonly session: MatchSession }
 

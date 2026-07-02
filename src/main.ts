@@ -4,12 +4,15 @@ import 'chessground/assets/chessground.cburnett.css'
 import './styles.css'
 
 import {
+  FirebaseMatchRoomAdapter,
+  generateRoomCode,
+} from './adapters/firebase-match-room'
+import {
   clearCenturionPersistence,
   loadCenturionPersistence,
   saveCenturionPersistence,
 } from './adapters/local-storage-centurion-persistence'
 import { StockfishEngineAdapter } from './adapters/stockfish-engine'
-import { TrysteroTransportAdapter } from './adapters/trystero-transport'
 import {
   type AppCmd,
   type AppMsg,
@@ -28,7 +31,6 @@ import {
   planResolutionAnimation,
   resolutionAnimationFrame,
 } from './core/match/animate'
-import { decodeMatchWireMessage } from './core/match/codec'
 import {
   type MatchState,
   type PlayerId,
@@ -63,11 +65,6 @@ import {
   type CenturionMsg,
   updateCenturion,
 } from './features/centurion-match/update'
-import type {
-  ChatConnectionState,
-  ChatLabModel,
-  ChatLine,
-} from './features/chat-lab/model'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
 import {
   type PieceDisplayMode,
@@ -122,7 +119,6 @@ function canvas(id: string): HTMLCanvasElement {
 
 const screenLabsMenu = element('screen-labs-menu')
 const screenSuperposition = element('screen-superposition-lab')
-const screenChat = element('screen-chat-lab')
 const screenCenturion = element('screen-centurion-match')
 
 const superpositionFenInput = textarea('superposition-fen-input')
@@ -132,16 +128,6 @@ const superpositionArrowDiagnostics = element('superposition-arrow-diagnostics')
 const superpositionBoardPanel = element('superposition-board-panel')
 const superpositionCanvas = canvas('superposition-canvas')
 const superpositionRenderer = new SuperpositionRenderer(superpositionCanvas)
-
-const chatJoinCodeInput = input('chat-join-code-input')
-const chatDraftInput = input('chat-draft-input')
-const chatRoomCode = element('chat-room-code')
-const chatStatus = element('chat-status')
-const chatLog = element('chat-log')
-const chatCreateRoomButton = button('chat-create-room-btn')
-const chatJoinRoomButton = button('chat-join-room-btn')
-const chatDisconnectButton = button('chat-disconnect-btn')
-const chatSendButton = button('chat-send-btn')
 
 const centurionBackButton = button('centurion-back-btn')
 const centurionLabsFoot = element('centurion-labs-foot')
@@ -209,37 +195,10 @@ function applyPieceDisplayMode(mode: PieceDisplayMode): void {
   }
 }
 
-const CENTURION_TRANSPORT_APP_ID = 'centurion-chess-match-v1'
-
-const chatTransport = new TrysteroTransportAdapter()
-const centurionTransport = new TrysteroTransportAdapter(
-  CENTURION_TRANSPORT_APP_ID,
-)
+const centurionRoom = new FirebaseMatchRoomAdapter()
 const centurionEngine = new StockfishEngineAdapter()
 
 let state: AppState = initAppState()
-let hostPendingSeed: number | null = null
-
-function centurionRoomId(code: string): string {
-  return `${CENTURION_TRANSPORT_APP_ID}-${code}`
-}
-
-function describeWirePayload(payload: unknown): string {
-  const wire = decodeMatchWireMessage(payload)
-  if (wire === null) {
-    return 'unrecognized payload'
-  }
-  if (wire.type === 'centurion:start') {
-    return `centurion:start seed=${wire.seed} games=${wire.gameCount}`
-  }
-  if (wire.type === 'centurion:auto') {
-    return `centurion:auto turn=${wire.turn} moves=${wire.moves.length}`
-  }
-  if (wire.type === 'centurion:sync') {
-    return `centurion:sync turn=${wire.snapshot.turn} games=${wire.snapshot.gameCount}`
-  }
-  return `centurion:arrow turn=${wire.turn} ${wire.from}->${wire.to} moves=${wire.moves.length}`
-}
 
 function logConnection(message: string): void {
   appendConnectionLog(message)
@@ -275,7 +234,6 @@ function dispatch(msg: AppMsg): void {
     msg.tag === 'centurion-msg' &&
     msg.msg.tag === 'leave-session-requested'
   ) {
-    hostPendingSeed = null
     clearCenturionPersistence()
   } else {
     persistCenturionState()
@@ -295,7 +253,6 @@ function dispatchCenturion(msg: CenturionMsg): void {
       logConnection('You requested to join a match (guest).')
       break
     case 'leave-session-requested':
-      hostPendingSeed = null
       logConnection('You left the multiplayer session.')
       break
     case 'restore-session-requested':
@@ -421,168 +378,77 @@ function flashConnectionLogCopyLabel(label: string): void {
   }, 1_500)
 }
 
-chatTransport.setCallbacks({
-  onStatusChange: (status) => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: {
-        tag: 'transport-status-changed',
-        status,
-        code: chatTransport.code,
-        isHost: chatTransport.isHost,
-      },
-    })
-  },
-  onPeerJoin: () => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: { tag: 'transport-peer-joined' },
-    })
-  },
-  onPeerLeave: () => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: { tag: 'transport-peer-left' },
-    })
-  },
-  onMessage: (data: unknown) => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: { tag: 'transport-message-received', payload: data },
-    })
-  },
-})
-
-centurionTransport.setCallbacks({
+centurionRoom.setCallbacks({
   onLog: (message) => {
     logConnection(message)
   },
-  onStatusChange: (status) => {
-    const role = centurionTransport.isHost ? 'host' : 'guest'
-    const code = centurionTransport.code
-    const room = code.length > 0 ? centurionRoomId(code) : '(no room code yet)'
-    logConnection(
-      `Trystero status: ${status} (${role}, code=${code || '—'}, room=${room})`,
-    )
-    let pendingSeed: number | undefined
-    if (
-      status === 'waiting' &&
-      centurionTransport.isHost &&
-      hostPendingSeed === null
-    ) {
-      hostPendingSeed = newSeed()
-      pendingSeed = hostPendingSeed
-    }
-    dispatchCenturion({
-      tag: 'transport-status-changed',
-      status,
-      code: centurionTransport.code,
-      isHost: centurionTransport.isHost,
-      ...(pendingSeed !== undefined && { pendingSeed }),
-    })
+  onOpened: () => {
+    logConnection('Room open.')
+    dispatchCenturion({ tag: 'room-opened' })
   },
-  onPeerJoin: () => {
-    logConnection('Peer joined the Trystero room.')
-    dispatchCenturion({ tag: 'transport-peer-joined' })
+  onError: (message) => {
+    logConnection(`Room error: ${message}`)
+    dispatchCenturion({ tag: 'room-error', message })
   },
-  onPeerLeave: () => {
-    logConnection('Peer left the Trystero room.')
-    dispatchCenturion({ tag: 'transport-peer-left' })
+  onPeerPresence: (present) => {
+    logConnection(present ? 'Opponent is present.' : 'Opponent is away.')
+    dispatchCenturion({ tag: 'room-peer-presence', present })
   },
-  onMessage: (data: unknown) => {
-    logConnection(`Received: ${describeWirePayload(data)}`)
-    dispatchCenturion({ tag: 'transport-message-received', payload: data })
+  onState: (roomState) => {
+    logConnection('Received match state from the room.')
+    dispatchCenturion({ tag: 'room-state-received', state: roomState })
   },
 })
 
 function runCommand(command: AppCmd): void {
-  switch (command.tag) {
-    case 'chat-lab':
-      switch (command.cmd.tag) {
-        case 'transport-create-room':
-          chatTransport.createRoom()
-          return
-        case 'transport-join-room':
-          chatTransport.joinRoom(command.cmd.code)
-          return
-        case 'transport-disconnect':
-          chatTransport.disconnect()
-          return
-        case 'transport-send':
-          chatTransport.send(command.cmd.payload)
-          return
-        default:
-          assertNever(command.cmd)
-          return
-      }
-    case 'centurion':
-      switch (command.cmd.tag) {
-        case 'transport-create-room': {
-          hostPendingSeed = null
-          const code = centurionTransport.createRoom()
-          logConnection(
-            `Creating room as host (code=${code}, room=${centurionRoomId(code)}).`,
-          )
-          return
-        }
-        case 'transport-host-room':
-          logConnection(
-            `Re-opening room as host (code=${command.cmd.code}, room=${centurionRoomId(command.cmd.code)}).`,
-          )
-          centurionTransport.hostRoom(command.cmd.code)
-          return
-        case 'transport-join-room':
-          logConnection(
-            `Joining room as guest (code=${command.cmd.code}, room=${centurionRoomId(command.cmd.code)}).`,
-          )
-          centurionTransport.joinRoom(command.cmd.code)
-          return
-        case 'transport-disconnect':
-          logConnection('Disconnecting from Trystero.')
-          centurionTransport.disconnect()
-          return
-        case 'transport-send':
-          logConnection(`Sending: ${describeWirePayload(command.cmd.payload)}`)
-          centurionTransport.send(command.cmd.payload)
-          return
-        case 'share-invite':
-          shareInvite(command.cmd.code)
-          return
-        case 'copy-invite':
-          copyInvite(command.cmd.code)
-          return
-        case 'compute-engine-moves':
-          centurionEngine.bestMoves(command.cmd.fens, ENGINE_DEPTH).then(
-            (moves) => {
-              dispatchCenturion({ tag: 'engine-moves-computed', moves })
-            },
-            (error: unknown) => {
-              dispatchCenturion({
-                tag: 'engine-moves-failed',
-                message: error instanceof Error ? error.message : String(error),
-              })
-            },
-          )
-          return
-        case 'compute-worst-moves':
-          centurionEngine.worstMoves(command.cmd.fens, ENGINE_DEPTH).then(
-            (moves) => {
-              dispatchCenturion({ tag: 'worst-moves-computed', moves })
-            },
-            (error: unknown) => {
-              dispatchCenturion({
-                tag: 'worst-moves-failed',
-                message: error instanceof Error ? error.message : String(error),
-              })
-            },
-          )
-          return
-        default:
-          assertNever(command.cmd)
-          return
-      }
+  const cmd = command.cmd
+  switch (cmd.tag) {
+    case 'room-open':
+      logConnection(`Opening room ${cmd.code} as ${cmd.role}.`)
+      centurionRoom.open(cmd.code, cmd.role, cmd.seed)
+      return
+    case 'room-publish':
+      logConnection(`Publishing match state (turn ${cmd.state.turn}).`)
+      centurionRoom.publishState(cmd.state)
+      return
+    case 'room-leave':
+      logConnection('Leaving the room.')
+      centurionRoom.leave()
+      return
+    case 'share-invite':
+      shareInvite(cmd.code)
+      return
+    case 'copy-invite':
+      copyInvite(cmd.code)
+      return
+    case 'compute-engine-moves':
+      centurionEngine.bestMoves(cmd.fens, ENGINE_DEPTH).then(
+        (moves) => {
+          dispatchCenturion({ tag: 'engine-moves-computed', moves })
+        },
+        (error: unknown) => {
+          dispatchCenturion({
+            tag: 'engine-moves-failed',
+            message: error instanceof Error ? error.message : String(error),
+          })
+        },
+      )
+      return
+    case 'compute-worst-moves':
+      centurionEngine.worstMoves(cmd.fens, ENGINE_DEPTH).then(
+        (moves) => {
+          dispatchCenturion({ tag: 'worst-moves-computed', moves })
+        },
+        (error: unknown) => {
+          dispatchCenturion({
+            tag: 'worst-moves-failed',
+            message: error instanceof Error ? error.message : String(error),
+          })
+        },
+      )
+      return
     default:
-      assertNever(command)
+      assertNever(cmd)
       return
   }
 }
@@ -591,7 +457,6 @@ function setScreenVisibility(screen: AppState['tag']): void {
   screenLabsMenu.style.display = screen === 'labs-menu' ? 'flex' : 'none'
   screenSuperposition.style.display =
     screen === 'superposition-lab' ? 'flex' : 'none'
-  screenChat.style.display = screen === 'chat-lab' ? 'flex' : 'none'
   screenCenturion.style.display = screen === 'centurion-match' ? 'flex' : 'none'
 }
 
@@ -648,69 +513,6 @@ function renderSuperpositionLab(model: SuperpositionLabModel): void {
 
   superpositionRenderer.resize(panelBoardSize(superpositionBoardPanel))
   superpositionRenderer.render(model.renderModel)
-}
-
-function chatConnectionSummary(connection: ChatConnectionState): string {
-  switch (connection.tag) {
-    case 'disconnected':
-      return 'Disconnected'
-    case 'connecting':
-      return `Connecting as ${connection.role}...`
-    case 'waiting':
-      return `Waiting for peer in room ${connection.code}`
-    case 'connected':
-      return `Connected (${connection.role}) in room ${connection.code}`
-    case 'error':
-      return connection.message
-    default:
-      return assertNever(connection)
-  }
-}
-
-function roomCodeFromConnection(connection: ChatConnectionState): string {
-  switch (connection.tag) {
-    case 'waiting':
-    case 'connected':
-      return connection.code
-    case 'error':
-      return connection.code ?? '------'
-    default:
-      return '------'
-  }
-}
-
-function renderChatLine(line: ChatLine): HTMLLIElement {
-  const item = document.createElement('li')
-  item.className = `chat-line chat-line--${line.author}`
-  item.textContent = line.text
-  return item
-}
-
-function renderChatLab(model: ChatLabModel): void {
-  if (chatJoinCodeInput.value !== model.joinCodeInput) {
-    chatJoinCodeInput.value = model.joinCodeInput
-  }
-  if (chatDraftInput.value !== model.draft) {
-    chatDraftInput.value = model.draft
-  }
-
-  chatStatus.textContent = chatConnectionSummary(model.connection)
-  chatRoomCode.textContent = roomCodeFromConnection(model.connection)
-
-  chatLog.innerHTML = ''
-  for (const line of model.transcript) {
-    chatLog.appendChild(renderChatLine(line))
-  }
-  chatLog.scrollTop = chatLog.scrollHeight
-
-  const connected = model.connection.tag === 'connected'
-  const waiting = model.connection.tag === 'waiting'
-  const connecting = model.connection.tag === 'connecting'
-
-  chatCreateRoomButton.disabled = connected || waiting || connecting
-  chatJoinRoomButton.disabled = connected || waiting || connecting
-  chatDisconnectButton.disabled = model.connection.tag === 'disconnected'
-  chatSendButton.disabled = !connected || model.draft.trim().length === 0
 }
 
 function playerLabel(session: MatchSession, player: PlayerId): string {
@@ -1137,11 +939,11 @@ function renderCenturion(model: CenturionModel): void {
         centurionJoinCodeInput.value = model.joinCodeInput
       }
       return
-    case 'connecting':
-      centurionStatusCopy.textContent =
-        model.role === 'host'
-          ? 'Creating match...'
-          : `Joining match ${model.code}...`
+    case 'connecting-host':
+      centurionStatusCopy.textContent = 'Creating match...'
+      return
+    case 'connecting-guest':
+      centurionStatusCopy.textContent = `Joining match ${model.code}...`
       return
     case 'waiting': {
       const base = `New match created. Share code ${model.code} to invite your opponent. Keep this page open until they join.`
@@ -1163,11 +965,6 @@ function render(): void {
 
   if (state.tag === 'superposition-lab') {
     renderSuperpositionLab(state.model)
-    return
-  }
-
-  if (state.tag === 'chat-lab') {
-    renderChatLab(state.model)
     return
   }
 
@@ -1193,9 +990,6 @@ function centurionSquareFromClick(event: MouseEvent): number | null {
 function bindEvents(): void {
   button('labs-menu-open-superposition').addEventListener('click', () => {
     dispatch({ tag: 'open-superposition-lab' })
-  })
-  button('labs-menu-open-chat').addEventListener('click', () => {
-    dispatch({ tag: 'open-chat-lab' })
   })
   button('labs-menu-open-centurion').addEventListener('click', () => {
     navigate('game')
@@ -1234,62 +1028,6 @@ function bindEvents(): void {
     })
   })
 
-  button('chat-back-btn').addEventListener('click', () => {
-    navigate('labs')
-  })
-  chatCreateRoomButton.addEventListener('click', () => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: { tag: 'create-room-requested' },
-    })
-  })
-  chatJoinRoomButton.addEventListener('click', () => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: { tag: 'join-room-requested' },
-    })
-  })
-  chatDisconnectButton.addEventListener('click', () => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: { tag: 'disconnect-requested' },
-    })
-  })
-  chatSendButton.addEventListener('click', () => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: { tag: 'send-draft-requested' },
-    })
-  })
-  chatJoinCodeInput.addEventListener('input', (event) => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: {
-        tag: 'join-code-updated',
-        value: (event.target as HTMLInputElement).value,
-      },
-    })
-  })
-  chatDraftInput.addEventListener('input', (event) => {
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: {
-        tag: 'draft-updated',
-        value: (event.target as HTMLInputElement).value,
-      },
-    })
-  })
-  chatDraftInput.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter') {
-      return
-    }
-    event.preventDefault()
-    dispatch({
-      tag: 'chat-lab-msg',
-      msg: { tag: 'send-draft-requested' },
-    })
-  })
-
   centurionBackButton.addEventListener('click', () => {
     if (state.tag !== 'centurion-match') {
       return
@@ -1309,7 +1047,11 @@ function bindEvents(): void {
     dispatchCenturion({ tag: 'pass-and-play-requested', seed: newSeed() })
   })
   centurionNewMatchButton.addEventListener('click', () => {
-    dispatchCenturion({ tag: 'new-match-requested' })
+    dispatchCenturion({
+      tag: 'new-match-requested',
+      seed: newSeed(),
+      code: generateRoomCode(),
+    })
   })
   centurionJoinMatchButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'join-match-requested' })
@@ -1392,9 +1134,6 @@ function tryRestorePersistedSession(): void {
     if (persisted === null) {
       return
     }
-    if (persisted.tag === 'waiting') {
-      hostPendingSeed = persisted.pendingSeed
-    }
     const [model, commands] = updateCenturion(initCenturionModel(), {
       tag: 'restore-session-requested',
       persisted,
@@ -1407,7 +1146,6 @@ function tryRestorePersistedSession(): void {
     }
   } catch (error) {
     clearCenturionPersistence()
-    hostPendingSeed = null
     state = initAppState()
     logConnection(
       `Failed to restore saved match (${
@@ -1444,7 +1182,7 @@ bindEvents()
 applyPieceDisplayMode('pieces')
 logConnection(`Loaded at ${window.location.href}`)
 logConnection(
-  `Multiplayer build ${__MULTIPLAYER_BUILD_ID__}: BitTorrent trackers + Nostr (app id ${CENTURION_TRANSPORT_APP_ID}). Hard-refresh both devices if this build id looks stale.`,
+  `Multiplayer build ${__MULTIPLAYER_BUILD_ID__}: match state syncs through Firebase Realtime Database. Hard-refresh both devices if this build id looks stale.`,
 )
 navigate(pathnameToAppRoute(window.location.pathname), false)
 tryRestorePersistedSession()

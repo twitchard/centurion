@@ -4,7 +4,7 @@ import { makeUci, parseSquare, squareRank } from 'chessops/util'
 import { describe, expect, it } from 'vitest'
 import { activePlacer, otherPlayer } from '../../core/match/model'
 import { type CenturionModel, initCenturionModel } from './model'
-import { type CenturionMsg, updateCenturion } from './update'
+import { type CenturionCmd, type CenturionMsg, updateCenturion } from './update'
 
 function sq(name: string): number {
   const square = parseSquare(name)
@@ -328,37 +328,46 @@ describe('solo mode', () => {
 })
 
 describe('multiplayer flow', () => {
+  /** The room snapshot published by a command, after a JSON round trip. */
+  function publishedState(commands: readonly CenturionCmd[]): unknown {
+    const publish = commands.find((cmd) => cmd.tag === 'room-publish')
+    if (publish === undefined || publish.tag !== 'room-publish') {
+      throw new Error('expected a room-publish command')
+    }
+    return JSON.parse(JSON.stringify(publish.state))
+  }
+
   function hostToPlaying(): ReturnType<typeof updateCenturion> {
     return apply(
       initCenturionModel(),
-      { tag: 'new-match-requested' },
-      {
-        tag: 'transport-status-changed',
-        status: 'waiting',
-        code: '123456',
-        isHost: true,
-        pendingSeed: 77,
-      },
-      { tag: 'transport-peer-joined' },
+      { tag: 'new-match-requested', seed: 77, code: '123456' },
+      { tag: 'room-opened' },
+      { tag: 'room-peer-presence', present: true },
+    )
+  }
+
+  function guestFromHost(
+    hostCommands: readonly CenturionCmd[],
+  ): ReturnType<typeof updateCenturion> {
+    return apply(
+      initCenturionModel(),
+      { tag: 'join-code-updated', value: '123456' },
+      { tag: 'join-match-requested' },
+      { tag: 'room-opened' },
+      { tag: 'room-state-received', state: publishedState(hostCommands) },
     )
   }
 
   it('offers share and copy commands while waiting for an opponent', () => {
     const [waiting] = apply(
       initCenturionModel(),
-      { tag: 'new-match-requested' },
-      {
-        tag: 'transport-status-changed',
-        status: 'waiting',
-        code: '123456',
-        isHost: true,
-        pendingSeed: 42,
-      },
+      { tag: 'new-match-requested', seed: 42, code: '123456' },
+      { tag: 'room-opened' },
     )
     expect(waiting).toEqual({
       tag: 'waiting',
       code: '123456',
-      pendingSeed: 42,
+      seed: 42,
       notice: null,
     })
 
@@ -372,28 +381,12 @@ describe('multiplayer flow', () => {
     expect(copied).toEqual({
       tag: 'waiting',
       code: '123456',
-      pendingSeed: 42,
+      seed: 42,
       notice: 'Invite link copied.',
     })
   })
 
-  it('host sends a sync snapshot when the guest reconnects mid-match', () => {
-    const [playing] = hostToPlaying()
-    if (playing.tag !== 'playing') {
-      throw new Error('expected playing state')
-    }
-    const [model, commands] = apply(playing, { tag: 'transport-peer-joined' })
-    if (model.tag !== 'playing' || model.session.mode.tag !== 'remote') {
-      throw new Error('expected remote playing state')
-    }
-    expect(model.session.mode.peerConnected).toBe(true)
-    expect(commands[0]?.tag).toBe('transport-send')
-    const payload =
-      commands[0]?.tag === 'transport-send' ? commands[0].payload : null
-    expect(payload).toMatchObject({ type: 'centurion:sync' })
-  })
-
-  it('host starts the match and broadcasts the seed when a peer joins', () => {
+  it('host starts the match and publishes the first snapshot when the guest arrives', () => {
     const [model, commands] = hostToPlaying()
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
@@ -404,31 +397,16 @@ describe('multiplayer flow', () => {
       code: '123456',
       peerConnected: true,
     })
-    expect(commands).toEqual([
-      {
-        tag: 'transport-send',
-        payload: { type: 'centurion:start', seed: 77, gameCount: 100 },
-      },
-    ])
+    expect(commands).toHaveLength(1)
+    expect(commands[0]).toMatchObject({
+      tag: 'room-publish',
+      state: { turn: 1, gameCount: 100 },
+    })
   })
 
-  it('guest initialises the identical match from the start message', () => {
-    const [guest] = apply(
-      initCenturionModel(),
-      { tag: 'join-code-updated', value: '123456' },
-      { tag: 'join-match-requested' },
-      {
-        tag: 'transport-status-changed',
-        status: 'connected',
-        code: '123456',
-        isHost: false,
-      },
-      {
-        tag: 'transport-message-received',
-        payload: { type: 'centurion:start', seed: 77, gameCount: 100 },
-      },
-    )
-    const [host] = hostToPlaying()
+  it('guest adopts the identical match from the published snapshot', () => {
+    const [host, hostCommands] = hostToPlaying()
+    const [guest] = guestFromHost(hostCommands)
     if (guest.tag !== 'playing' || host.tag !== 'playing') {
       throw new Error('expected playing states')
     }
@@ -440,25 +418,18 @@ describe('multiplayer flow', () => {
     })
     expect(guest.session.match.firstPlacer).toBe(host.session.match.firstPlacer)
     expect(guest.session.match.rng).toBe(host.session.match.rng)
+    const hostFens = host.session.match.games.map((game) =>
+      makeFen(game.position.toSetup()),
+    )
+    const guestFens = guest.session.match.games.map((game) =>
+      makeFen(game.position.toSetup()),
+    )
+    expect(guestFens).toEqual(hostFens)
   })
 
-  it('keeps both peers in lockstep across an exchanged arrow', () => {
-    const [host] = hostToPlaying()
-    const [guest] = apply(
-      initCenturionModel(),
-      { tag: 'join-code-updated', value: '123456' },
-      { tag: 'join-match-requested' },
-      {
-        tag: 'transport-status-changed',
-        status: 'connected',
-        code: '123456',
-        isHost: false,
-      },
-      {
-        tag: 'transport-message-received',
-        payload: { type: 'centurion:start', seed: 77, gameCount: 100 },
-      },
-    )
+  it('keeps both players in lockstep across an exchanged arrow', () => {
+    const [host, hostCommands] = hostToPlaying()
+    const [guest] = guestFromHost(hostCommands)
     if (host.tag !== 'playing' || guest.tag !== 'playing') {
       throw new Error('expected playing states')
     }
@@ -468,7 +439,8 @@ describe('multiplayer flow', () => {
 
     // The mover clicks in their own visual frame; player 2's view is
     // rank-flipped, so both pick the square they see as e2/e4. The arrow
-    // phase runs, then Stockfish moves arrive, then the turn is sent.
+    // phase runs, Stockfish moves arrive, then the settled snapshot is
+    // published to the room.
     const [pendingModel, pendingCommands] = apply(
       mover,
       { tag: 'board-square-clicked', square: sq('e2') },
@@ -478,17 +450,10 @@ describe('multiplayer flow', () => {
       pendingModel,
       engineAnswer(pendingCommands),
     )
-    expect(commands).toHaveLength(1)
-    const sent = commands[0]
-    if (sent?.tag !== 'transport-send') {
-      throw new Error('expected a transport-send command')
-    }
-    const payload = sent.payload as { moves: readonly string[] }
-    expect(payload.moves.length).toBeGreaterThan(0)
 
     const [receivedModel] = apply(receiver, {
-      tag: 'transport-message-received',
-      payload: sent.payload,
+      tag: 'room-state-received',
+      state: publishedState(commands),
     })
     if (movedModel.tag !== 'playing' || receivedModel.tag !== 'playing') {
       throw new Error('expected playing states')
@@ -505,6 +470,37 @@ describe('multiplayer flow', () => {
       makeFen(game.position.toSetup()),
     )
     expect(receiverFens).toEqual(moverFens)
+  })
+
+  it('guest adopts room state even before the open acknowledgement', () => {
+    const [, hostCommands] = hostToPlaying()
+    const [guest] = apply(
+      initCenturionModel(),
+      { tag: 'join-code-updated', value: '123456' },
+      { tag: 'join-match-requested' },
+      // State arrives first, then the open ack: rejoining an in-progress
+      // match must not drop the snapshot.
+      { tag: 'room-state-received', state: publishedState(hostCommands) },
+      { tag: 'room-opened' },
+    )
+    if (guest.tag !== 'playing' || guest.session.mode.tag !== 'remote') {
+      throw new Error('expected remote playing state')
+    }
+    expect(guest.session.mode.you).toBe(2)
+    expect(guest.session.match.turn).toBe(1)
+  })
+
+  it('ignores stale snapshots, including the echo of its own publish', () => {
+    const [host, hostCommands] = hostToPlaying()
+    if (host.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    const [model, commands] = apply(host, {
+      tag: 'room-state-received',
+      state: publishedState(hostCommands),
+    })
+    expect(model).toEqual(host)
+    expect(commands).toEqual([])
   })
 
   it('rejects arrow placement when it is not your turn', () => {
@@ -529,32 +525,42 @@ describe('multiplayer flow', () => {
     expect(commands).toEqual([])
   })
 
-  it('flags out-of-sync arrows instead of applying them', () => {
+  it('surfaces presence changes as connection notices', () => {
     const [host] = hostToPlaying()
-    if (host.tag !== 'playing') {
-      throw new Error('expected playing state')
+    const [away] = apply(host, { tag: 'room-peer-presence', present: false })
+    if (away.tag !== 'playing' || away.session.mode.tag !== 'remote') {
+      throw new Error('expected remote playing state')
     }
-    const [model] = apply(host, {
-      tag: 'transport-message-received',
-      payload: {
-        type: 'centurion:arrow',
-        from: 12,
-        to: 28,
-        turn: 99,
-        moves: [],
-      },
-    })
-    if (model.tag !== 'playing') {
-      throw new Error('expected playing state')
+    expect(away.session.mode.peerConnected).toBe(false)
+    expect(away.session.notice).toBe('Opponent disconnected.')
+
+    const [back] = apply(away, { tag: 'room-peer-presence', present: true })
+    if (back.tag !== 'playing' || back.session.mode.tag !== 'remote') {
+      throw new Error('expected remote playing state')
     }
-    expect(model.session.match.turn).toBe(host.session.match.turn)
-    expect(model.session.notice).not.toBeNull()
+    expect(back.session.mode.peerConnected).toBe(true)
+    expect(back.session.notice).toBe('Opponent reconnected.')
   })
 
-  it('returns to the lobby and disconnects on leave', () => {
+  it('returns to the lobby with a notice when the room fails to open', () => {
+    const [model, commands] = apply(
+      initCenturionModel(),
+      { tag: 'join-code-updated', value: '654321' },
+      { tag: 'join-match-requested' },
+      { tag: 'room-error', message: 'No match found for that code.' },
+    )
+    expect(model).toEqual({
+      tag: 'lobby',
+      joinCodeInput: '',
+      notice: 'No match found for that code.',
+    })
+    expect(commands).toEqual([{ tag: 'room-leave' }])
+  })
+
+  it('returns to the lobby and leaves the room on leave', () => {
     const [host] = hostToPlaying()
     const [model, commands] = apply(host, { tag: 'leave-session-requested' })
     expect(model).toEqual(initCenturionModel())
-    expect(commands).toEqual([{ tag: 'transport-disconnect' }])
+    expect(commands).toEqual([{ tag: 'room-leave' }])
   })
 })

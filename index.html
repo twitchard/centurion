@@ -14,7 +14,6 @@
     <p class="subtitle">Experimental features and dev tools</p>
     <div class="menu-buttons">
       <button class="btn btn-primary" id="labs-menu-open-superposition">Superposition Board Lab</button>
-      <button class="btn btn-secondary" id="labs-menu-open-chat">P2P Chat Lab</button>
       <button class="btn btn-outline" id="labs-menu-open-centurion">Centurion Match</button>
       <button class="btn btn-outline" id="labs-menu-back-btn">← Back to Game</button>
     </div>
@@ -45,39 +44,6 @@
 
       <div class="panel board-panel" id="superposition-board-panel">
         <canvas id="superposition-canvas"></canvas>
-      </div>
-    </div>
-  </section>
-
-  <section id="screen-chat-lab" class="screen screen-feature">
-    <header class="feature-header">
-      <button class="text-btn" id="chat-back-btn">← Labs</button>
-      <h2>P2P Chat Lab</h2>
-      <span></span>
-    </header>
-    <div class="feature-layout chat-layout">
-      <div class="panel controls-panel">
-        <div class="chat-meta">
-          <div><strong>Room:</strong> <span id="chat-room-code">------</span></div>
-          <div id="chat-status">Disconnected</div>
-        </div>
-
-        <div class="chat-controls">
-          <button class="btn btn-secondary" id="chat-create-room-btn">Create Room</button>
-          <div class="join-row">
-            <input id="chat-join-code-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000">
-            <button class="btn btn-outline" id="chat-join-room-btn">Join</button>
-          </div>
-          <button class="btn btn-outline" id="chat-disconnect-btn">Disconnect</button>
-        </div>
-      </div>
-
-      <div class="panel chat-panel">
-        <ul id="chat-log" class="chat-log"></ul>
-        <div class="chat-compose">
-          <input id="chat-draft-input" type="text" placeholder="Type a message...">
-          <button class="btn btn-primary" id="chat-send-btn">Send</button>
-        </div>
       </div>
     </div>
   </section>
@@ -196,12 +162,12 @@
     <details id="centurion-connection-log-panel" class="centurion-connection-log panel">
       <summary>Connection log</summary>
       <p class="centurion-connection-log-hint">
-        Multiplayer uses Trystero over BitTorrent trackers, Nostr relays, and WebRTC.
-        Host should reach <strong>waiting</strong> and keep this page open; guest should
-        reach <strong>connected</strong> then <strong>Peer joined</strong>. Guests retry
-        automatically up to three times. Both players need the latest build (see the
-        build id in the log). Hard-refresh each browser, confirm the host is still
-        waiting with the same code, then try Wi‑Fi or disable VPN.
+        Multiplayer syncs match state through Firebase Realtime Database - no
+        peer-to-peer connection is involved, so it works anywhere this page loads.
+        The host creates the room and starts the match when the guest arrives; after
+        that, each move is published to the room and mirrored on the other device.
+        If nothing happens, check that both devices are online and using the same
+        6-digit code.
       </p>
       <ol id="centurion-connection-log-list" class="centurion-connection-log-list"></ol>
       <div class="centurion-connection-log-actions">
