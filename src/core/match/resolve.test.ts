@@ -199,6 +199,23 @@ describe('beginResolution', () => {
     ).toBe(true)
   })
 
+  it('records which player owned the arrow that pulled each move', () => {
+    const match = initMatch(3, {
+      gameCount: 10,
+      whitePlayer: 1,
+      firstPlacer: 1,
+    })
+    const next = resolveTurn(match, { from: sq('e2'), to: sq('e4') })
+    const moves = next.games.flatMap((game) => game.moves)
+    const arrowMoves = moves.filter((move) => move.source === 'arrow')
+    const engineMoves = moves.filter((move) => move.source === 'engine')
+    expect(arrowMoves.length).toBeGreaterThan(0)
+    expect(arrowMoves.every((move) => move.arrowOwner === 1)).toBe(true)
+    expect(engineMoves.every((move) => move.arrowOwner === undefined)).toBe(
+      true,
+    )
+  })
+
   it('replays the arrow phase deterministically for a given seed', () => {
     const arrowPhase = (): PendingResolution => {
       const match = resolveTurn(initMatch(99, { gameCount: 12 }), {

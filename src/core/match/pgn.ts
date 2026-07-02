@@ -64,6 +64,8 @@ export const STANDARD_START_FEN = makeFen(Chess.default().toSetup())
 export interface ReplaySnapshot {
   readonly fen: string
   readonly lastMove?: readonly [string, string]
+  /** Recorded source data for the move shown as `lastMove`. */
+  readonly lastMoveRecord?: RecordedMove
   readonly ply: number
   readonly moveCount: number
 }
@@ -88,6 +90,7 @@ function outcomeForPgn(game: MatchGame): string {
 export function replaySnapshot(game: MatchGame, ply: number): ReplaySnapshot {
   const position = Chess.fromSetup(parseFen(game.startingFen).unwrap()).unwrap()
   let lastMove: [string, string] | undefined
+  let lastMoveRecord: RecordedMove | undefined
   const clampedPly = Math.max(0, Math.min(ply, game.moves.length))
   for (let index = 0; index < clampedPly; index++) {
     const recorded = game.moves[index]
@@ -103,6 +106,7 @@ export function replaySnapshot(game: MatchGame, ply: number): ReplaySnapshot {
       break
     }
     lastMove = [makeSquare(move.from), makeSquare(move.to)]
+    lastMoveRecord = recorded
     position.play(move)
   }
   const snapshot: ReplaySnapshot = {
@@ -110,8 +114,8 @@ export function replaySnapshot(game: MatchGame, ply: number): ReplaySnapshot {
     ply: clampedPly,
     moveCount: game.moves.length,
   }
-  if (lastMove !== undefined) {
-    return { ...snapshot, lastMove }
+  if (lastMove !== undefined && lastMoveRecord !== undefined) {
+    return { ...snapshot, lastMove, lastMoveRecord }
   }
   return snapshot
 }

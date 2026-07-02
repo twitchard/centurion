@@ -47,6 +47,8 @@ export type MoveSource = 'arrow' | 'engine'
 export interface RecordedMove {
   readonly uci: string
   readonly source: MoveSource
+  /** Which player's arrow pulled this move; only set when source is 'arrow'. */
+  readonly arrowOwner?: PlayerId
 }
 
 export interface MatchGame {

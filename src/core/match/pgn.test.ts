@@ -9,7 +9,11 @@ import {
   matchGameToPgn,
   replaySnapshot,
 } from './pgn'
-import { beginAutoResolution, completeResolution } from './resolve'
+import {
+  beginAutoResolution,
+  beginResolution,
+  completeResolution,
+} from './resolve'
 
 function firstLegalUci(fen: string): string {
   const position = Chess.fromSetup(parseFen(fen).unwrap()).unwrap()
@@ -80,6 +84,39 @@ describe('replaySnapshot', () => {
     expect(afterOne.ply).toBe(1)
     expect(start.fen).not.toBe(afterOne.fen)
     expect(afterOne.lastMove).toBeDefined()
+    expect(start.lastMoveRecord).toBeUndefined()
+    expect(afterOne.lastMoveRecord).toEqual(game.moves[0])
+  })
+
+  it('exposes the source and owner of the shown move', () => {
+    const match = initMatch(3, {
+      gameCount: 1,
+      whitePlayer: 1,
+      firstPlacer: 1,
+    })
+    // Arrow e2->e4 pulls the only game, so ply 1 is an arrow move.
+    const resolution = beginResolution(match, { from: 12, to: 28 })
+    if (resolution === null) {
+      throw new Error('expected resolution')
+    }
+    const next = completeResolution(
+      resolution,
+      resolution.pending.map((entry) => firstLegalUci(entry.fen)),
+    )
+    if (next === null) {
+      throw new Error('expected completed resolution')
+    }
+    const game = next.games[0]
+    if (game === undefined) {
+      throw new Error('missing game')
+    }
+
+    const snapshot = replaySnapshot(game, 1)
+    expect(snapshot.lastMoveRecord).toEqual({
+      uci: 'e2e4',
+      source: 'arrow',
+      arrowOwner: 1,
+    })
   })
 })
 

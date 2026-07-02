@@ -12,6 +12,7 @@ import {
   type MatchState,
   type MoveSource,
   type PlayerId,
+  type RecordedMove,
   activePlacer,
   addBoardArrow,
   arrowPullWeight,
@@ -84,6 +85,7 @@ function applyMoveToGame(
   game: MatchGame,
   move: NormalMove,
   source: MoveSource,
+  arrowOwner?: PlayerId,
 ): MatchGame {
   const position = game.position.clone()
   position.play(move)
@@ -91,12 +93,16 @@ function applyMoveToGame(
   const repetition = new Map(game.repetition)
   const count = (repetition.get(key) ?? 0) + 1
   repetition.set(key, count)
+  const recorded: RecordedMove =
+    arrowOwner === undefined
+      ? { uci: makeUci(move), source }
+      : { uci: makeUci(move), source, arrowOwner }
   return {
     ...game,
     position,
     repetition,
     status: statusAfterMove(game, position, count),
-    moves: [...game.moves, { uci: makeUci(move), source }],
+    moves: [...game.moves, recorded],
   }
 }
 
@@ -239,7 +245,12 @@ function beginResolutionPhase(
       if (game === undefined) {
         break
       }
-      games[chosen.gameIndex] = applyMoveToGame(game, chosen.move, 'arrow')
+      games[chosen.gameIndex] = applyMoveToGame(
+        game,
+        chosen.move,
+        'arrow',
+        entry.owner,
+      )
       advanced.add(chosen.gameIndex)
       arrowMoves += 1
     }

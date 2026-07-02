@@ -34,6 +34,7 @@ import {
 import {
   type MatchState,
   type PlayerId,
+  type RecordedMove,
   activeGameCount,
   activePlacer,
   canPlaceArrows,
@@ -611,6 +612,22 @@ function boardHintText(session: MatchSession): string {
   return 'Tap the start square of your arrow.'
 }
 
+/** Describes how the currently shown replay move was decided. */
+function replayMoveSourceText(
+  session: MatchSession,
+  record: RecordedMove,
+): string {
+  if (record.source === 'engine') {
+    return 'Engine move'
+  }
+  const owner = record.arrowOwner
+  if (owner === undefined) {
+    return 'Pulled by an arrow'
+  }
+  const label = playerLabel(session, owner)
+  return label === 'You' ? 'Pulled by your arrow' : `Pulled by ${label}'s arrow`
+}
+
 function renderGameReplay(session: MatchSession): void {
   const match = session.match
   const replay = session.gameReplay
@@ -648,14 +665,21 @@ function renderGameReplay(session: MatchSession): void {
   centurionGameSelect.value = String(replay.gameId)
 
   const snapshot = replaySnapshot(selectedGame, replay.ply)
-  centurionReplayBoard.setPosition(snapshot.fen, snapshot.lastMove)
+  const record = snapshot.lastMoveRecord
+  centurionReplayBoard.setPosition(
+    snapshot.fen,
+    snapshot.lastMove,
+    record?.source === 'arrow' ? { owner: record.arrowOwner } : undefined,
+  )
   centurionReplayBoard.redraw()
 
   const sourceCounts = gameMoveSourceCounts(selectedGame)
+  const sourceNote =
+    record === undefined ? '' : ` · ${replayMoveSourceText(session, record)}`
   centurionReplayMoveInfo.textContent =
     snapshot.moveCount === 0
       ? 'No moves recorded for this game.'
-      : `Ply ${snapshot.ply} of ${snapshot.moveCount} (${sourceCounts.arrow} arrow, ${sourceCounts.engine} engine)`
+      : `Ply ${snapshot.ply} of ${snapshot.moveCount} (${sourceCounts.arrow} arrow, ${sourceCounts.engine} engine)${sourceNote}`
 
   centurionReplayPgn.value = matchGameToPgn(selectedGame, {
     white: playerLabel(session, selectedGame.whiteOwner),

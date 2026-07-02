@@ -22,6 +22,7 @@ export interface GameStatusSnapshot {
 export interface RecordedMoveSnapshot {
   readonly uci: string
   readonly source: MoveSource
+  readonly arrowOwner?: PlayerId
 }
 
 export interface GameSnapshot {
@@ -89,7 +90,11 @@ function encodeGame(game: MatchGame): GameSnapshot {
     fen: makeFen(game.position.toSetup()),
     repetition: [...game.repetition.entries()],
     status: encodeGameStatus(game.status),
-    moves: game.moves.map((move) => ({ uci: move.uci, source: move.source })),
+    moves: game.moves.map((move) =>
+      move.arrowOwner === undefined
+        ? { uci: move.uci, source: move.source }
+        : { uci: move.uci, source: move.source, arrowOwner: move.arrowOwner },
+    ),
   }
 }
 
@@ -128,11 +133,18 @@ function decodeGame(snapshot: GameSnapshot): MatchGame | null {
       typeof move !== 'object' ||
       move === null ||
       typeof move.uci !== 'string' ||
-      (move.source !== 'arrow' && move.source !== 'engine')
+      (move.source !== 'arrow' && move.source !== 'engine') ||
+      (move.arrowOwner !== undefined &&
+        move.arrowOwner !== 1 &&
+        move.arrowOwner !== 2)
     ) {
       return null
     }
-    moves.push({ uci: move.uci, source: move.source })
+    moves.push(
+      move.arrowOwner === undefined
+        ? { uci: move.uci, source: move.source }
+        : { uci: move.uci, source: move.source, arrowOwner: move.arrowOwner },
+    )
   }
   return {
     id: snapshot.id,
