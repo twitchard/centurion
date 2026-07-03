@@ -9,11 +9,23 @@ Two players compete across 100 simultaneous games of chess. One player is white 
 Run `bun install` then `bun run dev` and open the app.
 
 - **/** — Centurion Chess. Pass & Play starts a hot-seat match immediately; New Multiplayer Match creates a 6-digit room code, and Join with code connects to it.
-- **/labs** — developer labs: the Superposition Board Lab (render arbitrary FEN/arrow sets).
+- **/labs** — developer labs: the Superposition Board Lab (render arbitrary FEN/arrow sets) and the Command Compiler Lab (see below).
 
 Solo mode pits you against the computer: you own white and place an arrow each turn, both half-moves play out with Stockfish filling the gaps, and after each black reply the computer answers with a **trap arrow** — the move Stockfish ranks *worst* (full-MultiPV, lowest line) in a plurality of your games. The trap is a white move, so it pulls nothing on the computer's own half-turn; it lies in wait on your reply, dragging up to its full weight in games into the blunder. Your newer arrow always pulls first, so each turn is a race: save the games you can, and stack or out-place the traps you can't defuse.
 
 Place an arrow by clicking its origin and destination squares on the board (or typing notation like `e2->e4`). Each player sees the board from their own perspective; player 2's view is rank-flipped, so the same visual arrow means the same positional idea for both sides.
+
+## Natural-language commands (experimental)
+
+An in-progress alternative to square-anchored arrows: the player types a chess idea in plain language — at most **20 words** — and an LLM compiles it into a **move predicate**, a small JSON term over properties a single move can have (moving piece, from/to region, captures, gives check, castles, promotes, advances/retreats, attacks a role, escapes attack, plus and/or/not). Applying a predicate to a game's legal moves is pure and deterministic, so the compiled term is what would enter match state and both peers replay it identically; the LLM's nondeterminism stays quarantined at the compile step. Ranks in a predicate are counted from the mover's side and files are absolute, so one predicate means the same positional idea in 100 divergent games.
+
+Nothing is wired into match resolution yet. What exists today:
+
+- `src/core/command/` — the predicate model, the codec that validates untrusted LLM/wire JSON, the evaluator (chessops), the deterministic English "reads as" renderer, and the compile prompt.
+- `api/compile.ts` — a Vercel serverless function exposing `POST /api/compile` with `{command: string}`. Deploy by connecting the repo to a Vercel project and setting `ANTHROPIC_API_KEY` (and optionally `COMMAND_COMPILE_MODEL`; the default is `claude-opus-4-8` — a compile is a few hundred cached tokens, a fraction of a cent) as environment variables. The word limit, forced tool output, and small `max_tokens` bound the endpoint's abuse surface; the key never ships to clients.
+- `bun run command:server` — the same endpoint served locally by Bun on port 8787 for development (`ANTHROPIC_API_KEY=sk-... bun run command:server`).
+- **Command Compiler Lab** at `/labs` — type a command, compile it against any endpoint (defaults to the local server in dev, `/api/compile` in builds, `VITE_COMMAND_COMPILER_URL` overrides), and see the predicate, its English reading, and the matching moves for a list of FEN positions.
+- `bun run command:eval` — a phrase battery run against the live API; use it to judge whether a cheaper model is good enough before changing `COMMAND_COMPILE_MODEL`.
 
 ## Multiplayer
 

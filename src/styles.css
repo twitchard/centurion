@@ -278,6 +278,39 @@ textarea {
   font-size: 0.78rem;
 }
 
+#command-input {
+  min-height: 48px;
+}
+
+.command-description {
+  margin: 0;
+  font-style: italic;
+  min-height: 1.2em;
+}
+
+.command-predicate {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  max-height: 14em;
+}
+
+.command-matches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  overflow: auto;
+}
+
 .board-panel {
   display: flex;
   align-items: center;

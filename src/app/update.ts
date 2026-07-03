@@ -1,6 +1,8 @@
 import { type UpdateResult, assertNever } from '../core/update'
 import { initCenturionModel } from '../features/centurion-match/model'
 import { updateCenturion } from '../features/centurion-match/update'
+import { initCommandLabModel } from '../features/command-lab/model'
+import { updateCommandLab } from '../features/command-lab/update'
 import { initSuperpositionLabModel } from '../features/superposition-lab/model'
 import { updateSuperpositionLab } from '../features/superposition-lab/update'
 import type { AppCmd, AppMsg, AppState } from './model'
@@ -39,6 +41,12 @@ export function updateApp(
         cleanupCommandsFor(state),
       ]
 
+    case 'open-command-lab':
+      return [
+        { tag: 'command-lab', model: initCommandLabModel() },
+        cleanupCommandsFor(state),
+      ]
+
     case 'open-centurion-match':
       if (state.tag === 'centurion-match') {
         return [state, []]
@@ -57,6 +65,17 @@ export function updateApp(
       }
       const [nextModel] = updateSuperpositionLab(state.model, msg.msg)
       return [{ tag: 'superposition-lab', model: nextModel }, []]
+    }
+
+    case 'command-lab-msg': {
+      if (state.tag !== 'command-lab') {
+        return [state, []]
+      }
+      const [nextModel, commands] = updateCommandLab(state.model, msg.msg)
+      return [
+        { tag: 'command-lab', model: nextModel },
+        commands.map((cmd): AppCmd => ({ tag: 'command-lab', cmd })),
+      ]
     }
 
     case 'centurion-msg': {
