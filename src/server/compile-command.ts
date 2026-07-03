@@ -66,6 +66,21 @@ function extractToolInput(message: MessagesResponse): unknown {
 }
 
 /**
+ * Models sometimes JSON-encode structured tool arguments as strings,
+ * especially under recursive schemas. Unwrap one level when it parses.
+ */
+function coerceJson(value: unknown): unknown {
+  if (typeof value !== 'string') {
+    return value
+  }
+  try {
+    return JSON.parse(value) as unknown
+  } catch {
+    return value
+  }
+}
+
+/**
  * Compile one natural-language command into a predicate. The LLM output
  * is untrusted: whatever it submits goes through `decodeCommandPredicate`,
  * and only a predicate that survives the codec is ever returned.
@@ -139,7 +154,7 @@ export async function compileCommand(
     }
   }
 
-  const input = extractToolInput(message)
+  const input = coerceJson(extractToolInput(message))
   if (input === undefined) {
     return {
       tag: 'failed',
@@ -148,11 +163,13 @@ export async function compileCommand(
     }
   }
 
-  // Accept both {predicate: ...} (the tool schema) and a bare predicate.
-  const candidate =
+  // Accept both {predicate: ...} (the tool schema) and a bare predicate,
+  // each possibly JSON-encoded as a string.
+  const candidate = coerceJson(
     typeof input === 'object' && input !== null && 'predicate' in input
       ? (input as { predicate: unknown }).predicate
-      : input
+      : input,
+  )
   const decoded = decodeCommandPredicate(candidate)
   if (decoded.tag === 'invalid') {
     return { tag: 'rejected', status: 422, diagnostics: decoded.diagnostics }
