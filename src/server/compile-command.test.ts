@@ -56,6 +56,26 @@ describe('compileCommand', () => {
     expect(outcome).toEqual({ tag: 'compiled', predicate: KNIGHTS_ADVANCE })
   })
 
+  it('accepts a JSON-string-encoded predicate value', async () => {
+    const outcome = await compileCommand('all knights advance', {
+      apiKey: 'test-key',
+      fetch: fetchReturning(
+        anthropicMessage({ predicate: JSON.stringify(KNIGHTS_ADVANCE) }),
+      ),
+    })
+    expect(outcome).toEqual({ tag: 'compiled', predicate: KNIGHTS_ADVANCE })
+  })
+
+  it('accepts a JSON-string-encoded whole tool input', async () => {
+    const outcome = await compileCommand('all knights advance', {
+      apiKey: 'test-key',
+      fetch: fetchReturning(
+        anthropicMessage(JSON.stringify({ predicate: KNIGHTS_ADVANCE })),
+      ),
+    })
+    expect(outcome).toEqual({ tag: 'compiled', predicate: KNIGHTS_ADVANCE })
+  })
+
   it('rejects over-limit commands without calling the API', async () => {
     const outcome = await compileCommand('word '.repeat(21), {
       apiKey: 'test-key',
