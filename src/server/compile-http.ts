@@ -30,7 +30,6 @@ export interface CompileEndpointConfig {
   readonly apiKey: string | undefined
   readonly model?: string | undefined
   readonly fetch?: CompileOptions['fetch']
-  readonly maxRetries?: number | undefined
 }
 
 export async function handleCompileRequest(
@@ -67,7 +66,6 @@ export async function handleCompileRequest(
     apiKey: config.apiKey,
     model: config.model,
     fetch: config.fetch,
-    maxRetries: config.maxRetries,
   })
   switch (outcome.tag) {
     case 'compiled':

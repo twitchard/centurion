@@ -1,25 +1,21 @@
-import type {
-  NodeCompileRequest,
-  NodeCompileResponse,
-} from '../src/server/compile-node'
-import { handleNodeCompileRequest } from '../src/server/compile-node'
+import { handleCompileRequest } from '../src/server/compile-http'
 
 /**
- * Vercel function (Node.js runtime): POST /api/compile with
- * {command: string}. Runs on the Node runtime because the Anthropic SDK
- * references node:fs/node:path, which the Edge runtime rejects.
+ * Vercel Edge Function: POST /api/compile with {command: string}.
+ * (OPTIONS preflight and method checks are handled inside
+ * handleCompileRequest.) The compile pipeline calls the Anthropic API
+ * with plain fetch, so it is edge-compatible.
  *
  * Configure ANTHROPIC_API_KEY (required) and COMMAND_COMPILE_MODEL
  * (optional) as environment variables in the Vercel project. The key
  * never ships to clients; the static game page calls this endpoint.
  */
 
-export default async function handler(
-  req: NodeCompileRequest,
-  res: NodeCompileResponse,
-): Promise<void> {
+export const config = { runtime: 'edge' }
+
+export default async function handler(request: Request): Promise<Response> {
   const { ANTHROPIC_API_KEY, COMMAND_COMPILE_MODEL } = process.env
-  await handleNodeCompileRequest(req, res, {
+  return handleCompileRequest(request, {
     apiKey: ANTHROPIC_API_KEY,
     model: COMMAND_COMPILE_MODEL,
   })

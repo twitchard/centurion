@@ -85,7 +85,6 @@ describe('compileCommand', () => {
   it('reports upstream API failures', async () => {
     const outcome = await compileCommand('all knights advance', {
       apiKey: 'test-key',
-      maxRetries: 0,
       fetch: fetchReturning(
         { type: 'error', error: { type: 'api_error', message: 'boom' } },
         500,
@@ -94,6 +93,17 @@ describe('compileCommand', () => {
     expect(outcome.tag).toBe('failed')
     if (outcome.tag === 'failed') {
       expect(outcome.status).toBe(502)
+    }
+  })
+
+  it('reports network failures', async () => {
+    const outcome = await compileCommand('all knights advance', {
+      apiKey: 'test-key',
+      fetch: () => Promise.reject(new Error('connection refused')),
+    })
+    expect(outcome.tag).toBe('failed')
+    if (outcome.tag === 'failed') {
+      expect(outcome.message).toContain('connection refused')
     }
   })
 })
