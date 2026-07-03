@@ -19,7 +19,6 @@
     "ci:all": "bun run check && bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.110.0",
     "chessground": "^9.2.1",
     "chessops": "^0.15.0",
     "firebase": "^12.9.0",

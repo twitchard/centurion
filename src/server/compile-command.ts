@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { decodeCommandPredicate } from '../core/command/decode'
 import type { CommandPredicate } from '../core/command/model'
 import {
@@ -15,6 +14,9 @@ import { validateCommandText } from '../core/command/text'
  * claude-haiku-4-5 once the eval battery shows it holds up).
  */
 export const DEFAULT_COMPILE_MODEL = 'claude-opus-4-8'
+
+const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
+const ANTHROPIC_VERSION = '2023-06-01'
 
 export type CompileOutcome =
   | { readonly tag: 'compiled'; readonly predicate: CommandPredicate }
@@ -36,11 +38,23 @@ export interface CompileOptions {
   readonly model?: string | undefined
   /** Injected for tests; defaults to the platform fetch. */
   readonly fetch?: typeof globalThis.fetch | undefined
-  readonly maxRetries?: number | undefined
 }
 
-function extractToolInput(message: Anthropic.Message): unknown {
-  for (const block of message.content) {
+/**
+ * The slice of an Anthropic Messages response this module reads. The
+ * endpoint calls the API with plain fetch — the official SDK references
+ * node:fs/node:path, which edge runtimes reject at build time.
+ */
+interface MessagesResponse {
+  readonly content?: readonly {
+    readonly type?: unknown
+    readonly name?: unknown
+    readonly input?: unknown
+  }[]
+}
+
+function extractToolInput(message: MessagesResponse): unknown {
+  for (const block of message.content ?? []) {
     if (
       block.type === 'tool_use' &&
       block.name === SUBMIT_PREDICATE_TOOL_NAME
@@ -65,50 +79,63 @@ export async function compileCommand(
     return { tag: 'rejected', status: 400, diagnostics: validated.diagnostics }
   }
 
-  const client = new Anthropic({
-    apiKey: options.apiKey,
-    ...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
-    ...(options.maxRetries !== undefined
-      ? { maxRetries: options.maxRetries }
-      : {}),
-  })
-
-  let message: Anthropic.Message
+  const fetchImpl = options.fetch ?? globalThis.fetch
+  let response: Response
   try {
-    message = await client.messages.create({
-      model: options.model ?? DEFAULT_COMPILE_MODEL,
-      max_tokens: 1024,
-      system: [
-        {
-          type: 'text',
-          text: COMPILE_SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
-      tools: [
-        {
-          name: SUBMIT_PREDICATE_TOOL_NAME,
-          description:
-            'Submit the move predicate compiled from the player command.',
-          input_schema:
-            SUBMIT_PREDICATE_INPUT_SCHEMA as Anthropic.Tool.InputSchema,
-        },
-      ],
-      tool_choice: { type: 'tool', name: SUBMIT_PREDICATE_TOOL_NAME },
-      messages: [{ role: 'user', content: validated.value }],
+    response = await fetchImpl(ANTHROPIC_MESSAGES_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': options.apiKey,
+        'anthropic-version': ANTHROPIC_VERSION,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: options.model ?? DEFAULT_COMPILE_MODEL,
+        max_tokens: 1024,
+        system: [
+          {
+            type: 'text',
+            text: COMPILE_SYSTEM_PROMPT,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+        tools: [
+          {
+            name: SUBMIT_PREDICATE_TOOL_NAME,
+            description:
+              'Submit the move predicate compiled from the player command.',
+            input_schema: SUBMIT_PREDICATE_INPUT_SCHEMA,
+          },
+        ],
+        tool_choice: { type: 'tool', name: SUBMIT_PREDICATE_TOOL_NAME },
+        messages: [{ role: 'user', content: validated.value }],
+      }),
     })
   } catch (error) {
-    if (error instanceof Anthropic.APIError) {
-      return {
-        tag: 'failed',
-        status: 502,
-        message: `Compile model error (${String(error.status ?? 'network')}).`,
-      }
-    }
     return {
       tag: 'failed',
       status: 502,
-      message: error instanceof Error ? error.message : String(error),
+      message: `Could not reach the compile model: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    }
+  }
+  if (!response.ok) {
+    return {
+      tag: 'failed',
+      status: 502,
+      message: `Compile model error (${response.status}).`,
+    }
+  }
+
+  let message: MessagesResponse
+  try {
+    message = (await response.json()) as MessagesResponse
+  } catch {
+    return {
+      tag: 'failed',
+      status: 502,
+      message: 'Compile model returned a non-JSON response.',
     }
   }
 
