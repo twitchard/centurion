@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { DEFAULT_COMMAND_INPUT } from './features/command-lab/model'
 import {
   DEFAULT_SUPERPOSITION_ARROW_INPUT,
   DEFAULT_SUPERPOSITION_FEN_INPUT,
@@ -515,6 +516,48 @@ function setupDom(pathname = '/labs'): TestDom {
     (id, owner) => new FakeCanvasElement(id, owner),
   )
 
+  const commandLabIds: readonly (readonly [
+    string,
+    'element' | 'button' | 'input' | 'textarea',
+  ])[] = [
+    ['screen-command-lab', 'element'],
+    ['labs-menu-open-command', 'button'],
+    ['command-back-btn', 'button'],
+    ['command-reset-btn', 'button'],
+    ['command-compile-btn', 'button'],
+    ['command-input', 'textarea'],
+    ['command-endpoint-input', 'input'],
+    ['command-fen-input', 'textarea'],
+    ['command-diagnostics', 'element'],
+    ['command-fen-diagnostics', 'element'],
+    ['command-description', 'element'],
+    ['command-predicate', 'element'],
+    ['command-matches', 'element'],
+  ]
+  for (const [id, kind] of commandLabIds) {
+    if (kind === 'button') {
+      registerById(
+        documentRef,
+        id,
+        (i, owner) => new FakeButtonElement(i, owner),
+      )
+    } else if (kind === 'input') {
+      registerById(
+        documentRef,
+        id,
+        (i, owner) => new FakeInputElement(i, owner),
+      )
+    } else if (kind === 'textarea') {
+      registerById(
+        documentRef,
+        id,
+        (i, owner) => new FakeTextAreaElement(i, owner),
+      )
+    } else {
+      registerById(documentRef, id, (i, owner) => new FakeHTMLElement(i, owner))
+    }
+  }
+
   const centurionIds: readonly (readonly [
     string,
     'element' | 'button' | 'input' | 'canvas' | 'textarea' | 'select',
@@ -659,6 +702,27 @@ describe('main app wiring', () => {
     backFromSuperposition.click()
     expect(labsMenu.style.display).toBe('flex')
     expect(superposition.style.display).toBe('none')
+
+    const openCommandLab = documentRef.getElementById(
+      'labs-menu-open-command',
+    ) as FakeButtonElement
+    openCommandLab.click()
+
+    const commandLab = documentRef.getElementById(
+      'screen-command-lab',
+    ) as FakeHTMLElement
+    const commandInput = documentRef.getElementById(
+      'command-input',
+    ) as FakeTextAreaElement
+    expect(commandLab.style.display).toBe('flex')
+    expect(commandInput.value).toBe(DEFAULT_COMMAND_INPUT)
+
+    const backFromCommandLab = documentRef.getElementById(
+      'command-back-btn',
+    ) as FakeButtonElement
+    backFromCommandLab.click()
+    expect(labsMenu.style.display).toBe('flex')
+    expect(commandLab.style.display).toBe('none')
 
     const openCenturion = documentRef.getElementById(
       'labs-menu-open-centurion',

@@ -7,6 +7,7 @@ import {
   FirebaseMatchRoomAdapter,
   generateRoomCode,
 } from './adapters/firebase-match-room'
+import { HttpCommandCompilerAdapter } from './adapters/http-command-compiler'
 import {
   clearCenturionPersistence,
   loadCenturionPersistence,
@@ -26,6 +27,7 @@ import {
   connectionLogText,
   renderConnectionLog,
 } from './connection-log'
+import { describeCommandPredicate } from './core/command/describe'
 import {
   type ResolutionAnimationPlan,
   planResolutionAnimation,
@@ -66,6 +68,10 @@ import {
   type CenturionMsg,
   updateCenturion,
 } from './features/centurion-match/update'
+import {
+  type CommandLabModel,
+  commandLabMatches,
+} from './features/command-lab/model'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
 import {
   type PieceDisplayMode,
@@ -120,7 +126,18 @@ function canvas(id: string): HTMLCanvasElement {
 
 const screenLabsMenu = element('screen-labs-menu')
 const screenSuperposition = element('screen-superposition-lab')
+const screenCommandLab = element('screen-command-lab')
 const screenCenturion = element('screen-centurion-match')
+
+const commandInput = textarea('command-input')
+const commandEndpointInput = input('command-endpoint-input')
+const commandFenInput = textarea('command-fen-input')
+const commandCompileButton = button('command-compile-btn')
+const commandDiagnostics = element('command-diagnostics')
+const commandFenDiagnostics = element('command-fen-diagnostics')
+const commandDescription = element('command-description')
+const commandPredicate = element('command-predicate')
+const commandMatches = element('command-matches')
 
 const superpositionFenInput = textarea('superposition-fen-input')
 const superpositionArrowInput = textarea('superposition-arrow-input')
@@ -198,6 +215,7 @@ function applyPieceDisplayMode(mode: PieceDisplayMode): void {
 
 const centurionRoom = new FirebaseMatchRoomAdapter()
 const centurionEngine = new StockfishEngineAdapter()
+const commandCompiler = new HttpCommandCompilerAdapter()
 
 let state: AppState = initAppState()
 
@@ -402,6 +420,10 @@ centurionRoom.setCallbacks({
 })
 
 function runCommand(command: AppCmd): void {
+  if (command.tag === 'command-lab') {
+    runCommandLabCommand(command.cmd)
+    return
+  }
   const cmd = command.cmd
   switch (cmd.tag) {
     case 'room-open':
@@ -454,10 +476,22 @@ function runCommand(command: AppCmd): void {
   }
 }
 
+function runCommandLabCommand(
+  cmd: Extract<AppCmd, { tag: 'command-lab' }>['cmd'],
+): void {
+  void commandCompiler.compile(cmd.endpoint, cmd.command).then((result) => {
+    dispatch({
+      tag: 'command-lab-msg',
+      msg: { tag: 'compile-finished', command: cmd.command, result },
+    })
+  })
+}
+
 function setScreenVisibility(screen: AppState['tag']): void {
   screenLabsMenu.style.display = screen === 'labs-menu' ? 'flex' : 'none'
   screenSuperposition.style.display =
     screen === 'superposition-lab' ? 'flex' : 'none'
+  screenCommandLab.style.display = screen === 'command-lab' ? 'flex' : 'none'
   screenCenturion.style.display = screen === 'centurion-match' ? 'flex' : 'none'
 }
 
@@ -514,6 +548,76 @@ function renderSuperpositionLab(model: SuperpositionLabModel): void {
 
   superpositionRenderer.resize(panelBoardSize(superpositionBoardPanel))
   superpositionRenderer.render(model.renderModel)
+}
+
+function renderCommandLab(model: CommandLabModel): void {
+  if (commandInput.value !== model.commandInput) {
+    commandInput.value = model.commandInput
+  }
+  if (commandEndpointInput.value !== model.endpointInput) {
+    commandEndpointInput.value = model.endpointInput
+  }
+  if (commandFenInput.value !== model.fenInput) {
+    commandFenInput.value = model.fenInput
+  }
+
+  commandCompileButton.disabled = model.compile.tag === 'compiling'
+  commandDiagnostics.innerHTML = ''
+  const statusLine = document.createElement('li')
+  switch (model.compile.tag) {
+    case 'idle':
+      statusLine.className = 'diagnostic-ok'
+      statusLine.textContent = 'Type a command and compile it.'
+      break
+    case 'compiling':
+      statusLine.className = 'diagnostic-ok'
+      statusLine.textContent = `Compiling "${model.compile.command}"...`
+      break
+    case 'compiled':
+      statusLine.className = 'diagnostic-ok'
+      statusLine.textContent = `Compiled "${model.compile.command}".`
+      break
+    case 'failed':
+      statusLine.className = 'diagnostic-error'
+      statusLine.textContent = model.compile.message
+      break
+    default:
+      assertNever(model.compile)
+  }
+  commandDiagnostics.appendChild(statusLine)
+
+  renderDiagnostics(
+    commandFenDiagnostics,
+    model.fenParse,
+    model.fenParse.tag === 'valid'
+      ? `Parsed ${model.fenParse.value.length} position(s).`
+      : 'FEN parsing failed.',
+  )
+
+  if (model.compile.tag === 'compiled') {
+    commandDescription.textContent = describeCommandPredicate(
+      model.compile.predicate,
+    )
+    commandPredicate.textContent = JSON.stringify(
+      model.compile.predicate,
+      null,
+      2,
+    )
+  } else {
+    commandDescription.textContent = ''
+    commandPredicate.textContent = ''
+  }
+
+  commandMatches.innerHTML = ''
+  for (const [index, entry] of commandLabMatches(model).entries()) {
+    const item = document.createElement('li')
+    item.title = entry.fen
+    item.textContent =
+      entry.sans.length === 0
+        ? `Position ${index + 1}: no matching moves`
+        : `Position ${index + 1}: ${entry.sans.length} matching - ${entry.sans.join(' ')}`
+    commandMatches.appendChild(item)
+  }
 }
 
 function playerLabel(session: MatchSession, player: PlayerId): string {
@@ -992,6 +1096,11 @@ function render(): void {
     return
   }
 
+  if (state.tag === 'command-lab') {
+    renderCommandLab(state.model)
+    return
+  }
+
   if (state.tag === 'centurion-match') {
     renderCenturion(state.model)
     return
@@ -1014,6 +1123,9 @@ function centurionSquareFromClick(event: MouseEvent): number | null {
 function bindEvents(): void {
   button('labs-menu-open-superposition').addEventListener('click', () => {
     dispatch({ tag: 'open-superposition-lab' })
+  })
+  button('labs-menu-open-command').addEventListener('click', () => {
+    dispatch({ tag: 'open-command-lab' })
   })
   button('labs-menu-open-centurion').addEventListener('click', () => {
     navigate('game')
@@ -1047,6 +1159,46 @@ function bindEvents(): void {
       tag: 'superposition-lab-msg',
       msg: {
         tag: 'arrow-input-updated',
+        value: (event.target as HTMLTextAreaElement).value,
+      },
+    })
+  })
+
+  button('command-back-btn').addEventListener('click', () => {
+    navigate('labs')
+  })
+  button('command-reset-btn').addEventListener('click', () => {
+    dispatch({
+      tag: 'command-lab-msg',
+      msg: { tag: 'reset-fixtures-requested' },
+    })
+  })
+  commandCompileButton.addEventListener('click', () => {
+    dispatch({ tag: 'command-lab-msg', msg: { tag: 'compile-requested' } })
+  })
+  commandInput.addEventListener('input', (event) => {
+    dispatch({
+      tag: 'command-lab-msg',
+      msg: {
+        tag: 'command-input-updated',
+        value: (event.target as HTMLTextAreaElement).value,
+      },
+    })
+  })
+  commandEndpointInput.addEventListener('input', (event) => {
+    dispatch({
+      tag: 'command-lab-msg',
+      msg: {
+        tag: 'endpoint-input-updated',
+        value: (event.target as HTMLInputElement).value,
+      },
+    })
+  })
+  commandFenInput.addEventListener('input', (event) => {
+    dispatch({
+      tag: 'command-lab-msg',
+      msg: {
+        tag: 'fen-input-updated',
         value: (event.target as HTMLTextAreaElement).value,
       },
     })
