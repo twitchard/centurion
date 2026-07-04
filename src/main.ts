@@ -220,6 +220,7 @@ const centurionCommandBoard = new CommandBoard(
   centurionCommandBoardHost,
   (text) => {
     dispatchCenturion({ tag: 'command-input-updated', value: text })
+    dispatchCenturion({ tag: 'command-issue-requested' })
   },
 )
 const centurionConnectionLogList = element(
@@ -1200,7 +1201,9 @@ function renderCenturionSession(session: MatchSession): void {
   maybeQueueResolutionAnimation(session)
   centurionRenderer.resize(panelBoardSize(centurionBoardPanel))
   const commandBoardEnabled =
-    turnIsYours(session) && centurionAnimationQueue.length === 0
+    turnIsYours(session) &&
+    centurionAnimationQueue.length === 0 &&
+    session.draft.tag !== 'compiling'
   const commandSnapshot = commandBoardEnabled
     ? interactiveBoardSnapshot(match, viewer)
     : null
