@@ -1,25 +1,18 @@
-import type { Key } from 'chessground/types'
 import type { Chess } from 'chessops/chess'
-import { makeFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
-import type { Color, NormalMove, Square } from 'chessops/types'
-import { makeSquare, parseSquare, squareRank } from 'chessops/util'
+import type { NormalMove, Square } from 'chessops/types'
+import { parseSquare, squareRank } from 'chessops/util'
+import type { ArrowCoordinate } from '../superposition/types'
 import {
   type MatchGame,
   type MatchState,
   type PlayerId,
   sideToMove,
 } from './model'
+import { actualSquare, boardSquareFromCoordinate, squareName } from './render'
 import { movingOwner } from './resolve'
 
-export interface InteractiveBoardSnapshot {
-  readonly fen: string
-  readonly orientation: Color
-  readonly turnColor: Color
-  readonly movableColor: Color
-}
-
-/** Active game used to drive drag-and-click command entry. */
+/** Active game used to drive two-square command entry on the canvas. */
 export function pickInteractiveGame(
   match: MatchState,
   viewer: PlayerId,
@@ -34,39 +27,6 @@ export function pickInteractiveGame(
   )
   const pool = onSide.length > 0 ? onSide : active
   return pool.reduce((best, game) => (game.id < best.id ? game : best))
-}
-
-export function viewerOrientation(game: MatchGame, viewer: PlayerId): Color {
-  return game.whiteOwner === viewer ? 'white' : 'black'
-}
-
-export function interactiveBoardSnapshot(
-  match: MatchState,
-  viewer: PlayerId,
-): InteractiveBoardSnapshot | null {
-  const game = pickInteractiveGame(match, viewer)
-  if (game === null) {
-    return null
-  }
-  const turnColor = game.position.turn
-  return {
-    fen: makeFen(game.position.toSetup()),
-    orientation: viewerOrientation(game, viewer),
-    turnColor,
-    movableColor: turnColor,
-  }
-}
-
-/** Chessground dest map for every legal root move in `position`. */
-export function chessgroundDests(position: Chess): Map<Key, Key[]> {
-  const dests = new Map<Key, Key[]>()
-  for (const [from, targets] of position.allDests()) {
-    dests.set(
-      makeSquare(from) as Key,
-      [...targets].map((to) => makeSquare(to) as Key),
-    )
-  }
-  return dests
 }
 
 function legalMoveForSquares(
@@ -92,7 +52,7 @@ function legalMoveForSquares(
   return null
 }
 
-/** Turn a board interaction into command text (SAN, check/mate sigils stripped). */
+/** Turn chess squares into command text (SAN, check/mate sigils stripped). */
 export function commandTextForSquares(
   position: Chess,
   orig: string,
@@ -108,4 +68,58 @@ export function commandTextForSquares(
     return null
   }
   return makeSan(position, move).replace(/[+#]$/, '')
+}
+
+export function squareNameFromVisual(
+  visual: ArrowCoordinate,
+  game: MatchGame,
+  viewer: PlayerId,
+): string {
+  const boardSquare = boardSquareFromCoordinate(visual)
+  return squareName(actualSquare(boardSquare, game.whiteOwner, viewer))
+}
+
+/** Map two visual canvas squares to a command for the interactive game. */
+export function commandTextForVisualSquares(
+  game: MatchGame,
+  viewer: PlayerId,
+  fromVisual: ArrowCoordinate,
+  toVisual: ArrowCoordinate,
+): string | null {
+  return commandTextForSquares(
+    game.position,
+    squareNameFromVisual(fromVisual, game, viewer),
+    squareNameFromVisual(toVisual, game, viewer),
+  )
+}
+
+export function coordinatesEqual(
+  left: ArrowCoordinate,
+  right: ArrowCoordinate,
+): boolean {
+  return left.col === right.col && left.row === right.row
+}
+
+export interface SquareClickResult {
+  readonly selected: ArrowCoordinate | null
+  readonly command: string | null
+}
+
+/** Two-tap move entry: select origin, then destination (or deselect). */
+export function handleSquareClick(
+  selected: ArrowCoordinate | null,
+  clicked: ArrowCoordinate,
+  game: MatchGame,
+  viewer: PlayerId,
+): SquareClickResult {
+  if (selected === null) {
+    return { selected: clicked, command: null }
+  }
+  if (coordinatesEqual(selected, clicked)) {
+    return { selected: null, command: null }
+  }
+  return {
+    selected: null,
+    command: commandTextForVisualSquares(game, viewer, selected, clicked),
+  }
 }

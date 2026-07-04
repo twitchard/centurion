@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { initMatch } from './model'
-import { matchRenderModel } from './render'
+import { actualSquare, matchRenderModel, visualSquare } from './render'
+
+describe('square projection', () => {
+  it('round-trips visual and actual squares for each owner and viewer', () => {
+    const match = initMatch(9, { gameCount: 1, whitePlayer: 1 })
+    const game = match.games[0]
+    if (game === undefined) {
+      throw new Error('missing game')
+    }
+    for (const viewer of [1, 2] as const) {
+      for (let square = 0; square < 64; square++) {
+        const visual = visualSquare(square, game.whiteOwner, viewer)
+        expect(actualSquare(visual, game.whiteOwner, viewer)).toBe(square)
+      }
+    }
+  })
+})
 
 describe('matchRenderModel', () => {
   it('colors pieces by ownership: the viewer is white, the opponent black', () => {

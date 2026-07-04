@@ -3,6 +3,8 @@ import { parseFen } from 'chessops/fen'
 import { describe, expect, it } from 'vitest'
 import {
   commandTextForSquares,
+  commandTextForVisualSquares,
+  handleSquareClick,
   pickInteractiveGame,
 } from './interactive-position'
 import { initMatch } from './model'
@@ -39,5 +41,52 @@ describe('commandTextForSquares', () => {
   it('returns a pawn push for a one-square advance', () => {
     const position = Chess.default()
     expect(commandTextForSquares(position, 'e2', 'e4')).toBe('e4')
+  })
+})
+
+describe('handleSquareClick', () => {
+  it('selects on first tap and submits on second', () => {
+    const match = initMatch(1, { gameCount: 1, whitePlayer: 1 })
+    const game = match.games[0]
+    if (game === undefined) {
+      throw new Error('expected game')
+    }
+    const e2 = { col: 4, row: 1 }
+    const e4 = { col: 4, row: 3 }
+    const first = handleSquareClick(null, e2, game, 1)
+    expect(first.selected).toEqual(e2)
+    expect(first.command).toBeNull()
+    const second = handleSquareClick(first.selected, e4, game, 1)
+    expect(second.selected).toBeNull()
+    expect(second.command).toBe('e4')
+  })
+
+  it('clears selection when the same square is tapped twice', () => {
+    const match = initMatch(1, { gameCount: 1, whitePlayer: 1 })
+    const game = match.games[0]
+    if (game === undefined) {
+      throw new Error('expected game')
+    }
+    const e2 = { col: 4, row: 1 }
+    const first = handleSquareClick(null, e2, game, 1)
+    const second = handleSquareClick(first.selected, e2, game, 1)
+    expect(second.selected).toBeNull()
+    expect(second.command).toBeNull()
+  })
+
+  it('maps visual squares through the viewer frame', () => {
+    const match = initMatch(1, { gameCount: 1, whitePlayer: 1 })
+    const game = match.games[0]
+    if (game === undefined) {
+      throw new Error('expected game')
+    }
+    expect(
+      commandTextForVisualSquares(
+        game,
+        1,
+        { col: 4, row: 1 },
+        { col: 4, row: 3 },
+      ),
+    ).toBe('e4')
   })
 })

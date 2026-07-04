@@ -51,6 +51,20 @@ export function visualSquare(
   return viewer === 1 ? canonical : flipSquare(canonical)
 }
 
+/** Inverse of `visualSquare` for mapping canvas taps back to chess squares. */
+export function actualSquare(
+  visual: BoardSquare,
+  whiteOwner: PlayerId,
+  viewer: PlayerId,
+): BoardSquare {
+  const canonical = viewer === 1 ? visual : flipSquare(visual)
+  return whiteOwner === 1 ? canonical : flipSquare(canonical)
+}
+
+export function boardSquareFromCoordinate(coord: ArrowCoordinate): BoardSquare {
+  return ((coord.row << 3) | coord.col) as BoardSquare
+}
+
 /**
  * The glyph a piece renders as for one viewer: pieces are colored by
  * ownership, not chess color, so the viewer's pieces are always white

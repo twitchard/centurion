@@ -22,16 +22,16 @@ async function main(): Promise<void> {
   await page.click('#centurion-solo-btn')
   console.log('Solo match started; tapping e2 then e4...')
 
-  // Click-to-move on the command-board overlay (not the canvas beneath).
-  const board = page.locator('#centurion-command-board cg-board')
-  await board.waitFor({ state: 'visible', timeout: 30_000 })
-  const box = await board.boundingBox()
+  // Two-tap move entry on the superposition canvas (white at the bottom).
+  const canvas = page.locator('#centurion-canvas')
+  await canvas.waitFor({ state: 'visible', timeout: 30_000 })
+  const box = await canvas.boundingBox()
   if (box === null) {
-    throw new Error('Command board not visible')
+    throw new Error('Centurion canvas not visible')
   }
   const cell = box.width / 8
   const tap = async (file: number, rank: number) => {
-    await board.click({
+    await canvas.click({
       position: { x: (file + 0.5) * cell, y: (8 - rank + 0.5) * cell },
     })
   }

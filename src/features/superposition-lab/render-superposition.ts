@@ -1,4 +1,5 @@
 import type {
+  ArrowCoordinate,
   ArrowSegment,
   FenPieceSymbol,
   PieceMoveOverlay,
@@ -170,6 +171,28 @@ export class SuperpositionRenderer {
     this.drawPieceLayers(model)
     this.drawArrows(model.arrows)
     this.drawMoveOverlays(overlays)
+  }
+
+  /** Map a screen point to the visual board square under it, if any. */
+  squareAtClientPoint(
+    clientX: number,
+    clientY: number,
+  ): ArrowCoordinate | null {
+    if (this.boardWidth === 0 || this.squareSize === 0) {
+      return null
+    }
+    const rect = this.canvas.getBoundingClientRect()
+    const x = clientX - rect.left
+    const y = clientY - rect.top
+    if (x < 0 || y < 0 || x >= this.boardWidth || y >= this.boardWidth) {
+      return null
+    }
+    const col = Math.floor(x / this.squareSize)
+    const row = 7 - Math.floor(y / this.squareSize)
+    if (col < 0 || col > 7 || row < 0 || row > 7) {
+      return null
+    }
+    return { col, row }
   }
 
   private drawBoard(): void {

@@ -42,7 +42,7 @@ import {
   microPawnHistogram,
   microPawnHistogramLabel,
 } from './core/match/eval'
-import { interactiveBoardSnapshot } from './core/match/interactive-position'
+import { pickInteractiveGame } from './core/match/interactive-position'
 import {
   type IssuedCommand,
   type MatchState,
@@ -65,8 +65,9 @@ import { aggregatePositionStats } from './core/match/position-stats'
 import { matchRenderModel } from './core/match/render'
 import { ENGINE_DEPTH } from './core/match/resolve'
 import type { ParseResult } from './core/parsing/types'
+import type { SuperpositionRenderModel } from './core/superposition/types'
 import { assertNever } from './core/update'
-import { CommandBoard } from './features/centurion-match/command-board'
+import { CanvasMoveInput } from './features/centurion-match/canvas-move-input'
 import type {
   CenturionModel,
   MatchSession,
@@ -214,13 +215,35 @@ let centurionGameReplayOptionsKey = ''
 let centurionActiveStatsTab: 'overview' | 'material' | 'threats' = 'overview'
 const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
-const centurionCommandBoardHost = element('centurion-command-board')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
-const centurionCommandBoard = new CommandBoard(
-  centurionCommandBoardHost,
+
+function centurionLiveRenderModel(
+  session: MatchSession,
+): SuperpositionRenderModel {
+  const match = session.match
+  const viewer = sessionViewer(session)
+  const model = matchRenderModel(match, viewer)
+  const highlight = centurionCanvasMoveInput.selectionHighlight()
+  return highlight === undefined ? model : { ...model, highlight }
+}
+
+function repaintCenturionBoard(session: MatchSession): void {
+  if (!renderCenturionAnimationFrame()) {
+    centurionRenderer.render(centurionLiveRenderModel(session))
+  }
+}
+
+const centurionCanvasMoveInput = new CanvasMoveInput(
+  centurionCanvas,
+  centurionRenderer,
   (text) => {
     dispatchCenturion({ tag: 'command-input-updated', value: text })
     dispatchCenturion({ tag: 'command-issue-requested' })
+  },
+  () => {
+    if (state.tag === 'centurion-match' && state.model.tag === 'playing') {
+      repaintCenturionBoard(state.model.session)
+    }
   },
 )
 const centurionConnectionLogList = element(
@@ -1073,10 +1096,7 @@ function scheduleCenturionAnimationTick(): void {
     }
     const session = state.model.session
     if (!renderCenturionAnimationFrame()) {
-      // Queue drained: settle the canvas on the live board.
-      centurionRenderer.render(
-        matchRenderModel(session.match, sessionViewer(session)),
-      )
+      centurionRenderer.render(centurionLiveRenderModel(session))
     }
   })
 }
@@ -1200,20 +1220,16 @@ function renderCenturionSession(session: MatchSession): void {
 
   maybeQueueResolutionAnimation(session)
   centurionRenderer.resize(panelBoardSize(centurionBoardPanel))
-  const commandBoardEnabled =
+  const moveInputEnabled =
     turnIsYours(session) &&
     centurionAnimationQueue.length === 0 &&
     session.draft.tag !== 'compiling'
-  const commandSnapshot = commandBoardEnabled
-    ? interactiveBoardSnapshot(match, viewer)
-    : null
-  centurionCommandBoardHost.hidden =
-    !commandBoardEnabled || commandSnapshot === null
-  centurionCommandBoard.sync(commandSnapshot, commandBoardEnabled)
-  if (!renderCenturionAnimationFrame()) {
-    centurionRenderer.render(matchRenderModel(match, viewer))
-  }
-  centurionCommandBoard.redraw()
+  centurionCanvasMoveInput.sync(
+    moveInputEnabled,
+    moveInputEnabled ? pickInteractiveGame(match, viewer) : null,
+    viewer,
+  )
+  repaintCenturionBoard(session)
 }
 
 function confirmReturnToLobby(model: CenturionModel): boolean {

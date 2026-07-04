@@ -63,7 +63,6 @@ vi.mock('chessground', () => ({
     set: vi.fn(),
     redrawAll: vi.fn(),
     destroy: vi.fn(),
-    stop: vi.fn(),
   })),
 }))
 
@@ -622,7 +621,6 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-session-notice', 'element'],
     ['centurion-result-banner', 'element'],
     ['centurion-board-hint', 'element'],
-    ['centurion-command-board', 'element'],
     ['centurion-resolution-summary', 'element'],
     ['centurion-micro-pawn-eval', 'element'],
     ['centurion-micro-pawn-avg', 'element'],
