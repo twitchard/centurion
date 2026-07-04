@@ -1,9 +1,11 @@
 import { Chess } from 'chessops/chess'
 import { makeFen, parseFen } from 'chessops/fen'
+import { decodeCommandPredicate } from '../command/decode'
+import type { CommandPredicate } from '../command/model'
 import type {
-  BoardArrow,
   DrawReason,
   GameStatus,
+  IssuedCommand,
   MatchGame,
   MatchPhase,
   MatchState,
@@ -22,7 +24,7 @@ export interface GameStatusSnapshot {
 export interface RecordedMoveSnapshot {
   readonly uci: string
   readonly source: MoveSource
-  readonly arrowOwner?: PlayerId
+  readonly commandOwner?: PlayerId
 }
 
 export interface GameSnapshot {
@@ -35,10 +37,17 @@ export interface GameSnapshot {
   readonly moves: readonly RecordedMoveSnapshot[]
 }
 
+export interface IssuedCommandSnapshot {
+  readonly turn: number
+  readonly owner: PlayerId
+  readonly text: string
+  readonly predicate: unknown
+}
+
 export interface MatchSnapshot {
   readonly gameCount: number
   readonly games: readonly GameSnapshot[]
-  readonly arrows: readonly BoardArrow[]
+  readonly commands: readonly IssuedCommandSnapshot[]
   readonly turn: number
   readonly firstPlacer: PlayerId
   readonly scores: { readonly p1: number; readonly p2: number }
@@ -91,9 +100,13 @@ function encodeGame(game: MatchGame): GameSnapshot {
     repetition: [...game.repetition.entries()],
     status: encodeGameStatus(game.status),
     moves: game.moves.map((move) =>
-      move.arrowOwner === undefined
+      move.commandOwner === undefined
         ? { uci: move.uci, source: move.source }
-        : { uci: move.uci, source: move.source, arrowOwner: move.arrowOwner },
+        : {
+            uci: move.uci,
+            source: move.source,
+            commandOwner: move.commandOwner,
+          },
     ),
   }
 }
@@ -133,17 +146,21 @@ function decodeGame(snapshot: GameSnapshot): MatchGame | null {
       typeof move !== 'object' ||
       move === null ||
       typeof move.uci !== 'string' ||
-      (move.source !== 'arrow' && move.source !== 'engine') ||
-      (move.arrowOwner !== undefined &&
-        move.arrowOwner !== 1 &&
-        move.arrowOwner !== 2)
+      (move.source !== 'command' && move.source !== 'free') ||
+      (move.commandOwner !== undefined &&
+        move.commandOwner !== 1 &&
+        move.commandOwner !== 2)
     ) {
       return null
     }
     moves.push(
-      move.arrowOwner === undefined
+      move.commandOwner === undefined
         ? { uci: move.uci, source: move.source }
-        : { uci: move.uci, source: move.source, arrowOwner: move.arrowOwner },
+        : {
+            uci: move.uci,
+            source: move.source,
+            commandOwner: move.commandOwner,
+          },
     )
   }
   return {
@@ -161,7 +178,12 @@ export function encodeMatchState(match: MatchState): MatchSnapshot {
   return {
     gameCount: match.gameCount,
     games: match.games.map(encodeGame),
-    arrows: [...match.arrows],
+    commands: match.commands.map((command) => ({
+      turn: command.turn,
+      owner: command.owner,
+      text: command.text,
+      predicate: command.predicate,
+    })),
     turn: match.turn,
     firstPlacer: match.firstPlacer,
     scores: { ...match.scores },
@@ -189,18 +211,32 @@ function isMatchPhase(value: unknown): value is MatchPhase {
   return phase.winner === 'draw' || phase.winner === 1 || phase.winner === 2
 }
 
-function isBoardArrow(value: unknown): value is BoardArrow {
+function decodeIssuedCommand(value: unknown): IssuedCommand | null {
   if (typeof value !== 'object' || value === null) {
-    return false
+    return null
   }
-  const arrow = value as BoardArrow
-  return (
-    typeof arrow.from === 'number' &&
-    typeof arrow.to === 'number' &&
-    isPlayerId(arrow.owner) &&
-    typeof arrow.cardinality === 'number' &&
-    typeof arrow.placedTurn === 'number'
-  )
+  const raw = value as IssuedCommandSnapshot
+  if (
+    typeof raw.turn !== 'number' ||
+    !isPlayerId(raw.owner) ||
+    typeof raw.text !== 'string'
+  ) {
+    return null
+  }
+  // The predicate crosses the wire as plain JSON; run it back through
+  // the codec so a hostile or corrupted room record cannot smuggle an
+  // unchecked term into match state.
+  const predicate = decodeCommandPredicate(raw.predicate)
+  if (predicate.tag === 'invalid') {
+    return null
+  }
+  const decoded: CommandPredicate = predicate.value
+  return {
+    turn: raw.turn,
+    owner: raw.owner,
+    text: raw.text,
+    predicate: decoded,
+  }
 }
 
 function isResolutionSummary(value: unknown): value is ResolutionSummary {
@@ -210,8 +246,8 @@ function isResolutionSummary(value: unknown): value is ResolutionSummary {
   const summary = value as ResolutionSummary
   return (
     typeof summary.turn === 'number' &&
-    typeof summary.arrowMoves === 'number' &&
-    typeof summary.engineMoves === 'number' &&
+    typeof summary.commandMoves === 'number' &&
+    typeof summary.freeMoves === 'number' &&
     typeof summary.p1Wins === 'number' &&
     typeof summary.p2Wins === 'number' &&
     typeof summary.draws === 'number'
@@ -226,7 +262,7 @@ export function decodeMatchSnapshot(snapshot: unknown): MatchState | null {
   if (
     typeof raw.gameCount !== 'number' ||
     !Array.isArray(raw.games) ||
-    !Array.isArray(raw.arrows) ||
+    !Array.isArray(raw.commands) ||
     typeof raw.turn !== 'number' ||
     !isPlayerId(raw.firstPlacer) ||
     typeof raw.rng !== 'number' ||
@@ -239,8 +275,13 @@ export function decodeMatchSnapshot(snapshot: unknown): MatchState | null {
   ) {
     return null
   }
-  if (!raw.arrows.every(isBoardArrow)) {
-    return null
+  const commands: IssuedCommand[] = []
+  for (const entry of raw.commands) {
+    const command = decodeIssuedCommand(entry)
+    if (command === null) {
+      return null
+    }
+    commands.push(command)
   }
   const games: MatchGame[] = []
   for (const gameSnapshot of raw.games) {
@@ -256,7 +297,7 @@ export function decodeMatchSnapshot(snapshot: unknown): MatchState | null {
   return {
     gameCount: raw.gameCount,
     games,
-    arrows: raw.arrows,
+    commands,
     turn: raw.turn,
     firstPlacer: raw.firstPlacer,
     scores: { p1: raw.scores.p1, p2: raw.scores.p2 },

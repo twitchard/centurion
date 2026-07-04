@@ -311,6 +311,23 @@ textarea {
   overflow: auto;
 }
 
+.centurion-command-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+}
+
+.centurion-command-status {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+  min-height: 1.2em;
+}
+
+#centurion-command-input {
+  min-height: 48px;
+}
+
 .board-panel {
   display: flex;
   align-items: center;

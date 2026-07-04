@@ -43,6 +43,10 @@ jobs:
         run: bun run build
         env:
           VITE_FIREBASE_DATABASE_URL: ${{ secrets.VITE_FIREBASE_DATABASE_URL }}
+          # The Pages site is a different origin from the Vercel compile
+          # endpoint, so the build needs the absolute URL. The endpoint
+          # itself serves permissive CORS.
+          VITE_COMMAND_COMPILER_URL: ${{ vars.VITE_COMMAND_COMPILER_URL || 'https://centurion-chess.vercel.app/api/compile' }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

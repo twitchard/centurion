@@ -74,7 +74,7 @@ describe('local storage centurion persistence', () => {
     expect(loadCenturionPersistence()).toBeNull()
     expect(() =>
       saveCenturionPersistence({
-        v: 1,
+        v: 2,
         tag: 'waiting',
         code: '123456',
         pendingSeed: 7,
@@ -87,13 +87,13 @@ describe('local storage centurion persistence', () => {
     const store = new Map<string, string>()
     installFakeStorage(store)
     saveCenturionPersistence({
-      v: 1,
+      v: 2,
       tag: 'waiting',
       code: '654321',
       pendingSeed: 7,
     })
     expect(loadCenturionPersistence()).toEqual({
-      v: 1,
+      v: 2,
       tag: 'waiting',
       code: '654321',
       pendingSeed: 7,

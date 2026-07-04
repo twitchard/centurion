@@ -52,21 +52,27 @@ describe('parseBestMoveLine', () => {
 })
 
 describe('parseMultiPvLine', () => {
-  it('extracts the rank and root move from a ranked info line', () => {
+  it('extracts rank, root move, and centipawns from a ranked info line', () => {
     expect(
       parseMultiPvLine(
         'info depth 5 seldepth 7 multipv 3 score cp -42 nodes 999 nps 9000 time 12 pv g1h3 d7d5 b1c3',
       ),
-    ).toEqual({ rank: 3, move: 'g1h3' })
+    ).toEqual({ rank: 3, move: 'g1h3', cp: -42 })
+  })
+
+  it('maps mate scores near the mate ceiling', () => {
+    expect(
+      parseMultiPvLine('info depth 2 multipv 1 score mate 2 pv a1a8 g8h7'),
+    ).toEqual({ rank: 1, move: 'a1a8', cp: 99_998 })
     expect(
       parseMultiPvLine('info depth 2 multipv 17 score mate -1 pv f2f3 e7e5'),
-    ).toEqual({ rank: 17, move: 'f2f3' })
+    ).toEqual({ rank: 17, move: 'f2f3', cp: -99_999 })
   })
 
   it('does not mistake "multipv" itself for the pv keyword', () => {
     expect(
       parseMultiPvLine('info depth 5 multipv 12 score cp 0 pv a2a3'),
-    ).toEqual({ rank: 12, move: 'a2a3' })
+    ).toEqual({ rank: 12, move: 'a2a3', cp: 0 })
   })
 
   it('ignores unranked engine output', () => {

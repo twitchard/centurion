@@ -1,18 +1,15 @@
+import { validateCommandText } from '../../core/command/text'
 import {
-  ARROW_PLACEMENT_LAST_TURN,
-  type Arrow,
-  type BoardSquare,
-  type MatchGame,
+  COMMAND_LAST_TURN,
   type MatchState,
-  type PlayerId,
   activePlacer,
-  addBoardArrow,
-  canPlaceArrows,
+  canIssueCommands,
   initMatch,
 } from '../../core/match/model'
 import { defaultReplayGameId } from '../../core/match/pgn'
-import { toCanonicalSquare } from '../../core/match/render'
 import {
+  type CommandInput,
+  type RankedMove,
   beginAutoResolution,
   beginResolution,
   completeResolution,
@@ -22,15 +19,13 @@ import {
   decodeMatchSnapshot,
   encodeMatchState,
 } from '../../core/match/snapshot'
-import { chooseTrapArrow, trapTargets } from '../../core/match/trap'
-import { parseArrowList } from '../../core/superposition/parse-arrow-list'
 import { type UpdateResult, assertNever, noCmd } from '../../core/update'
+import type { CommandCompileResult } from '../../ports/command-compiler'
 import type { RoomRole } from '../../ports/match-room'
 import {
   type CenturionModel,
   type MatchSession,
   initCenturionModel,
-  sessionViewer,
 } from './model'
 import {
   type PersistedCenturion,
@@ -51,19 +46,20 @@ export type CenturionMsg =
   | { readonly tag: 'copy-invite-requested' }
   | { readonly tag: 'invite-copy-succeeded' }
   | { readonly tag: 'invite-copy-failed' }
-  | { readonly tag: 'board-square-clicked'; readonly square: BoardSquare }
-  | { readonly tag: 'arrow-input-updated'; readonly value: string }
-  | { readonly tag: 'arrow-submit-requested' }
+  | { readonly tag: 'command-input-updated'; readonly value: string }
+  | { readonly tag: 'command-compile-requested' }
   | {
-      readonly tag: 'engine-moves-computed'
-      readonly moves: readonly string[]
+      readonly tag: 'command-compile-finished'
+      readonly text: string
+      readonly result: CommandCompileResult
     }
-  | { readonly tag: 'engine-moves-failed'; readonly message: string }
+  | { readonly tag: 'command-issue-requested' }
+  | { readonly tag: 'pass-requested' }
   | {
-      readonly tag: 'worst-moves-computed'
-      readonly moves: readonly string[]
+      readonly tag: 'ranked-moves-computed'
+      readonly ranked: readonly (readonly RankedMove[])[]
     }
-  | { readonly tag: 'worst-moves-failed'; readonly message: string }
+  | { readonly tag: 'ranked-moves-failed'; readonly message: string }
   | { readonly tag: 'leave-session-requested' }
   | { readonly tag: 'room-opened' }
   | { readonly tag: 'room-error'; readonly message: string }
@@ -88,26 +84,18 @@ export type CenturionCmd =
     }
   | { readonly tag: 'room-publish'; readonly state: MatchSnapshot }
   | { readonly tag: 'room-leave' }
+  | { readonly tag: 'compile-command'; readonly text: string }
   | {
-      readonly tag: 'compute-engine-moves'
-      readonly fens: readonly string[]
-    }
-  | {
-      readonly tag: 'compute-worst-moves'
+      readonly tag: 'compute-ranked-moves'
       readonly fens: readonly string[]
     }
   | { readonly tag: 'share-invite'; readonly code: string }
   | { readonly tag: 'copy-invite'; readonly code: string }
 
 const INVALID_JOIN_CODE_COPY = 'Enter a valid 6-digit match code.'
-const NOT_YOUR_TURN_COPY = 'Waiting for your opponent to place an arrow.'
-const ARROWLESS_PHASE_COPY =
-  'Turn 100 has passed; Stockfish is playing out the remaining games.'
-const RESOLVING_COPY = 'Stockfish is resolving the turn...'
-const TRAP_COPY = 'Computer is placing its trap arrow...'
-
-/** In solo mode the human is always player 1; the Centurion is player 2. */
-const SOLO_OPPONENT: PlayerId = 2
+const NOT_YOUR_TURN_COPY = 'Waiting for your opponent to issue a command.'
+const PLAYOUT_PHASE_COPY = `Turn ${COMMAND_LAST_TURN} has passed; the soldiers are playing out the remaining games.`
+const RESOLVING_COPY = 'The soldiers are resolving the turn...'
 
 function sanitizeJoinCode(value: string): string {
   return value.replace(/\D/g, '').slice(0, 6)
@@ -132,9 +120,8 @@ function startSession(
     mode,
     match,
     resolving: null,
-    trap: null,
-    selectedSquare: null,
-    arrowInput: '',
+    commandInput: '',
+    draft: { tag: 'idle' },
     inputError: null,
     notice: null,
     gameReplay: null,
@@ -178,8 +165,8 @@ function roomRejoinCommands(model: CenturionModel): readonly CenturionCmd[] {
   }
 }
 
-function isArrowlessPhase(match: MatchState): boolean {
-  return match.turn > ARROW_PLACEMENT_LAST_TURN
+function isPlayoutPhase(match: MatchState): boolean {
+  return match.turn > COMMAND_LAST_TURN
 }
 
 /**
@@ -197,7 +184,7 @@ function publishCommands(
   return [{ tag: 'room-publish', state: encodeMatchState(match) }]
 }
 
-function placerIsYou(session: MatchSession): boolean {
+function commanderIsYou(session: MatchSession): boolean {
   if (session.mode.tag !== 'remote') {
     return true
   }
@@ -211,12 +198,17 @@ function shouldChainAutoResolution(
   if (match.phase.tag === 'finished') {
     return false
   }
-  if (isArrowlessPhase(match)) {
+  if (isPlayoutPhase(match)) {
     return true
   }
+  // Solo: the player commands white; black's half-turns play unled.
   return session.mode.tag === 'solo' && match.turn % 2 === 0
 }
 
+/**
+ * Kick off an unled ply: every game gets a ranked search and the
+ * soldiers sample their own moves.
+ */
 function driveAutoResolution(
   session: MatchSession,
 ): UpdateResult<CenturionModel, CenturionCmd> {
@@ -224,23 +216,11 @@ function driveAutoResolution(
   if (resolution === null) {
     return noCmd(playing(session))
   }
-  if (resolution.pending.length === 0) {
-    const match = completeResolution(resolution, [])
-    if (match === null) {
-      return noCmd(playing(session))
-    }
-    return continueAfterResolution(session, match)
-  }
   return [
-    playing({
-      ...session,
-      resolving: resolution,
-      selectedSquare: null,
-      inputError: null,
-    }),
+    playing({ ...session, resolving: resolution, inputError: null }),
     [
       {
-        tag: 'compute-engine-moves',
+        tag: 'compute-ranked-moves',
         fens: resolution.pending.map((entry) => entry.fen),
       },
     ],
@@ -248,42 +228,10 @@ function driveAutoResolution(
 }
 
 /**
- * Solo mode's opponent. Once the black half-turn settles, the Centurion
- * studies the positions the player is about to face and lays a trap: an
- * arrow on the move Stockfish ranks worst in a plurality of the games.
- * The arrow is a white move, so it pulls nothing on the Centurion's own
- * half-turns; it lies in wait to drag the player's games into the
- * blunder, racing the player's newer (and therefore higher-priority)
- * arrows.
- */
-function beginTrapPlacement(
-  session: MatchSession,
-): UpdateResult<CenturionModel, CenturionCmd> {
-  const match = session.match
-  if (
-    session.mode.tag !== 'solo' ||
-    match.turn % 2 !== 1 ||
-    match.turn === 1 ||
-    !canPlaceArrows(match)
-  ) {
-    return noCmd(playing(session))
-  }
-  const targets = trapTargets(match)
-  if (targets.gameIds.length === 0) {
-    return noCmd(playing(session))
-  }
-  return [
-    playing({ ...session, trap: { gameIds: targets.gameIds } }),
-    [{ tag: 'compute-worst-moves', fens: targets.fens }],
-  ]
-}
-
-/**
  * A turn just resolved locally. Publish the settled state to the room
  * (remote mode), then keep the match moving: in solo mode the black
- * half-turn auto-plays and the Centurion places its trap arrow; after
- * turn 100 every ply auto-plays, driven by whichever remote player is
- * the active placer.
+ * half-turn auto-plays unled; after turn 100 every ply auto-plays,
+ * driven by whichever remote player is the active commander.
  */
 function continueAfterResolution(
   session: MatchSession,
@@ -300,12 +248,12 @@ function continueSettledSession(
   match: MatchState,
 ): UpdateResult<CenturionModel, CenturionCmd> {
   if (!shouldChainAutoResolution(settled, match)) {
-    return beginTrapPlacement(settled)
+    return noCmd(playing(settled))
   }
   if (
-    isArrowlessPhase(match) &&
+    isPlayoutPhase(match) &&
     settled.mode.tag === 'remote' &&
-    !placerIsYou(settled)
+    !commanderIsYou(settled)
   ) {
     return noCmd(playing(settled))
   }
@@ -313,7 +261,7 @@ function continueSettledSession(
 }
 
 /**
- * Adopt a state published by the opponent. If the engine playout after
+ * Adopt a state published by the opponent. If the soldier playout after
  * turn 100 is now ours to drive, keep it moving; publishing happens when
  * our own resolution completes.
  */
@@ -321,81 +269,53 @@ function adoptRemoteState(
   session: MatchSession,
   match: MatchState,
 ): UpdateResult<CenturionModel, CenturionCmd> {
-  const settled = withFinishedReplay(
-    { ...session, selectedSquare: null, inputError: null },
-    match,
-  )
+  const settled = withFinishedReplay({ ...session, inputError: null }, match)
   if (
     match.phase.tag === 'active' &&
-    isArrowlessPhase(match) &&
-    placerIsYou(settled)
+    isPlayoutPhase(match) &&
+    commanderIsYou(settled)
   ) {
     return driveAutoResolution(settled)
   }
   return noCmd(playing(settled))
 }
 
-function submitArrow(
-  session: MatchSession,
-  visualFrom: BoardSquare,
-  visualTo: BoardSquare,
-): UpdateResult<CenturionModel, CenturionCmd> {
-  if (
-    session.match.phase.tag === 'finished' ||
-    session.resolving !== null ||
-    session.trap !== null
-  ) {
-    return noCmd(playing(session))
+/** Guards shared by compiling, issuing, and passing. */
+function turnActionError(session: MatchSession): string | null {
+  if (session.match.phase.tag === 'finished') {
+    return 'The match is over.'
   }
-  if (!canPlaceArrows(session.match)) {
-    return noCmd(
-      playing({
-        ...session,
-        selectedSquare: null,
-        inputError: ARROWLESS_PHASE_COPY,
-      }),
-    )
+  if (session.resolving !== null) {
+    return RESOLVING_COPY
   }
-  if (!placerIsYou(session)) {
-    return noCmd(
-      playing({
-        ...session,
-        selectedSquare: null,
-        inputError: NOT_YOUR_TURN_COPY,
-      }),
-    )
+  if (!canIssueCommands(session.match)) {
+    return PLAYOUT_PHASE_COPY
   }
+  if (!commanderIsYou(session)) {
+    return NOT_YOUR_TURN_COPY
+  }
+  return null
+}
 
-  const viewer = sessionViewer(session)
-  const arrow: Arrow = {
-    from: toCanonicalSquare(viewer, visualFrom),
-    to: toCanonicalSquare(viewer, visualTo),
-  }
-  const resolution = beginResolution(session.match, arrow)
+function issueTurn(
+  session: MatchSession,
+  command: CommandInput | null,
+): UpdateResult<CenturionModel, CenturionCmd> {
+  const resolution = beginResolution(session.match, command)
   if (resolution === null) {
     return noCmd(playing(session))
   }
-  const cleared: MatchSession = {
-    ...session,
-    selectedSquare: null,
-    arrowInput: '',
-    inputError: null,
-  }
-
-  if (resolution.pending.length === 0) {
-    // Every game advanced by an arrow; no engine moves needed.
-    const match = completeResolution(resolution, [])
-    if (match === null) {
-      return noCmd(playing(session))
-    }
-    return continueAfterResolution(cleared, match)
-  }
-
   return [
-    playing({ ...cleared, resolving: resolution }),
+    playing({
+      ...session,
+      resolving: resolution,
+      commandInput: '',
+      draft: { tag: 'idle' },
+      inputError: null,
+    }),
     [
       {
-        tag: 'compute-engine-moves',
+        tag: 'compute-ranked-moves',
         fens: resolution.pending.map((entry) => entry.fen),
       },
     ],
@@ -450,9 +370,8 @@ export function updateCenturion(
       if (model.tag !== 'lobby') {
         return noCmd(model)
       }
-      // You are always player 1 (gold) and own white: you arrow each
-      // white half-turn, the black half-turn auto-plays, and the
-      // Centurion (player 2) answers with a trap arrow.
+      // You are always player 1 (gold) and own white: you command each
+      // white half-turn; black's soldiers play unled.
       const match = initMatch(msg.seed, { firstPlacer: 1, whitePlayer: 1 })
       return noCmd(playing(startSession(match, { tag: 'solo' })))
     }
@@ -488,85 +407,116 @@ export function updateCenturion(
       })
     }
 
-    case 'board-square-clicked': {
+    case 'command-input-updated': {
       if (model.tag !== 'playing') {
         return noCmd(model)
       }
-      const session = model.session
-      if (session.match.phase.tag === 'finished') {
-        return noCmd(model)
-      }
-      if (session.resolving !== null || session.trap !== null) {
-        return noCmd(model)
-      }
-      if (!canPlaceArrows(session.match)) {
-        return noCmd(model)
-      }
-      if (!placerIsYou(session)) {
-        return noCmd(withSession(model, { inputError: NOT_YOUR_TURN_COPY }))
-      }
-      if (session.selectedSquare === null) {
-        return noCmd(
-          withSession(model, { selectedSquare: msg.square, inputError: null }),
-        )
-      }
-      if (session.selectedSquare === msg.square) {
-        return noCmd(withSession(model, { selectedSquare: null }))
-      }
-      return submitArrow(session, session.selectedSquare, msg.square)
-    }
-
-    case 'arrow-input-updated': {
-      if (model.tag !== 'playing') {
-        return noCmd(model)
-      }
+      // Editing the text invalidates any compiled preview.
       return noCmd(
-        withSession(model, { arrowInput: msg.value, inputError: null }),
+        withSession(model, {
+          commandInput: msg.value,
+          draft: { tag: 'idle' },
+          inputError: null,
+        }),
       )
     }
 
-    case 'arrow-submit-requested': {
+    case 'command-compile-requested': {
       if (model.tag !== 'playing') {
         return noCmd(model)
       }
       const session = model.session
-      if (session.resolving !== null) {
-        return noCmd(withSession(model, { inputError: RESOLVING_COPY }))
+      const error = turnActionError(session)
+      if (error !== null) {
+        return noCmd(withSession(model, { inputError: error }))
       }
-      if (session.trap !== null) {
-        return noCmd(withSession(model, { inputError: TRAP_COPY }))
+      if (session.draft.tag === 'compiling') {
+        return noCmd(model)
       }
-      if (!canPlaceArrows(session.match)) {
-        return noCmd(withSession(model, { inputError: ARROWLESS_PHASE_COPY }))
-      }
-      const input = session.arrowInput.trim()
-      if (input.length === 0) {
-        return noCmd(
-          withSession(model, { inputError: 'Enter an arrow like "e2->e4"' }),
-        )
-      }
-      const parsed = parseArrowList(input)
-      if (parsed.tag === 'invalid') {
+      const validated = validateCommandText(session.commandInput)
+      if (validated.tag === 'invalid') {
         return noCmd(
           withSession(model, {
-            inputError: parsed.diagnostics[0] ?? 'Invalid arrow notation',
+            inputError: validated.diagnostics.join(' '),
           }),
         )
       }
-      const [arrow] = parsed.value
-      if (arrow === undefined || parsed.value.length !== 1) {
-        return noCmd(
-          withSession(model, {
-            inputError: 'Enter exactly one arrow per turn',
-          }),
-        )
-      }
-      const visualFrom = arrow.from.row * 8 + arrow.from.col
-      const visualTo = arrow.to.row * 8 + arrow.to.col
-      return submitArrow(session, visualFrom, visualTo)
+      return [
+        withSession(model, {
+          draft: { tag: 'compiling', text: validated.value },
+          inputError: null,
+        }),
+        [{ tag: 'compile-command', text: validated.value }],
+      ]
     }
 
-    case 'engine-moves-computed': {
+    case 'command-compile-finished': {
+      if (model.tag !== 'playing') {
+        return noCmd(model)
+      }
+      const draft = model.session.draft
+      if (draft.tag !== 'compiling' || draft.text !== msg.text) {
+        // Stale response: the input changed or the session moved on.
+        return noCmd(model)
+      }
+      if (msg.result.tag === 'failed') {
+        return noCmd(
+          withSession(model, {
+            draft: {
+              tag: 'failed',
+              text: msg.text,
+              message: msg.result.message,
+            },
+          }),
+        )
+      }
+      return noCmd(
+        withSession(model, {
+          draft: {
+            tag: 'compiled',
+            text: msg.text,
+            predicate: msg.result.predicate,
+          },
+        }),
+      )
+    }
+
+    case 'command-issue-requested': {
+      if (model.tag !== 'playing') {
+        return noCmd(model)
+      }
+      const session = model.session
+      const error = turnActionError(session)
+      if (error !== null) {
+        return noCmd(withSession(model, { inputError: error }))
+      }
+      const draft = session.draft
+      if (draft.tag !== 'compiled') {
+        return noCmd(
+          withSession(model, {
+            inputError: 'Compile your command before issuing it.',
+          }),
+        )
+      }
+      return issueTurn(session, {
+        text: draft.text,
+        predicate: draft.predicate,
+      })
+    }
+
+    case 'pass-requested': {
+      if (model.tag !== 'playing') {
+        return noCmd(model)
+      }
+      const session = model.session
+      const error = turnActionError(session)
+      if (error !== null) {
+        return noCmd(withSession(model, { inputError: error }))
+      }
+      return issueTurn(session, null)
+    }
+
+    case 'ranked-moves-computed': {
       if (model.tag !== 'playing') {
         return noCmd(model)
       }
@@ -575,77 +525,26 @@ export function updateCenturion(
       if (resolution === null) {
         return noCmd(model)
       }
-      const match = completeResolution(resolution, msg.moves)
+      const match = completeResolution(resolution, msg.ranked)
       if (match === null) {
         return noCmd(
           withSession(model, {
             resolving: null,
-            notice: 'Stockfish returned an unusable move; turn abandoned.',
+            notice: 'Stockfish returned unusable rankings; turn abandoned.',
           }),
         )
       }
       return continueAfterResolution(session, match)
     }
 
-    case 'engine-moves-failed': {
+    case 'ranked-moves-failed': {
       if (model.tag !== 'playing' || model.session.resolving === null) {
         return noCmd(model)
       }
       return noCmd(
         withSession(model, {
           resolving: null,
-          notice: `Engine error: ${msg.message} Turn abandoned; place your arrow again.`,
-        }),
-      )
-    }
-
-    case 'worst-moves-computed': {
-      if (model.tag !== 'playing') {
-        return noCmd(model)
-      }
-      const session = model.session
-      const trap = session.trap
-      if (trap === null) {
-        return noCmd(model)
-      }
-      const match = session.match
-      if (msg.moves.length !== trap.gameIds.length) {
-        return noCmd(withSession(model, { trap: null }))
-      }
-      const games: MatchGame[] = []
-      for (const gameId of trap.gameIds) {
-        const game = match.games.find((entry) => entry.id === gameId)
-        if (game === undefined) {
-          return noCmd(withSession(model, { trap: null }))
-        }
-        games.push(game)
-      }
-      const arrow = chooseTrapArrow(games, msg.moves)
-      if (arrow === null) {
-        return noCmd(withSession(model, { trap: null }))
-      }
-      // The arrow belongs to the Centurion's half-turn that just
-      // resolved (turn - 1), so it decays in step with the player's
-      // arrows: full pull on the player's reply, halved each round.
-      const arrows = addBoardArrow(
-        match.arrows,
-        arrow,
-        SOLO_OPPONENT,
-        match.turn - 1,
-      )
-      return noCmd(
-        playing({ ...session, trap: null, match: { ...match, arrows } }),
-      )
-    }
-
-    case 'worst-moves-failed': {
-      if (model.tag !== 'playing' || model.session.trap === null) {
-        return noCmd(model)
-      }
-      return noCmd(
-        withSession(model, {
-          trap: null,
-          notice: `Engine error: ${msg.message} Computer skipped its trap arrow.`,
+          notice: `Engine error: ${msg.message} Turn abandoned; try again.`,
         }),
       )
     }

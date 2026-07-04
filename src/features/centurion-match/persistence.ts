@@ -11,7 +11,7 @@ import type {
 } from './model'
 
 export const CENTURION_PERSISTENCE_KEY = 'centurion-chess-session-v1'
-export const CENTURION_PERSISTENCE_VERSION = 1
+export const CENTURION_PERSISTENCE_VERSION = 2
 
 export const RESTORED_SESSION_COPY =
   'Restored your in-progress match from this device.'
@@ -19,8 +19,7 @@ export const RESTORED_SESSION_COPY =
 export interface PersistedMatchSession {
   readonly mode: SessionMode
   readonly match: MatchSnapshot
-  readonly selectedSquare: number | null
-  readonly arrowInput: string
+  readonly commandInput: string
   readonly gameReplay: GameReplayState | null
 }
 
@@ -40,14 +39,13 @@ export type PersistedCenturion =
 export function encodeSessionForPersistence(
   session: MatchSession,
 ): PersistedMatchSession | null {
-  if (session.resolving !== null || session.trap !== null) {
+  if (session.resolving !== null) {
     return null
   }
   return {
     mode: session.mode,
     match: encodeMatchState(session.match),
-    selectedSquare: session.selectedSquare,
-    arrowInput: session.arrowInput,
+    commandInput: session.commandInput,
     gameReplay: session.gameReplay,
   }
 }
@@ -64,9 +62,8 @@ export function decodePersistedSession(
     mode: persisted.mode,
     match,
     resolving: null,
-    trap: null,
-    selectedSquare: persisted.selectedSquare,
-    arrowInput: persisted.arrowInput,
+    commandInput: persisted.commandInput,
+    draft: { tag: 'idle' },
     inputError: null,
     notice,
     gameReplay: persisted.gameReplay,
@@ -112,9 +109,7 @@ function isPersistedMatchSession(
     session.mode !== null &&
     typeof session.match === 'object' &&
     session.match !== null &&
-    (session.selectedSquare === null ||
-      typeof session.selectedSquare === 'number') &&
-    typeof session.arrowInput === 'string' &&
+    typeof session.commandInput === 'string' &&
     (session.gameReplay === null ||
       (typeof session.gameReplay === 'object' &&
         typeof session.gameReplay.gameId === 'number' &&

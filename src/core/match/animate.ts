@@ -10,7 +10,6 @@ import type {
 import type { BoardSquare, MatchState, MoveSource, PlayerId } from './model'
 import {
   gameVisualPieces,
-  matchArrowSegments,
   squareToCoordinate,
   visualPieceSymbol,
   visualSquare,
@@ -45,7 +44,7 @@ export interface ResolutionAnimationFrame {
   readonly done: boolean
 }
 
-/** Fraction of the timeline given to arrow slides when fades follow. */
+/** Fraction of the timeline given to command slides when fades follow. */
 const SLIDE_PHASE_SHARE = 0.45
 const SLIDE_MAX_MS = 420
 const FADE_MAX_MS = 450
@@ -88,8 +87,8 @@ function schedule(
 
 /**
  * Diff two consecutive match states into an animation timeline: the
- * half-move each game played this turn, arrow-driven moves first as
- * emphasized slides, then every engine move as a staggered fade.
+ * half-move each game played this turn, command-steered moves first as
+ * emphasized slides, then every free soldier move as a staggered fade.
  * Returns null when the states are not a single-turn step or nothing
  * moved.
  */
@@ -138,7 +137,7 @@ export function planResolutionAnimation(
       to: visualSquare(move.to, game.whiteOwner, viewer),
       source: recorded.source,
     }
-    if (recorded.source === 'arrow') {
+    if (recorded.source === 'command') {
       slides.push(planned)
     } else {
       fades.push(planned)
@@ -186,7 +185,6 @@ function withoutMovingPiece(
 export function resolutionAnimationFrame(
   plan: ResolutionAnimationPlan,
   elapsedMs: number,
-  selected: BoardSquare | null = null,
 ): ResolutionAnimationFrame {
   const moveByGame = new Map(plan.moves.map((move) => [move.gameId, move]))
   const afterById = new Map(plan.after.games.map((game) => [game.id, game]))
@@ -225,18 +223,11 @@ export function resolutionAnimationFrame(
       from: squareToCoordinate(move.from),
       to: squareToCoordinate(move.to),
       progress: (elapsedMs - move.startMs) / move.durationMs,
-      kind: move.source === 'arrow' ? 'slide' : 'fade',
+      kind: move.source === 'command' ? 'slide' : 'fade',
     })
   }
 
-  const base = buildSuperpositionRenderModel(
-    positions,
-    matchArrowSegments(plan.after, plan.viewer),
-  )
-  const withViewer = { ...base, viewerPlayer: plan.viewer }
-  const model =
-    selected === null
-      ? withViewer
-      : { ...withViewer, highlight: squareToCoordinate(selected) }
+  const base = buildSuperpositionRenderModel(positions, [])
+  const model = { ...base, viewerPlayer: plan.viewer }
   return { model, overlays, done: elapsedMs >= plan.totalMs }
 }

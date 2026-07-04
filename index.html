@@ -100,11 +100,11 @@
           height="516"
         >
         <p class="centurion-tagline">A hundred games of chess<em>&mdash; at once</em></p>
-        <p class="centurion-tagline-sub">Steer a hundred Stockfish engines, one arrow at a time</p>
+        <p class="centurion-tagline-sub">Command a hundred imperfect engines with plain words</p>
       </div>
       <p id="centurion-status-copy"></p>
       <div class="centurion-controls">
-        <button class="btn btn-primary" id="centurion-solo-btn">Solo (just place arrows)</button>
+        <button class="btn btn-primary" id="centurion-solo-btn">Solo (command white)</button>
         <button class="btn btn-secondary" id="centurion-pass-and-play-btn">Pass &amp; Play (one device)</button>
         <button class="btn btn-secondary" id="centurion-new-match-btn">New Multiplayer Match</button>
         <div class="centurion-join-row">
@@ -126,27 +126,27 @@
       <section class="centurion-rules" aria-labelledby="centurion-rules-heading">
         <h3 id="centurion-rules-heading" class="centurion-rules-heading">Rules of Engagement</h3>
         <ol class="centurion-rules-list">
-          <li><strong>A hundred engines.</strong> You have a hundred chess engines (Stockfish, depth&nbsp;5), each playing a game against your opponent's engine.</li>
-          <li><strong>One arrow per turn.</strong> Your arrow overrides the moves chosen by the engines &mdash; of either player &mdash; in games where it is a legal move.</li>
-          <li><strong>Arrows linger, but decay.</strong> An arrow sways up to eight games on the move after you place it, and half as many each turn after that. You can stack arrows to recharge them.</li>
-          <li><strong>Majority wins.</strong> Take the majority of the undrawn games and the match is yours.</li>
-          <li><strong>The playout.</strong> After 100 moves you place no more arrows. The engines play it out.</li>
+          <li><strong>A hundred games.</strong> You own one color in a hundred simultaneous chess games, all shown stacked on one board.</li>
+          <li><strong>Your soldiers are ordinary.</strong> Unled, each game&#39;s engine deliberately plays a mediocre move &mdash; aiming about a pawn below best &mdash; and every game drifts its own way.</li>
+          <li><strong>One order per turn.</strong> Type a command of up to 20 words (&ldquo;all knights advance&rdquo;, &ldquo;take the queen&rdquo;). It compiles to a formal order, you preview what it means, then issue it.</li>
+          <li><strong>Orders constrain, soldiers choose.</strong> In every game with a matching legal move, your soldier picks among the moves you allowed &mdash; same imperfect judgment, better options. No match, and it plays freely.</li>
+          <li><strong>Majority wins.</strong> Checkmates score a point each; take the majority of the undrawn games and the match is yours. After 100 turns the soldiers play it out alone.</li>
         </ol>
         <details class="centurion-rules-details">
           <summary>The fine print</summary>
           <dl class="centurion-rules-dl">
             <dt>Resolution order</dt>
-            <dd>After each arrow, every game advances one half-move. Arrows act newest first: each pulls up to its current strength in randomly chosen games where it is a legal move, and a game moved by one arrow this turn is skipped by the rest. Every untouched game plays Stockfish's best move.</dd>
-            <dt>Decay schedule</dt>
-            <dd>A new arrow starts at strength 8 and halves each round: 8 when placed (and on the opponent's reply), 4 around your next arrow, then 2, then 1, then it disappears. Placing the same arrow again adds 8 and resets its decay.</dd>
+            <dd>Each turn resolves one half-move in every active game. Stockfish ranks every legal move; your order filters that list in each game where it matches; the soldier then samples a move aiming a set centipawn distance below the position&#39;s best. A soldier who can see a forced mate always takes it.</dd>
             <dt>Reading the board</dt>
-            <dd>All games appear stacked on one board. Your pieces are drawn white and your opponent's black &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square; numbers and arrows are tinted gold for player&nbsp;1 and crimson for player&nbsp;2. If you play black, your view is flipped and your arrow is read through that flip: drawing e2&rarr;e4 on your view means e7&rarr;e5 in the games.</dd>
+            <dd>All games appear stacked on one board. Your pieces are drawn white and your opponent&#39;s black &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square. If you play black, your view is flipped; ranks in your orders always count from your own side.</dd>
+            <dt>The compiler</dt>
+            <dd>Your words are translated into a formal move predicate by a language model, then echoed back in plain English with how many games it currently touches. Nothing is issued until you confirm. If the translation misses your intent, edit and recompile.</dd>
             <dt>Scoring</dt>
-            <dd>Checkmate scores a point for the side that delivered it. Draws score nothing, and finished games leave the board. The match ends early once a player's lead exceeds the number of games still running; if everything finishes level, the match is a draw.</dd>
+            <dd>Checkmate scores a point for the side that delivered it. Draws score nothing, and finished games leave the board. The match ends early once a player&#39;s lead exceeds the number of games still running; if everything finishes level, the match is a draw.</dd>
             <dt>Who plays white</dt>
-            <dd>One of you plays white in every game, the other black, chosen at random when the match starts. The white side places the first arrow: tap a start square, then an end square.</dd>
+            <dd>One of you plays white in every game, the other black, chosen at random when the match starts. The white side issues the first order.</dd>
             <dt>Solo mode</dt>
-            <dd>You place every arrow. After each one, both half-moves play out back to back &mdash; no opponent arrows, just you steering a hundred Stockfish games.</dd>
+            <dd>You command white every turn; black&#39;s soldiers play unled. Beat the drift.</dd>
           </dl>
         </details>
       </section>
@@ -174,6 +174,14 @@
       <div class="panel controls-panel">
         <p id="centurion-session-notice" class="centurion-session-notice"></p>
         <div id="centurion-result-banner" class="centurion-result-banner"></div>
+        <div class="centurion-section-label">Your command (max 20 words)</div>
+        <textarea id="centurion-command-input" rows="2" spellcheck="true" placeholder="e.g. all knights advance"></textarea>
+        <div class="centurion-command-actions">
+          <button class="btn btn-primary" id="centurion-compile-btn">Compile</button>
+          <button class="btn btn-secondary" id="centurion-issue-btn">Issue order</button>
+          <button class="btn btn-outline" id="centurion-pass-btn">Pass</button>
+        </div>
+        <p id="centurion-command-status" class="centurion-command-status"></p>
         <div id="centurion-resolution-summary" class="centurion-meta-line"></div>
         <div id="centurion-game-replay" class="centurion-game-replay" hidden>
           <div class="centurion-section-label">Review a game</div>
@@ -188,8 +196,8 @@
           <div id="centurion-replay-move-info" class="centurion-meta-line"></div>
           <textarea id="centurion-replay-pgn" class="centurion-replay-pgn" readonly spellcheck="false" aria-label="Game PGN"></textarea>
         </div>
-        <div class="centurion-section-label">Arrow history</div>
-        <ul id="centurion-arrow-history" class="centurion-arrow-history"></ul>
+        <div class="centurion-section-label">Order log</div>
+        <ul id="centurion-command-history" class="centurion-arrow-history"></ul>
         <button class="btn btn-outline" id="centurion-leave-btn">Leave match</button>
       </div>
     </div>

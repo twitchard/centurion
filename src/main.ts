@@ -7,7 +7,10 @@ import {
   FirebaseMatchRoomAdapter,
   generateRoomCode,
 } from './adapters/firebase-match-room'
-import { HttpCommandCompilerAdapter } from './adapters/http-command-compiler'
+import {
+  HttpCommandCompilerAdapter,
+  defaultCommandCompilerEndpoint,
+} from './adapters/http-command-compiler'
 import {
   clearCenturionPersistence,
   loadCenturionPersistence,
@@ -28,18 +31,21 @@ import {
   renderConnectionLog,
 } from './connection-log'
 import { describeCommandPredicate } from './core/command/describe'
+import { matchingMoves } from './core/command/evaluate'
+import type { CommandPredicate } from './core/command/model'
 import {
   type ResolutionAnimationPlan,
   planResolutionAnimation,
   resolutionAnimationFrame,
 } from './core/match/animate'
 import {
+  type IssuedCommand,
   type MatchState,
   type PlayerId,
   type RecordedMove,
   activeGameCount,
   activePlacer,
-  canPlaceArrows,
+  canIssueCommands,
 } from './core/match/model'
 import {
   describeGameReplayLabel,
@@ -48,11 +54,7 @@ import {
   matchGameToPgn,
   replaySnapshot,
 } from './core/match/pgn'
-import {
-  matchRenderModel,
-  squareName,
-  toCanonicalSquare,
-} from './core/match/render'
+import { matchRenderModel } from './core/match/render'
 import { ENGINE_DEPTH } from './core/match/resolve'
 import type { ParseResult } from './core/parsing/types'
 import { assertNever } from './core/update'
@@ -172,7 +174,12 @@ const centurionSessionNotice = element('centurion-session-notice')
 const centurionResultBanner = element('centurion-result-banner')
 const centurionBoardHint = element('centurion-board-hint')
 const centurionResolutionSummary = element('centurion-resolution-summary')
-const centurionArrowHistory = element('centurion-arrow-history')
+const centurionCommandInput = textarea('centurion-command-input')
+const centurionCompileButton = button('centurion-compile-btn')
+const centurionIssueButton = button('centurion-issue-btn')
+const centurionPassButton = button('centurion-pass-btn')
+const centurionCommandStatus = element('centurion-command-status')
+const centurionCommandHistory = element('centurion-command-history')
 const centurionLeaveButton = button('centurion-leave-btn')
 const centurionGameReplay = element('centurion-game-replay')
 const centurionGameSelect = element(
@@ -444,31 +451,29 @@ function runCommand(command: AppCmd): void {
     case 'copy-invite':
       copyInvite(cmd.code)
       return
-    case 'compute-engine-moves':
-      centurionEngine.bestMoves(cmd.fens, ENGINE_DEPTH).then(
-        (moves) => {
-          dispatchCenturion({ tag: 'engine-moves-computed', moves })
+    case 'compute-ranked-moves':
+      centurionEngine.rankedMoves(cmd.fens, ENGINE_DEPTH).then(
+        (ranked) => {
+          dispatchCenturion({ tag: 'ranked-moves-computed', ranked })
         },
         (error: unknown) => {
           dispatchCenturion({
-            tag: 'engine-moves-failed',
+            tag: 'ranked-moves-failed',
             message: error instanceof Error ? error.message : String(error),
           })
         },
       )
       return
-    case 'compute-worst-moves':
-      centurionEngine.worstMoves(cmd.fens, ENGINE_DEPTH).then(
-        (moves) => {
-          dispatchCenturion({ tag: 'worst-moves-computed', moves })
-        },
-        (error: unknown) => {
+    case 'compile-command':
+      void commandCompiler
+        .compile(defaultCommandCompilerEndpoint(), cmd.text)
+        .then((result) => {
           dispatchCenturion({
-            tag: 'worst-moves-failed',
-            message: error instanceof Error ? error.message : String(error),
+            tag: 'command-compile-finished',
+            text: cmd.text,
+            result,
           })
-        },
-      )
+        })
       return
     default:
       assertNever(cmd)
@@ -647,11 +652,8 @@ function matchMetaText(session: MatchSession): string {
   if (session.resolving !== null) {
     return `Turn ${match.turn} · ${games} · Resolving...`
   }
-  if (session.trap !== null) {
-    return `Turn ${match.turn} · ${games} · Computer is laying a trap...`
-  }
-  if (!canPlaceArrows(match)) {
-    return `Turn ${match.turn} · ${games} · Engine playout`
+  if (!canIssueCommands(match)) {
+    return `Turn ${match.turn} · ${games} · Soldier playout`
   }
   return `Turn ${match.turn} · ${games}`
 }
@@ -676,7 +678,7 @@ function resolutionSummaryText(session: MatchSession): string {
   if (summary === null) {
     return 'No turns resolved yet.'
   }
-  const base = `Turn ${summary.turn}: ${summary.arrowMoves} game(s) followed arrows, ${summary.engineMoves} played engine moves.`
+  const base = `Turn ${summary.turn}: ${summary.commandMoves} game(s) followed the order, ${summary.freeMoves} moved freely.`
   const decided = summary.p1Wins + summary.p2Wins + summary.draws
   if (decided === 0) {
     return base
@@ -684,36 +686,65 @@ function resolutionSummaryText(session: MatchSession): string {
   return `${base} Decided: ${scoreLabel(session, 1)} +${summary.p1Wins}, ${scoreLabel(session, 2)} +${summary.p2Wins}, draws +${summary.draws}.`
 }
 
-/**
- * Tap coaching only runs for the first few turns; after that the board
- * highlight is enough and the hint line stays empty (except for errors).
- */
-const TAP_HINT_LAST_TURN = 4
-
 function boardHintText(session: MatchSession): string {
-  const match = session.match
   if (session.inputError !== null) {
     return session.inputError
   }
+  return ''
+}
+
+/** How many active games currently have a move matching the predicate. */
+function matchedGameCount(
+  match: MatchState,
+  predicate: CommandPredicate,
+): number {
+  let count = 0
+  for (const game of match.games) {
+    if (game.status.tag !== 'active') {
+      continue
+    }
+    if (matchingMoves(game.position, predicate).length > 0) {
+      count += 1
+    }
+  }
+  return count
+}
+
+/** Whether this client may compile/issue/pass right now. */
+function turnIsYours(session: MatchSession): boolean {
+  const match = session.match
   if (
     match.phase.tag === 'finished' ||
     session.resolving !== null ||
-    session.trap !== null ||
-    !canPlaceArrows(match) ||
-    match.turn > TAP_HINT_LAST_TURN
+    !canIssueCommands(match)
   ) {
-    return ''
+    return false
   }
-  if (
-    session.mode.tag === 'remote' &&
-    activePlacer(match) !== session.mode.you
-  ) {
-    return ''
+  if (session.mode.tag === 'remote') {
+    return activePlacer(match) === session.mode.you
   }
-  if (session.selectedSquare !== null) {
-    return `From ${squareName(session.selectedSquare)} - tap the destination.`
+  return true
+}
+
+function commandStatusText(session: MatchSession): string {
+  const draft = session.draft
+  switch (draft.tag) {
+    case 'idle':
+      return turnIsYours(session)
+        ? 'Type an order, compile it, then issue.'
+        : ''
+    case 'compiling':
+      return `Compiling "${draft.text}"...`
+    case 'compiled': {
+      const reads = describeCommandPredicate(draft.predicate)
+      const matches = matchedGameCount(session.match, draft.predicate)
+      return `Reads as: ${reads} — matches in ${matches} of ${activeGameCount(session.match)} games.`
+    }
+    case 'failed':
+      return `Compile failed: ${draft.message}`
+    default:
+      return assertNever(draft)
   }
-  return 'Tap the start square of your arrow.'
 }
 
 /** Describes how the currently shown replay move was decided. */
@@ -721,15 +752,15 @@ function replayMoveSourceText(
   session: MatchSession,
   record: RecordedMove,
 ): string {
-  if (record.source === 'engine') {
-    return 'Engine move'
+  if (record.source === 'free') {
+    return "Soldier's own move"
   }
-  const owner = record.arrowOwner
+  const owner = record.commandOwner
   if (owner === undefined) {
-    return 'Pulled by an arrow'
+    return 'Ordered by command'
   }
   const label = playerLabel(session, owner)
-  return label === 'You' ? 'Pulled by your arrow' : `Pulled by ${label}'s arrow`
+  return label === 'You' ? 'Ordered by you' : `Ordered by ${label}`
 }
 
 function renderGameReplay(session: MatchSession): void {
@@ -750,7 +781,7 @@ function renderGameReplay(session: MatchSession): void {
   const optionsKey = sortedGames
     .map((game) => {
       const counts = gameMoveSourceCounts(game)
-      return `${game.id}:${counts.arrow}:${counts.engine}:${game.moves.length}`
+      return `${game.id}:${counts.command}:${counts.free}:${game.moves.length}`
     })
     .join('|')
   if (centurionGameReplayOptionsKey !== optionsKey) {
@@ -773,7 +804,7 @@ function renderGameReplay(session: MatchSession): void {
   centurionReplayBoard.setPosition(
     snapshot.fen,
     snapshot.lastMove,
-    record?.source === 'arrow' ? { owner: record.arrowOwner } : undefined,
+    record?.source === 'command' ? { owner: record.commandOwner } : undefined,
   )
   centurionReplayBoard.redraw()
 
@@ -783,7 +814,7 @@ function renderGameReplay(session: MatchSession): void {
   centurionReplayMoveInfo.textContent =
     snapshot.moveCount === 0
       ? 'No moves recorded for this game.'
-      : `Ply ${snapshot.ply} of ${snapshot.moveCount} (${sourceCounts.arrow} arrow, ${sourceCounts.engine} engine)${sourceNote}`
+      : `Ply ${snapshot.ply} of ${snapshot.moveCount} (${sourceCounts.command} ordered, ${sourceCounts.free} free)${sourceNote}`
 
   centurionReplayPgn.value = matchGameToPgn(selectedGame, {
     white: playerLabel(session, selectedGame.whiteOwner),
@@ -865,7 +896,7 @@ function maybeQueueResolutionAnimation(session: MatchSession): void {
 }
 
 /** Paint the current animation frame; false when nothing is animating. */
-function renderCenturionAnimationFrame(session: MatchSession): boolean {
+function renderCenturionAnimationFrame(): boolean {
   for (;;) {
     const head = centurionAnimationQueue[0]
     if (head === undefined) {
@@ -881,11 +912,7 @@ function renderCenturionAnimationFrame(session: MatchSession): boolean {
       centurionAnimationStart = null
       continue
     }
-    const frame = resolutionAnimationFrame(
-      head,
-      elapsed,
-      session.selectedSquare,
-    )
+    const frame = resolutionAnimationFrame(head, elapsed)
     centurionRenderer.render(frame.model, frame.overlays)
     scheduleCenturionAnimationTick()
     return true
@@ -903,15 +930,10 @@ function scheduleCenturionAnimationTick(): void {
       return
     }
     const session = state.model.session
-    if (!renderCenturionAnimationFrame(session)) {
+    if (!renderCenturionAnimationFrame()) {
       // Queue drained: settle the canvas on the live board.
       centurionRenderer.render(
-        matchRenderModel(
-          session.match,
-          sessionViewer(session),
-          session.selectedSquare,
-          session.resolving,
-        ),
+        matchRenderModel(session.match, sessionViewer(session)),
       )
     }
   })
@@ -933,7 +955,7 @@ function renderCenturionSession(session: MatchSession): void {
   const placing =
     match.phase.tag === 'active' &&
     session.resolving === null &&
-    canPlaceArrows(match)
+    canIssueCommands(match)
       ? activePlacer(match)
       : null
   const sides: ReadonlyArray<{
@@ -971,7 +993,7 @@ function renderCenturionSession(session: MatchSession): void {
     side.status.textContent = active
       ? session.mode.tag === 'remote' && side.player !== session.mode.you
         ? 'Their turn...'
-        : 'Place an arrow'
+        : 'Issue a command'
       : ''
   }
 
@@ -995,29 +1017,32 @@ function renderCenturionSession(session: MatchSession): void {
 
   centurionResolutionSummary.textContent = resolutionSummaryText(session)
 
-  centurionArrowHistory.innerHTML = ''
-  for (const boardArrow of [...match.arrows].reverse()) {
+  const yours = turnIsYours(session)
+  if (centurionCommandInput.value !== session.commandInput) {
+    centurionCommandInput.value = session.commandInput
+  }
+  centurionCommandInput.disabled = !yours
+  centurionCompileButton.disabled = !yours || session.draft.tag === 'compiling'
+  centurionIssueButton.disabled = !yours || session.draft.tag !== 'compiled'
+  centurionPassButton.disabled = !yours
+  centurionCommandStatus.textContent = commandStatusText(session)
+
+  centurionCommandHistory.innerHTML = ''
+  const orders: readonly IssuedCommand[] = match.commands
+  for (const command of [...orders].reverse()) {
     const item = document.createElement('li')
-    item.className = `centurion-arrow-entry centurion-arrow-entry--player-${boardArrow.owner}`
-    const from = squareName(toCanonicalSquare(viewer, boardArrow.from))
-    const to = squareName(toCanonicalSquare(viewer, boardArrow.to))
-    item.textContent = `T${boardArrow.placedTurn} ${scoreLabel(session, boardArrow.owner)}: ${from}->${to} (×${boardArrow.cardinality})`
-    centurionArrowHistory.appendChild(item)
+    item.className = `centurion-arrow-entry centurion-arrow-entry--player-${command.owner}`
+    item.title = describeCommandPredicate(command.predicate)
+    item.textContent = `T${command.turn} ${scoreLabel(session, command.owner)}: "${command.text}"`
+    centurionCommandHistory.appendChild(item)
   }
 
   renderGameReplay(session)
 
   maybeQueueResolutionAnimation(session)
   centurionRenderer.resize(panelBoardSize(centurionBoardPanel))
-  if (!renderCenturionAnimationFrame(session)) {
-    centurionRenderer.render(
-      matchRenderModel(
-        match,
-        viewer,
-        session.selectedSquare,
-        session.resolving,
-      ),
-    )
+  if (!renderCenturionAnimationFrame()) {
+    centurionRenderer.render(matchRenderModel(match, viewer))
   }
 }
 
@@ -1105,19 +1130,6 @@ function render(): void {
     renderCenturion(state.model)
     return
   }
-}
-
-function centurionSquareFromClick(event: MouseEvent): number | null {
-  const rect = centurionCanvas.getBoundingClientRect()
-  if (rect.width <= 0 || rect.height <= 0) {
-    return null
-  }
-  const col = Math.floor(((event.clientX - rect.left) / rect.width) * 8)
-  const rowFromTop = Math.floor(((event.clientY - rect.top) / rect.height) * 8)
-  if (col < 0 || col > 7 || rowFromTop < 0 || rowFromTop > 7) {
-    return null
-  }
-  return (7 - rowFromTop) * 8 + col
 }
 
 function bindEvents(): void {
@@ -1250,6 +1262,21 @@ function bindEvents(): void {
   centurionLeaveButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'leave-session-requested' })
   })
+  centurionCommandInput.addEventListener('input', (event) => {
+    dispatchCenturion({
+      tag: 'command-input-updated',
+      value: (event.target as HTMLTextAreaElement).value,
+    })
+  })
+  centurionCompileButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'command-compile-requested' })
+  })
+  centurionIssueButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'command-issue-requested' })
+  })
+  centurionPassButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'pass-requested' })
+  })
   centurionGameSelect.addEventListener('change', () => {
     dispatchCenturion({
       tag: 'game-replay-game-selected',
@@ -1275,14 +1302,6 @@ function bindEvents(): void {
   centurionConnectionLogCopy.addEventListener('click', () => {
     copyConnectionLog()
   })
-  centurionCanvas.addEventListener('click', (event) => {
-    const square = centurionSquareFromClick(event as MouseEvent)
-    if (square === null) {
-      return
-    }
-    dispatchCenturion({ tag: 'board-square-clicked', square })
-  })
-
   for (const entry of displayModeButtons) {
     entry.button.addEventListener('click', () => {
       applyPieceDisplayMode(entry.mode)

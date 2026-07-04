@@ -1,4 +1,5 @@
-import type { BoardSquare, MatchState, PlayerId } from '../../core/match/model'
+import type { CommandPredicate } from '../../core/command/model'
+import type { MatchState, PlayerId } from '../../core/match/model'
 import type { PendingResolution } from '../../core/match/resolve'
 
 export type SessionMode =
@@ -17,23 +18,31 @@ export interface GameReplayState {
 }
 
 /**
- * The solo opponent's pending trap arrow: the ids of the games whose
- * worst moves are being computed, aligned with the FENs sent to the
- * engine. Input is blocked until the arrow lands, like `resolving`.
+ * The turn's command as it moves through the compile-preview-issue flow:
+ * typed words are compiled to a predicate at the edge, echoed back for
+ * the player to read, and only issued once confirmed.
  */
-export interface TrapPending {
-  readonly gameIds: readonly number[]
-}
+export type CommandDraft =
+  | { readonly tag: 'idle' }
+  | { readonly tag: 'compiling'; readonly text: string }
+  | {
+      readonly tag: 'compiled'
+      readonly text: string
+      readonly predicate: CommandPredicate
+    }
+  | {
+      readonly tag: 'failed'
+      readonly text: string
+      readonly message: string
+    }
 
 export interface MatchSession {
   readonly mode: SessionMode
   readonly match: MatchState
-  /** Non-null while Stockfish is computing this turn's fallback moves. */
+  /** Non-null while Stockfish is ranking this turn's moves. */
   readonly resolving: PendingResolution | null
-  /** Non-null while the solo opponent's trap arrow is being computed. */
-  readonly trap: TrapPending | null
-  readonly selectedSquare: BoardSquare | null
-  readonly arrowInput: string
+  readonly commandInput: string
+  readonly draft: CommandDraft
   readonly inputError: string | null
   readonly notice: string | null
   /** Set when the match ends so the user can step through a finished game. */
