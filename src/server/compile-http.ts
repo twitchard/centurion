@@ -6,7 +6,7 @@ import { type CompileOptions, compileCommand } from './compile-command'
  * function (api/compile.ts) and the local Bun dev server. The endpoint is
  * public by design — the game is a static page on another origin — so
  * responses carry permissive CORS headers, and abuse is contained
- * structurally: 20-character input cap, forced tool output, small max_tokens.
+ * structurally: 40-character input cap, forced tool output, small max_tokens.
  */
 
 const CORS_HEADERS: Record<string, string> = {

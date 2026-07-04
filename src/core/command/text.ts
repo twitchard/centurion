@@ -1,11 +1,11 @@
 import { type ParseResult, invalid, valid } from '../parsing/types'
 
 /**
- * The command box is deliberately short: twenty characters buys you a
+ * The command box is deliberately short: forty characters buys you a
  * positional idea or a literal move, not per-game micromanagement.
  * Enforced on the client for feedback and on the server for real.
  */
-export const COMMAND_CHAR_LIMIT = 20
+export const COMMAND_CHAR_LIMIT = 40
 
 /** Trim and validate a raw command; returns the normalized text. */
 export function validateCommandText(text: string): ParseResult<string> {

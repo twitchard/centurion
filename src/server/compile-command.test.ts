@@ -102,7 +102,7 @@ describe('compileCommand', () => {
   })
 
   it('rejects over-limit commands without calling the API', async () => {
-    const outcome = await compileCommand('x'.repeat(21), {
+    const outcome = await compileCommand('x'.repeat(41), {
       apiKey: 'test-key',
       fetch: () => {
         throw new Error('should not be called')

@@ -57,7 +57,7 @@
     </header>
     <div class="feature-layout">
       <div class="panel controls-panel">
-        <label for="command-input">Command (max 20 characters)</label>
+        <label for="command-input">Command (max 40 characters)</label>
         <textarea id="command-input" rows="2" spellcheck="true"></textarea>
         <button class="btn btn-primary" id="command-compile-btn">Compile</button>
         <ul id="command-diagnostics" class="diagnostics"></ul>
@@ -128,7 +128,7 @@
         <ol class="centurion-rules-list">
           <li><strong>A hundred games.</strong> You own one color in a hundred simultaneous chess games, all shown stacked on one board.</li>
           <li><strong>Your soldiers are ordinary.</strong> Unled, each game&#39;s engine deliberately plays a mediocre move &mdash; aiming about a pawn below best &mdash; and every game drifts its own way.</li>
-          <li><strong>One order per turn.</strong> Type a command of up to 20 characters (&ldquo;e4&rdquo;, &ldquo;all knights advance&rdquo;, &ldquo;take the queen&rdquo;) and submit it. Literal moves like <code>e4</code> or <code>Nf3</code> compile directly; other phrases go through the language model.</li>
+          <li><strong>One order per turn.</strong> Type a command of up to 40 characters (&ldquo;e4&rdquo;, &ldquo;all knights advance&rdquo;, &ldquo;take the queen&rdquo;) and submit it. Literal moves like <code>e4</code> or <code>Nf3</code> compile directly; other phrases go through the language model.</li>
           <li><strong>Orders constrain, soldiers choose.</strong> In every game with a matching legal move, your soldier picks among the moves you allowed &mdash; same imperfect judgment, better options. No match, and it plays freely.</li>
           <li><strong>Majority wins.</strong> Checkmates score a point each; take the majority of the undrawn games and the match is yours. After 100 turns the soldiers play it out alone.</li>
         </ol>
@@ -182,7 +182,7 @@
       <div class="panel controls-panel">
         <p id="centurion-session-notice" class="centurion-session-notice"></p>
         <div id="centurion-result-banner" class="centurion-result-banner"></div>
-        <div class="centurion-section-label">Your command (max 20 characters)</div>
+        <div class="centurion-section-label">Your command (max 40 characters)</div>
         <textarea id="centurion-command-input" rows="2" spellcheck="true" placeholder="e.g. e4, Nf3, all knights advance"></textarea>
         <div class="centurion-command-actions">
           <button class="btn btn-primary" id="centurion-issue-btn">Submit order</button>
