@@ -1013,6 +1013,34 @@ canvas {
   line-height: 1.4;
 }
 
+.centurion-board-stack {
+  position: relative;
+  line-height: 0;
+}
+
+.centurion-command-board {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.centurion-command-board cg-board {
+  background: none !important;
+}
+
+.centurion-command-board square {
+  background-color: transparent !important;
+}
+
+.centurion-command-board square.move-dest {
+  background: radial-gradient(rgba(201, 162, 39, 0.5) 22%, transparent 23%) !important;
+}
+
+.centurion-command-board square.selected {
+  background-color: rgba(201, 162, 39, 0.35) !important;
+}
+
 #centurion-canvas {
   cursor: pointer;
   touch-action: manipulation;

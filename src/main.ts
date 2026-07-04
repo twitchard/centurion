@@ -42,6 +42,7 @@ import {
   microPawnHistogram,
   microPawnHistogramLabel,
 } from './core/match/eval'
+import { interactiveBoardSnapshot } from './core/match/interactive-position'
 import {
   type IssuedCommand,
   type MatchState,
@@ -65,6 +66,7 @@ import { matchRenderModel } from './core/match/render'
 import { ENGINE_DEPTH } from './core/match/resolve'
 import type { ParseResult } from './core/parsing/types'
 import { assertNever } from './core/update'
+import { CommandBoard } from './features/centurion-match/command-board'
 import type {
   CenturionModel,
   MatchSession,
@@ -212,7 +214,14 @@ let centurionGameReplayOptionsKey = ''
 let centurionActiveStatsTab: 'overview' | 'material' | 'threats' = 'overview'
 const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
+const centurionCommandBoardHost = element('centurion-command-board')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
+const centurionCommandBoard = new CommandBoard(
+  centurionCommandBoardHost,
+  (text) => {
+    dispatchCenturion({ tag: 'command-input-updated', value: text })
+  },
+)
 const centurionConnectionLogList = element(
   'centurion-connection-log-list',
 ) as HTMLOListElement
@@ -1190,9 +1199,18 @@ function renderCenturionSession(session: MatchSession): void {
 
   maybeQueueResolutionAnimation(session)
   centurionRenderer.resize(panelBoardSize(centurionBoardPanel))
+  const commandBoardEnabled =
+    turnIsYours(session) && centurionAnimationQueue.length === 0
+  const commandSnapshot = commandBoardEnabled
+    ? interactiveBoardSnapshot(match, viewer)
+    : null
+  centurionCommandBoardHost.hidden =
+    !commandBoardEnabled || commandSnapshot === null
+  centurionCommandBoard.sync(commandSnapshot, commandBoardEnabled)
   if (!renderCenturionAnimationFrame()) {
     centurionRenderer.render(matchRenderModel(match, viewer))
   }
+  centurionCommandBoard.redraw()
 }
 
 function confirmReturnToLobby(model: CenturionModel): boolean {
