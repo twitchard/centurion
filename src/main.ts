@@ -37,6 +37,12 @@ import {
   resolutionAnimationFrame,
 } from './core/match/animate'
 import {
+  aggregateMicroPawnStats,
+  evalForPlayer,
+  formatMicroPawns,
+  microPawnSummaryText,
+} from './core/match/eval'
+import {
   type IssuedCommand,
   type MatchState,
   type PlayerId,
@@ -172,6 +178,11 @@ const centurionSessionNotice = element('centurion-session-notice')
 const centurionResultBanner = element('centurion-result-banner')
 const centurionBoardHint = element('centurion-board-hint')
 const centurionResolutionSummary = element('centurion-resolution-summary')
+const centurionMicroPawnEval = element('centurion-micro-pawn-eval')
+const centurionMicroPawnEvalSummary = element(
+  'centurion-micro-pawn-eval-summary',
+)
+const centurionMicroPawnEvalList = element('centurion-micro-pawn-eval-list')
 const centurionCommandInput = textarea('centurion-command-input')
 const centurionIssueButton = button('centurion-issue-btn')
 const centurionPassButton = button('centurion-pass-btn')
@@ -642,17 +653,20 @@ function scoreLabel(session: MatchSession, player: PlayerId): string {
 
 function matchMetaText(session: MatchSession): string {
   const match = session.match
+  const viewer = sessionViewer(session)
   if (match.phase.tag === 'finished') {
     return 'Match over'
   }
   const games = `${activeGameCount(match)}/${match.gameCount} games`
+  const evalSummary = microPawnSummaryText(match, viewer)
+  const evalPart = evalSummary === null ? '' : ` · ${evalSummary}`
   if (session.resolving !== null) {
-    return `Turn ${match.turn} · ${games} · Resolving...`
+    return `Turn ${match.turn} · ${games} · Resolving...${evalPart}`
   }
   if (!canIssueCommands(match)) {
-    return `Turn ${match.turn} · ${games} · Soldier playout`
+    return `Turn ${match.turn} · ${games} · Soldier playout${evalPart}`
   }
-  return `Turn ${match.turn} · ${games}`
+  return `Turn ${match.turn} · ${games}${evalPart}`
 }
 
 function describeResult(session: MatchSession, match: MatchState): string {
@@ -668,6 +682,34 @@ function describeResult(session: MatchSession, match: MatchState): string {
   return label === 'You'
     ? `You win the match ${score}!`
     : `${label} wins the match ${score}.`
+}
+
+function renderMicroPawnEval(session: MatchSession): void {
+  const match = session.match
+  const viewer = sessionViewer(session)
+  const stats = aggregateMicroPawnStats(match, viewer)
+  const showPanel = stats.activeGames > 0
+  centurionMicroPawnEval.hidden = !showPanel
+  if (!showPanel) {
+    centurionMicroPawnEvalList.innerHTML = ''
+    return
+  }
+
+  const summary = microPawnSummaryText(match, viewer)
+  centurionMicroPawnEvalSummary.textContent =
+    summary === null ? 'Micro pawn eval' : `Micro pawn eval · ${summary}`
+
+  const activeGames = match.games
+    .filter((game) => game.status.tag === 'active')
+    .map((game) => ({ game, cp: evalForPlayer(game, viewer) }))
+    .sort((a, b) => b.cp - a.cp || a.game.id - b.game.id)
+
+  centurionMicroPawnEvalList.innerHTML = ''
+  for (const entry of activeGames) {
+    const item = document.createElement('li')
+    item.textContent = `Game ${entry.game.id + 1}: ${formatMicroPawns(entry.cp)}`
+    centurionMicroPawnEvalList.appendChild(item)
+  }
 }
 
 function resolutionSummaryText(session: MatchSession): string {
@@ -989,6 +1031,7 @@ function renderCenturionSession(session: MatchSession): void {
   centurionResultBanner.style.display = result.length > 0 ? 'block' : 'none'
 
   centurionResolutionSummary.textContent = resolutionSummaryText(session)
+  renderMicroPawnEval(session)
 
   const yours = turnIsYours(session)
   if (centurionCommandInput.value !== session.commandInput) {

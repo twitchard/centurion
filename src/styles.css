@@ -747,6 +747,33 @@ canvas {
   text-align: right;
 }
 
+.centurion-micro-pawn-eval {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-dim);
+}
+
+.centurion-micro-pawn-eval summary {
+  cursor: pointer;
+  color: var(--ink-faint);
+}
+
+.centurion-micro-pawn-eval-list {
+  margin: 6px 0 0;
+  padding: 8px;
+  list-style: none;
+  max-height: 140px;
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: var(--bg-deep);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
 .centurion-meta-line {
   font-size: 0.82rem;
   color: var(--ink-dim);

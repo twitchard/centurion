@@ -11,6 +11,7 @@ import {
 import { makeSanAndPlay } from 'chessops/san'
 import { isNormal } from 'chessops/types'
 import { makeSquare, parseUci } from 'chessops/util'
+import { formatMicroPawns } from './eval'
 import type { MatchGame, RecordedMove } from './model'
 
 export interface GameMoveSourceCounts {
@@ -168,7 +169,8 @@ export function describeGameReplayLabel(
   names: PlayerNames = DEFAULT_PLAYER_NAMES,
 ): string {
   const counts = gameMoveSourceCounts(game)
-  return `Game ${game.id + 1} (${counts.command} ordered / ${counts.free} free, ${describeGameResult(game, names)}, ${game.moves.length} plies)`
+  const evalNote = `, ${formatMicroPawns(game.evalCp)} (white)`
+  return `Game ${game.id + 1} (${counts.command} ordered / ${counts.free} free, ${describeGameResult(game, names)}, ${game.moves.length} plies${evalNote})`
 }
 
 export function describeGameResult(

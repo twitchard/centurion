@@ -70,6 +70,8 @@ export interface MatchGame {
   /** Half-moves played from `startingFen`, with resolution source. */
   readonly moves: readonly RecordedMove[]
   readonly soldierMode: SoldierMode
+  /** Centipawns from white's perspective after the last resolved half-move. */
+  readonly evalCp: number
 }
 
 export interface ResolutionSummary {
@@ -237,6 +239,7 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
       status: { tag: 'active' },
       moves: [],
       soldierMode: mode,
+      evalCp: 0,
     })
   }
 
