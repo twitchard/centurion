@@ -5,7 +5,7 @@ import {
   MAX_PREDICATE_DEPTH,
   MAX_PREDICATE_NODES,
 } from './model'
-import { COMMAND_WORD_LIMIT } from './text'
+import { COMMAND_CHAR_LIMIT } from './text'
 
 /** Tool the compiler model is forced to call with its predicate. */
 export const SUBMIT_PREDICATE_TOOL_NAME = 'submit_predicate'
@@ -257,7 +257,7 @@ function renderExample(example: FewShotExample): string {
 export const COMPILE_SYSTEM_PROMPT = [
   'You compile natural-language chess commands into move predicates for Centurion Chess, a game played across 100 simultaneous chess games.',
   '',
-  `The player types a command of at most ${COMMAND_WORD_LIMIT} words. You translate it into a single JSON predicate describing a property of one chess move. The predicate is applied independently to every game: in each game, the player's soldier (a deliberately imperfect engine) chooses its move among the legal moves matching the predicate, or among all legal moves if none match. The player issuing the command is the side to move in every game.`,
+  `The player types a command of at most ${COMMAND_CHAR_LIMIT} characters. You translate it into a single JSON predicate describing a property of one chess move. The predicate is applied independently to every game: in each game, the player's soldier (a deliberately imperfect engine) chooses its move among the legal moves matching the predicate, or among all legal moves if none match. The player issuing the command is the side to move in every game.`,
   '',
   'Call the submit_predicate tool with the predicate. Node kinds:',
   "- {tag: 'piece', roles: [...]} — the moving piece is one of these roles.",

@@ -1,5 +1,6 @@
 import { decodeCommandPredicate } from '../core/command/decode'
 import type { CommandPredicate } from '../core/command/model'
+import { tryCompileLiteralNotation } from '../core/command/parse-notation'
 import {
   COMPILE_SYSTEM_PROMPT,
   SUBMIT_PREDICATE_INPUT_SCHEMA,
@@ -8,9 +9,9 @@ import {
 import { validateCommandText } from '../core/command/text'
 
 /**
- * Default compile model. Compiling a 20-word command against a cached
- * system prompt costs a fraction of a cent, so default to the strongest
- * generally available tier; COMMAND_COMPILE_MODEL overrides it (e.g. with
+ * Default compile model. Compiling a short command against a cached system
+ * prompt costs a fraction of a cent, so default to the strongest generally
+ * available tier; COMMAND_COMPILE_MODEL overrides it (e.g. with
  * claude-haiku-4-5 once the eval battery shows it holds up).
  */
 export const DEFAULT_COMPILE_MODEL = 'claude-opus-4-8'
@@ -92,6 +93,14 @@ export async function compileCommand(
   const validated = validateCommandText(command)
   if (validated.tag === 'invalid') {
     return { tag: 'rejected', status: 400, diagnostics: validated.diagnostics }
+  }
+
+  const literal = tryCompileLiteralNotation(validated.value)
+  if (literal !== null) {
+    const decoded = decodeCommandPredicate(literal)
+    if (decoded.tag === 'valid') {
+      return { tag: 'compiled', predicate: decoded.value }
+    }
   }
 
   const fetchImpl = options.fetch ?? globalThis.fetch

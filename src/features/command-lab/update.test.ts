@@ -35,7 +35,7 @@ describe('updateCommandLab', () => {
     let model = initCommandLabModel()
     ;[model] = updateCommandLab(model, {
       tag: 'command-input-updated',
-      value: 'word '.repeat(21),
+      value: 'x'.repeat(21),
     })
     const [next, commands] = updateCommandLab(model, {
       tag: 'compile-requested',

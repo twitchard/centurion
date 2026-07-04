@@ -76,8 +76,33 @@ describe('compileCommand', () => {
     expect(outcome).toEqual({ tag: 'compiled', predicate: KNIGHTS_ADVANCE })
   })
 
+  it('compiles literal notation without calling the API', async () => {
+    const outcome = await compileCommand('c3', {
+      apiKey: 'test-key',
+      fetch: () => {
+        throw new Error('should not be called')
+      },
+    })
+    expect(outcome).toEqual({
+      tag: 'compiled',
+      predicate: {
+        tag: 'and',
+        all: [
+          { tag: 'piece', roles: ['pawn'] },
+          {
+            tag: 'to',
+            region: {
+              files: { from: 'c', to: 'c' },
+              ranks: { from: 3, to: 3 },
+            },
+          },
+        ],
+      },
+    })
+  })
+
   it('rejects over-limit commands without calling the API', async () => {
-    const outcome = await compileCommand('word '.repeat(21), {
+    const outcome = await compileCommand('x'.repeat(21), {
       apiKey: 'test-key',
       fetch: () => {
         throw new Error('should not be called')

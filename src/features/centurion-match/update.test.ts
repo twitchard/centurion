@@ -174,13 +174,13 @@ describe('pass and play', () => {
 
     const [tooLong] = apply(
       base,
-      { tag: 'command-input-updated', value: 'word '.repeat(21) },
+      { tag: 'command-input-updated', value: 'x'.repeat(21) },
       { tag: 'command-issue-requested' },
     )
     if (tooLong.tag !== 'playing') {
       throw new Error('expected playing state')
     }
-    expect(tooLong.session.inputError).toContain('21 words')
+    expect(tooLong.session.inputError).toContain('21 characters')
   })
 
   it('invalidates the draft when the text changes and drops stale results', () => {
