@@ -37,6 +37,12 @@ import {
   resolutionAnimationFrame,
 } from './core/match/animate'
 import {
+  aggregateMicroPawnStats,
+  formatMicroPawns,
+  microPawnHistogram,
+  microPawnHistogramLabel,
+} from './core/match/eval'
+import {
   type IssuedCommand,
   type MatchState,
   type PlayerId,
@@ -172,6 +178,9 @@ const centurionSessionNotice = element('centurion-session-notice')
 const centurionResultBanner = element('centurion-result-banner')
 const centurionBoardHint = element('centurion-board-hint')
 const centurionResolutionSummary = element('centurion-resolution-summary')
+const centurionMicroPawnEval = element('centurion-micro-pawn-eval')
+const centurionMicroPawnAvg = element('centurion-micro-pawn-avg')
+const centurionMicroPawnHistogram = element('centurion-micro-pawn-histogram')
 const centurionCommandInput = textarea('centurion-command-input')
 const centurionIssueButton = button('centurion-issue-btn')
 const centurionPassButton = button('centurion-pass-btn')
@@ -670,6 +679,55 @@ function describeResult(session: MatchSession, match: MatchState): string {
     : `${label} wins the match ${score}.`
 }
 
+function renderMicroPawnEval(session: MatchSession): void {
+  const match = session.match
+  const viewer = sessionViewer(session)
+  const stats = aggregateMicroPawnStats(match, viewer)
+  const showPanel = stats.activeGames > 0
+  centurionMicroPawnEval.hidden = !showPanel
+  if (!showPanel) {
+    centurionMicroPawnAvg.textContent = ''
+    centurionMicroPawnAvg.className = 'centurion-micro-pawn-avg'
+    centurionMicroPawnHistogram.innerHTML = ''
+    centurionMicroPawnHistogram.removeAttribute('aria-label')
+    return
+  }
+
+  const avgText = formatMicroPawns(stats.averageCp)
+  centurionMicroPawnAvg.textContent = avgText
+  if (stats.averageCp > 10) {
+    centurionMicroPawnAvg.className =
+      'centurion-micro-pawn-avg centurion-micro-pawn-avg--ahead'
+  } else if (stats.averageCp < -10) {
+    centurionMicroPawnAvg.className =
+      'centurion-micro-pawn-avg centurion-micro-pawn-avg--behind'
+  } else {
+    centurionMicroPawnAvg.className = 'centurion-micro-pawn-avg'
+  }
+  centurionMicroPawnHistogram.setAttribute(
+    'aria-label',
+    microPawnHistogramLabel(match, viewer),
+  )
+
+  const bins = microPawnHistogram(match, viewer)
+  const center = Math.floor(bins.length / 2)
+  const peak = Math.max(...bins, 1)
+  centurionMicroPawnHistogram.innerHTML = ''
+  for (let index = 0; index < bins.length; index++) {
+    const count = bins[index] ?? 0
+    const bar = document.createElement('span')
+    const tone =
+      index < center
+        ? 'centurion-micro-pawn-histogram-bar--behind'
+        : index > center
+          ? 'centurion-micro-pawn-histogram-bar--ahead'
+          : 'centurion-micro-pawn-histogram-bar--even'
+    bar.className = `centurion-micro-pawn-histogram-bar ${tone}`
+    bar.style.height = `${Math.max(8, Math.round((count / peak) * 100))}%`
+    centurionMicroPawnHistogram.appendChild(bar)
+  }
+}
+
 function resolutionSummaryText(session: MatchSession): string {
   const summary = session.match.lastResolution
   if (summary === null) {
@@ -989,6 +1047,7 @@ function renderCenturionSession(session: MatchSession): void {
   centurionResultBanner.style.display = result.length > 0 ? 'block' : 'none'
 
   centurionResolutionSummary.textContent = resolutionSummaryText(session)
+  renderMicroPawnEval(session)
 
   const yours = turnIsYours(session)
   if (centurionCommandInput.value !== session.commandInput) {

@@ -37,6 +37,7 @@ export interface GameSnapshot {
   readonly status: GameStatusSnapshot
   readonly moves: readonly RecordedMoveSnapshot[]
   readonly soldierMode: 0 | 1 | 2 | 3
+  readonly evalCp?: number
 }
 
 export interface IssuedCommandSnapshot {
@@ -116,6 +117,7 @@ function encodeGame(game: MatchGame): GameSnapshot {
           },
     ),
     soldierMode: game.soldierMode,
+    evalCp: game.evalCp,
   }
 }
 
@@ -174,6 +176,15 @@ function decodeGame(snapshot: GameSnapshot): MatchGame | null {
           },
     )
   }
+  const evalCp =
+    snapshot.evalCp === undefined
+      ? 0
+      : typeof snapshot.evalCp === 'number'
+        ? snapshot.evalCp
+        : null
+  if (evalCp === null) {
+    return null
+  }
   return {
     id: snapshot.id,
     whiteOwner: snapshot.whiteOwner,
@@ -183,6 +194,7 @@ function decodeGame(snapshot: GameSnapshot): MatchGame | null {
     status,
     moves,
     soldierMode: snapshot.soldierMode,
+    evalCp,
   }
 }
 

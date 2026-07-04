@@ -163,6 +163,14 @@ describe('completeResolution', () => {
     expect((summary?.commandMoves ?? 0) + (summary?.freeMoves ?? 0)).toBe(10)
   })
 
+  it('stores micro pawn eval from white perspective after each ply', () => {
+    const match = initMatch(1, { gameCount: 1, whitePlayer: 1 })
+    const afterWhite = resolveTurn(match, null, null, (uci) =>
+      uci === 'e2e4' ? 30 : 0,
+    )
+    expect(afterWhite.games[0]?.evalCp).toBe(30)
+  })
+
   it('constrains every game to matching moves and records the owner', () => {
     const match = initMatch(3, { gameCount: 10, whitePlayer: 1 })
     const next = resolveTurn(match, 'move a knight', KNIGHTS)

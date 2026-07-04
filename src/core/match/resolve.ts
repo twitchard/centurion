@@ -142,7 +142,11 @@ function statusAfterMove(
   return { tag: 'active' }
 }
 
-function applyMoveToGame(game: MatchGame, recorded: RecordedMove): MatchGame {
+function applyMoveToGame(
+  game: MatchGame,
+  recorded: RecordedMove,
+  evalCp: number,
+): MatchGame {
   const move = parseUci(recorded.uci)
   if (move === undefined || !isNormal(move)) {
     throw new Error(`Unplayable move ${recorded.uci}`)
@@ -159,6 +163,7 @@ function applyMoveToGame(game: MatchGame, recorded: RecordedMove): MatchGame {
     repetition,
     status: statusAfterMove(game, position, count),
     moves: [...game.moves, recorded],
+    evalCp,
   }
 }
 
@@ -241,6 +246,8 @@ function pickByStyle(
 
 interface SoldierChoice {
   readonly recorded: RecordedMove
+  /** Centipawns from the mover's perspective for the played move. */
+  readonly moveCp: number
 }
 
 /**
@@ -266,7 +273,7 @@ function chooseSoldierMove(
     if (best === undefined) {
       return null
     }
-    return { recorded: { uci: best.uci, source: 'free' } }
+    return { recorded: { uci: best.uci, source: 'free' }, moveCp: best.cp }
   }
 
   let allowed = moves
@@ -287,7 +294,7 @@ function chooseSoldierMove(
     source === 'command' && command !== null
       ? { uci: chosen.uci, source, commandOwner: command.owner }
       : { uci: chosen.uci, source: 'free' }
-  return { recorded }
+  return { recorded, moveCp: chosen.cp }
 }
 
 /**
@@ -327,7 +334,9 @@ export function completeResolution(
     if (choice === null) {
       return null
     }
-    games[gameIndex] = applyMoveToGame(game, choice.recorded)
+    const moverIsWhite = game.position.turn === 'white'
+    const evalCp = moverIsWhite ? choice.moveCp : -choice.moveCp
+    games[gameIndex] = applyMoveToGame(game, choice.recorded, evalCp)
     if (choice.recorded.source === 'command') {
       commandMoves += 1
     } else {
