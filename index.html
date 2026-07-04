@@ -138,7 +138,7 @@
             <dt>Resolution order</dt>
             <dd>Each turn resolves one half-move in every active game. Stockfish ranks every legal move; your order filters that list in each game where it matches; the soldier then samples a move aiming a set centipawn distance below the position&#39;s best. A soldier who can see a forced mate always takes it.</dd>
             <dt>Reading the board</dt>
-            <dd>All games appear stacked on one board. Your pieces are drawn white and your opponent&#39;s black &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square. If you play black, your view is flipped; ranks in your orders always count from your own side.</dd>
+            <dd>All games appear stacked on one board. Your pieces are drawn white and your opponent&#39;s black &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square. If you play black, your view is flipped. Literal moves like <code>e5</code> or <code>c5</code> use standard chess square names; natural-language orders count ranks from your own side.</dd>
             <dt>The compiler</dt>
             <dd>Your words are translated into a formal move predicate by a language model when you submit an order. The order log shows how many games followed each instruction.</dd>
             <dt>Scoring</dt>

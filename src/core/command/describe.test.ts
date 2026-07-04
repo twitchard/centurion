@@ -24,6 +24,19 @@ describe('describeCommandPredicate', () => {
     ).toBe('a move not (by a queen or king)')
   })
 
+  it('renders absolute single-square regions as algebraic names', () => {
+    expect(
+      describeCommandPredicate({
+        tag: 'to',
+        region: {
+          files: { from: 'c', to: 'c' },
+          ranks: { from: 5, to: 5 },
+          absolute: true,
+        },
+      }),
+    ).toBe('a move ending on c5')
+  })
+
   it('renders single-square regions', () => {
     expect(
       describeCommandPredicate({

@@ -23,11 +23,21 @@ function regionText(region: SquareRegion): string {
     )
   }
   if (region.ranks !== undefined) {
+    const rankLabel = region.absolute === true ? 'rank' : 'your rank'
     parts.push(
       region.ranks.from === region.ranks.to
-        ? `your rank ${region.ranks.from}`
-        : `your ranks ${region.ranks.from}-${region.ranks.to}`,
+        ? `${rankLabel} ${region.ranks.from}`
+        : `${rankLabel}s ${region.ranks.from}-${region.ranks.to}`,
     )
+  }
+  if (
+    region.absolute === true &&
+    region.files !== undefined &&
+    region.ranks !== undefined &&
+    region.files.from === region.files.to &&
+    region.ranks.from === region.ranks.to
+  ) {
+    return `${region.files.from}${region.ranks.from}`
   }
   return parts.join(' and ')
 }

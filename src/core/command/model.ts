@@ -39,13 +39,16 @@ export const FILE_LETTERS: readonly FileLetter[] = [
 
 /**
  * A rectangular patch of the board. Files are absolute (a–h, the same for
- * both colors, so "kingside" is always e–h). Ranks are numbered from the
- * *mover's* side (1 = the mover's back rank, 8 = the promotion rank), so
- * "advance to the 6th rank" means the same positional idea for both colors.
+ * both colors, so "kingside" is always e–h). Ranks default to the mover's
+ * side (1 = the mover's back rank, 8 = the promotion rank), so "advance to
+ * the 6th rank" means the same positional idea for both colors. Literal
+ * chess notation sets `absolute: true` so ranks are standard board ranks
+ * (1 = White's back rank, 8 = Black's back rank).
  */
 export interface SquareRegion {
   readonly files?: { readonly from: FileLetter; readonly to: FileLetter }
   readonly ranks?: { readonly from: number; readonly to: number }
+  readonly absolute?: true
 }
 
 export type CommandPredicate =

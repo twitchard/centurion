@@ -21,6 +21,11 @@ function relativeRank(square: Square, mover: Color): number {
   return mover === 'white' ? rank + 1 : 8 - rank
 }
 
+/** Standard board rank (1 = White's back rank, 8 = Black's back rank). */
+function boardRank(square: Square): number {
+  return squareRank(square) + 1
+}
+
 function fileIndex(letter: FileLetter): number {
   return FILE_LETTERS.indexOf(letter)
 }
@@ -40,7 +45,8 @@ function squareInRegion(
     }
   }
   if (region.ranks !== undefined) {
-    const rank = relativeRank(square, mover)
+    const rank =
+      region.absolute === true ? boardRank(square) : relativeRank(square, mover)
     if (rank < region.ranks.from || rank > region.ranks.to) {
       return false
     }

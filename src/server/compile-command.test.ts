@@ -94,6 +94,7 @@ describe('compileCommand', () => {
             region: {
               files: { from: 'c', to: 'c' },
               ranks: { from: 3, to: 3 },
+              absolute: true,
             },
           },
         ],

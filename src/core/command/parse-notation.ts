@@ -33,6 +33,7 @@ function squareRegion(file: string, rank: string): SquareRegion | null {
   return {
     files: { from: parsedFile, to: parsedFile },
     ranks: { from: parsedRank, to: parsedRank },
+    absolute: true,
   }
 }
 
@@ -67,9 +68,9 @@ function combine(...parts: CommandPredicate[]): CommandPredicate {
  * Compile standard chess notation directly into a move predicate, bypassing
  * the LLM. Returns null when the text is not unambiguous literal notation.
  *
- * Square names use the DSL's mover-relative ranks (rank 3 = the mover's third
- * rank), matching how the compile model interprets named squares. Bare
- * squares like `c3` follow SAN: no piece letter means pawn.
+ * Square names use standard board coordinates (rank 1 = White's back rank).
+ * Bare squares like `c5` mean a pawn to that square. Natural-language
+ * commands compiled by the LLM still use mover-relative ranks.
  */
 export function tryCompileLiteralNotation(
   text: string,

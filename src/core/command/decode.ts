@@ -75,7 +75,11 @@ function decodeRegion(
     diagnostics.push(`${path}: expected an object with 'files' and/or 'ranks'.`)
     return null
   }
-  const region = value as { files?: unknown; ranks?: unknown }
+  const region = value as {
+    files?: unknown
+    ranks?: unknown
+    absolute?: unknown
+  }
   let files: SquareRegion['files']
   if (region.files !== undefined) {
     if (!isRecord(region.files)) {
@@ -108,14 +112,21 @@ function decodeRegion(
     diagnostics.push(`${path}: region needs at least 'files' or 'ranks'.`)
     return null
   }
+  if (region.absolute !== undefined && region.absolute !== true) {
+    diagnostics.push(`${path}.absolute: expected true when present.`)
+    return null
+  }
+  const absolute = region.absolute === true ? true : undefined
   if (files !== undefined && ranks !== undefined) {
-    return { files, ranks }
+    return absolute === undefined
+      ? { files, ranks }
+      : { files, ranks, absolute }
   }
   if (files !== undefined) {
-    return { files }
+    return absolute === undefined ? { files } : { files, absolute }
   }
   if (ranks !== undefined) {
-    return { ranks }
+    return absolute === undefined ? { ranks } : { ranks, absolute }
   }
   return null
 }

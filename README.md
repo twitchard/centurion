@@ -17,7 +17,7 @@ The turn loop: type an order, **Compile** it, read the echo ("a move by a knight
 
 ## The command compiler
 
-Commands compile to a **move predicate**: a small JSON term over properties a single move can have (moving piece, from/to region, captures, gives check, castles, promotes, advances/retreats, attacks a role, escapes attack, plus and/or/not). Applying a predicate to a game's legal moves is pure and deterministic, so the compiled term is what enters match state and both peers replay it identically; the LLM's nondeterminism stays quarantined at the compile step. Ranks in a predicate are counted from the mover's side and files are absolute, so one predicate means the same positional idea in 100 divergent games.
+Commands compile to a **move predicate**: a small JSON term over properties a single move can have (moving piece, from/to region, captures, gives check, castles, promotes, advances/retreats, attacks a role, escapes attack, plus and/or/not). Applying a predicate to a game's legal moves is pure and deterministic, so the compiled term is what enters match state and both peers replay it identically; the LLM's nondeterminism stays quarantined at the compile step. Literal notation (`e4`, `c5`) uses standard board ranks; natural-language predicates count ranks from the mover's side and files are absolute, so one predicate means the same positional idea in 100 divergent games.
 
 The pieces:
 
@@ -46,7 +46,7 @@ To point at your own Firebase database instead:
 
 ### Board and display
 
-The board is displayed from your perspective: your pieces are always closest to you. The player who owns black sees the board rank-flipped so their pieces sit at the bottom, and ranks in commands always count from your own side.
+The board is displayed from your perspective: your pieces are always closest to you. The player who owns black sees the board rank-flipped so their pieces sit at the bottom. Literal chess notation (`e4`, `c5`, `Nf3`) uses standard square names; natural-language commands count ranks from your own side.
 
 Pieces from all active games are rendered on a single board with opacity proportional to how many games contain that piece on that square, producing a ghostly superposition. Precise orders visibly re-correlate the swarm; unled turns let it drift.
 

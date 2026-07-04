@@ -26,6 +26,38 @@ describe('decodeCommandPredicate', () => {
     })
   })
 
+  it('accepts absolute board ranks on regions', () => {
+    expect(
+      decodeCommandPredicate({
+        tag: 'to',
+        region: {
+          files: { from: 'c', to: 'c' },
+          ranks: { from: 5, to: 5 },
+          absolute: true,
+        },
+      }),
+    ).toEqual({
+      tag: 'valid',
+      value: {
+        tag: 'to',
+        region: {
+          files: { from: 'c', to: 'c' },
+          ranks: { from: 5, to: 5 },
+          absolute: true,
+        },
+      },
+    })
+  })
+
+  it('rejects non-true absolute flags', () => {
+    expect(
+      decodeCommandPredicate({
+        tag: 'to',
+        region: { ranks: { from: 5, to: 5 }, absolute: false },
+      }).tag,
+    ).toBe('invalid')
+  })
+
   it('rejects unknown tags with a path', () => {
     const result = decodeCommandPredicate({
       tag: 'and',
