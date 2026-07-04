@@ -2,7 +2,7 @@ import type { Chess } from 'chessops/chess'
 import { makeFen } from 'chessops/fen'
 import { type NormalMove, isNormal } from 'chessops/types'
 import { makeUci, parseUci } from 'chessops/util'
-import { moveMatches } from '../command/evaluate'
+import { filterNormalMovesByPredicate } from '../command/evaluate'
 import type { CommandPredicate } from '../command/model'
 import type { RngState } from '../rng'
 import {
@@ -287,8 +287,17 @@ function chooseSoldierMove(
   let allowed = moves
   let source: RecordedMove['source'] = 'free'
   if (command !== null) {
+    const matchedKeys = new Set(
+      filterNormalMovesByPredicate(
+        game.position,
+        moves.map((entry) => entry.move),
+        command.predicate,
+      ).map((move) => `${move.from}:${move.to}:${move.promotion ?? ''}`),
+    )
     const matched = moves.filter((entry) =>
-      moveMatches(game.position, entry.move, command.predicate),
+      matchedKeys.has(
+        `${entry.move.from}:${entry.move.to}:${entry.move.promotion ?? ''}`,
+      ),
     )
     if (matched.length > 0) {
       allowed = matched

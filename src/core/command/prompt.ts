@@ -89,6 +89,7 @@ export const SUBMIT_PREDICATE_INPUT_SCHEMA: Record<string, unknown> = {
                 'advances',
                 'retreats',
                 'escapes',
+                'safe',
               ],
             },
           },
@@ -132,6 +133,19 @@ export const SUBMIT_PREDICATE_INPUT_SCHEMA: Record<string, unknown> = {
             },
           },
           required: ['tag', 'any'],
+        },
+        {
+          type: 'object',
+          properties: {
+            tag: { const: 'prefer' },
+            options: {
+              type: 'array',
+              items: { $ref: '#/$defs/predicate' },
+              minItems: 1,
+              maxItems: MAX_COMBINATOR_ARITY,
+            },
+          },
+          required: ['tag', 'options'],
         },
       ],
     },
@@ -240,6 +254,64 @@ const FEW_SHOT_EXAMPLES: readonly FewShotExample[] = [
       ],
     },
   },
+  {
+    command: 'capture a queen or else a knight',
+    predicate: {
+      tag: 'prefer',
+      options: [
+        { tag: 'captures', roles: ['queen'] },
+        { tag: 'captures', roles: ['knight'] },
+      ],
+    },
+  },
+  {
+    command: 'castle preferring kingside',
+    predicate: {
+      tag: 'prefer',
+      options: [
+        {
+          tag: 'and',
+          all: [
+            { tag: 'castles' },
+            { tag: 'to', region: { files: { from: 'g', to: 'g' } } },
+          ],
+        },
+        {
+          tag: 'and',
+          all: [
+            { tag: 'castles' },
+            { tag: 'to', region: { files: { from: 'c', to: 'c' } } },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    command: 'move the queen to safety',
+    predicate: {
+      tag: 'and',
+      all: [{ tag: 'piece', roles: ['queen'] }, { tag: 'safe' }],
+    },
+  },
+  {
+    command: 'fork with knight if safe',
+    predicate: {
+      tag: 'and',
+      all: [
+        { tag: 'piece', roles: ['knight'] },
+        { tag: 'attacks', roles: ['queen'] },
+        { tag: 'attacks', roles: ['king'] },
+        { tag: 'safe' },
+      ],
+    },
+  },
+  {
+    command: 'promote if safe',
+    predicate: {
+      tag: 'and',
+      all: [{ tag: 'promotes' }, { tag: 'safe' }],
+    },
+  },
 ]
 
 function renderExample(example: FewShotExample): string {
@@ -269,7 +341,9 @@ export const COMPILE_SYSTEM_PROMPT = [
   "- {tag: 'advances'} / {tag: 'retreats'} — the move ends closer to / farther from the opponent's back rank.",
   "- {tag: 'attacks', roles: [...]} — after the move, the moved piece attacks an enemy piece of one of these roles.",
   "- {tag: 'escapes'} — the moving piece is currently attacked by an enemy piece.",
+  "- {tag: 'safe'} — after the move, the moved piece is safe (undefended attacks lose a simplified exchange cascade).",
   "- {tag: 'not', inner} / {tag: 'and', all: [...]} / {tag: 'or', any: [...]} — combinators.",
+  "- {tag: 'prefer', options: [...]} — try each option in order; use the first with any matching legal moves (for 'or else', 'preferring', 'if you can').",
   '',
   `Limits: at most ${MAX_PREDICATE_NODES} nodes and nesting depth ${MAX_PREDICATE_DEPTH}. Prefer the simplest predicate that captures the command's chess intent.`,
   '',

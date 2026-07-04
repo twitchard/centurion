@@ -202,6 +202,7 @@ function decodeNode(
     inner?: unknown
     all?: unknown
     any?: unknown
+    options?: unknown
   }
   switch (node.tag) {
     case 'piece': {
@@ -226,6 +227,7 @@ function decodeNode(
     case 'advances':
     case 'retreats':
     case 'escapes':
+    case 'safe':
       return { tag: node.tag }
     case 'attacks': {
       const roles = decodeRoles(node.roles, `${path}.roles`, diagnostics)
@@ -257,6 +259,15 @@ function decodeNode(
         diagnostics,
       )
       return any === null ? null : { tag: 'or', any }
+    }
+    case 'prefer': {
+      const options = decodeChildren(
+        node.options,
+        `${path}.options`,
+        depth + 1,
+        diagnostics,
+      )
+      return options === null ? null : { tag: 'prefer', options }
     }
     default:
       diagnostics.push(`${path}: unknown predicate tag '${String(node.tag)}'.`)

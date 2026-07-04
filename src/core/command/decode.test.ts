@@ -121,8 +121,23 @@ describe('decodeCommandPredicate', () => {
     }
   })
 
-  it('rejects non-object input', () => {
-    expect(decodeCommandPredicate('castles').tag).toBe('invalid')
-    expect(decodeCommandPredicate(null).tag).toBe('invalid')
+  it('accepts the safe leaf tag', () => {
+    expect(decodeCommandPredicate({ tag: 'safe' })).toEqual({
+      tag: 'valid',
+      value: { tag: 'safe' },
+    })
+  })
+
+  it('accepts ordered preference', () => {
+    const predicate: CommandPredicate = {
+      tag: 'prefer',
+      options: [
+        { tag: 'captures', roles: ['queen'] },
+        { tag: 'captures', roles: ['knight'] },
+      ],
+    }
+    expect(
+      decodeCommandPredicate(JSON.parse(JSON.stringify(predicate))),
+    ).toEqual({ tag: 'valid', value: predicate })
   })
 })

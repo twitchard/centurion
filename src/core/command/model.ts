@@ -74,9 +74,13 @@ export type CommandPredicate =
   | { readonly tag: 'attacks'; readonly roles: readonly PieceRole[] }
   /** The moving piece is currently attacked by an enemy piece. */
   | { readonly tag: 'escapes' }
+  /** After the move, the moved piece is safe (see `safety.ts`). */
+  | { readonly tag: 'safe' }
   | { readonly tag: 'not'; readonly inner: CommandPredicate }
   | { readonly tag: 'and'; readonly all: readonly CommandPredicate[] }
   | { readonly tag: 'or'; readonly any: readonly CommandPredicate[] }
+  /** First option with any matching legal moves wins; later options are fallback. */
+  | { readonly tag: 'prefer'; readonly options: readonly CommandPredicate[] }
 
 /** Hard cap on total predicate nodes; the codec rejects anything larger. */
 export const MAX_PREDICATE_NODES = 16
@@ -100,6 +104,14 @@ export function predicateNodeCount(predicate: CommandPredicate): number {
       return (
         1 +
         predicate.any.reduce((sum, child) => sum + predicateNodeCount(child), 0)
+      )
+    case 'prefer':
+      return (
+        1 +
+        predicate.options.reduce(
+          (sum, child) => sum + predicateNodeCount(child),
+          0,
+        )
       )
     default:
       return 1

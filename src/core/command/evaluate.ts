@@ -10,6 +10,7 @@ import {
   type PieceRole,
   type SquareRegion,
 } from './model'
+import { isSquareSafeAfterMove } from './safety'
 
 /**
  * Rank as seen from the mover's side: 1 is the mover's back rank, 8 the
@@ -182,13 +183,92 @@ export function moveMatches(
       return position
         .kingAttackers(move.from, opposite(mover), position.board.occupied)
         .nonEmpty()
+    case 'safe':
+      return isSquareSafeAfterMove(position, move)
     case 'not':
       return !moveMatches(position, move, predicate.inner)
     case 'and':
       return predicate.all.every((child) => moveMatches(position, move, child))
     case 'or':
       return predicate.any.some((child) => moveMatches(position, move, child))
+    case 'prefer':
+      return predicate.options.some((child) =>
+        moveMatches(position, move, child),
+      )
   }
+}
+
+export function filterNormalMovesByPredicate(
+  position: Chess,
+  moves: readonly NormalMove[],
+  predicate: CommandPredicate,
+): NormalMove[] {
+  return filterMovesByPredicate(position, moves, predicate)
+}
+
+function moveKey(move: NormalMove): string {
+  return `${move.from}:${move.to}:${move.promotion ?? ''}`
+}
+
+function filterMovesByPredicate(
+  position: Chess,
+  moves: readonly NormalMove[],
+  predicate: CommandPredicate,
+): NormalMove[] {
+  switch (predicate.tag) {
+    case 'prefer': {
+      for (const option of predicate.options) {
+        const matched = filterMovesByPredicate(position, moves, option)
+        if (matched.length > 0) {
+          return matched
+        }
+      }
+      return []
+    }
+    case 'and':
+      return predicate.all.reduce<NormalMove[]>(
+        (current, child) => filterMovesByPredicate(position, current, child),
+        [...moves],
+      )
+    case 'or': {
+      const seen = new Set<string>()
+      const matched: NormalMove[] = []
+      for (const child of predicate.any) {
+        for (const move of filterMovesByPredicate(position, moves, child)) {
+          const key = moveKey(move)
+          if (seen.has(key)) {
+            continue
+          }
+          seen.add(key)
+          matched.push(move)
+        }
+      }
+      return matched
+    }
+    case 'not':
+      return moves.filter(
+        (move) => !moveMatches(position, move, predicate.inner),
+      )
+    default:
+      return moves.filter((move) => moveMatches(position, move, predicate))
+  }
+}
+
+function legalNormalMoves(position: Chess): NormalMove[] {
+  const moves: NormalMove[] = []
+  for (const [from, dests] of position.allDests()) {
+    const piece = position.board.get(from)
+    for (const to of dests) {
+      moves.push(
+        piece !== undefined &&
+          piece.role === 'pawn' &&
+          relativeRank(to, position.turn) === 8
+          ? { from, to, promotion: 'queen' }
+          : { from, to },
+      )
+    }
+  }
+  return moves
 }
 
 export interface MatchingMove {
@@ -208,25 +288,17 @@ export function matchingMoves(
 ): MatchingMove[] {
   const seen = new Set<string>()
   const matches: MatchingMove[] = []
-  for (const [from, dests] of position.allDests()) {
-    const piece = position.board.get(from)
-    for (const to of dests) {
-      const move: NormalMove =
-        piece !== undefined &&
-        piece.role === 'pawn' &&
-        relativeRank(to, position.turn) === 8
-          ? { from, to, promotion: 'queen' }
-          : { from, to }
-      if (!moveMatches(position, move, predicate)) {
-        continue
-      }
-      const san = makeSan(position, move)
-      if (seen.has(san)) {
-        continue
-      }
-      seen.add(san)
-      matches.push({ move, san })
+  for (const move of filterMovesByPredicate(
+    position,
+    legalNormalMoves(position),
+    predicate,
+  )) {
+    const san = makeSan(position, move)
+    if (seen.has(san)) {
+      continue
     }
+    seen.add(san)
+    matches.push({ move, san })
   }
   matches.sort((a, b) => a.san.localeCompare(b.san))
   return matches

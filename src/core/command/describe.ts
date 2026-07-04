@@ -68,11 +68,19 @@ function clause(predicate: CommandPredicate): string {
       return `that attacks an enemy ${roleList(predicate.roles)}`
     case 'escapes':
       return 'by a piece that is under attack'
+    case 'safe':
+      return 'that lands safe'
     case 'not':
       return `not (${clause(predicate.inner)})`
     case 'and':
       return predicate.all.map(clause).join(' and ')
     case 'or':
       return `(${predicate.any.map(clause).join(' or ')})`
+    case 'prefer':
+      return predicate.options
+        .map((option, index) =>
+          index === 0 ? clause(option) : `else ${clause(option)}`,
+        )
+        .join(', ')
   }
 }
