@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MICRO_PAWN_HISTOGRAM_BIN_CP,
   aggregateMicroPawnStats,
   evalForPlayer,
   evalFromWhiteAfterMove,
@@ -30,15 +29,15 @@ describe('evalForPlayer', () => {
 })
 
 describe('aggregateMicroPawnStats', () => {
-  it('averages active games from the viewer perspective', () => {
+  it('uses the median across active games from the viewer perspective', () => {
     const match = initMatch(1, { gameCount: 4, whitePlayer: 1 })
     const games = match.games.map((game, index) => {
       const evalCp = [80, 10, -10, -80][index] ?? 0
-      return { ...game, evalCp }
+      return { ...game, evalCp, status: { tag: 'active' as const } }
     })
     const stats = aggregateMicroPawnStats({ ...match, games }, 1)
     expect(stats.activeGames).toBe(4)
-    expect(stats.averageCp).toBe(0)
+    expect(stats.medianCp).toBe(0)
   })
 
   it('ignores finished games', () => {
@@ -57,20 +56,21 @@ describe('aggregateMicroPawnStats', () => {
     ]
     const stats = aggregateMicroPawnStats({ ...match, games }, 1)
     expect(stats.activeGames).toBe(1)
-    expect(stats.averageCp).toBe(-200)
+    expect(stats.medianCp).toBe(-200)
   })
 })
 
 describe('microPawnHistogram', () => {
-  it('bins games symmetrically around even', () => {
-    const match = initMatch(1, { gameCount: 4, whitePlayer: 1 })
+  it('spreads normal evals across the middle bins', () => {
+    const match = initMatch(1, { gameCount: 5, whitePlayer: 1 })
     const games = match.games.map((game, index) => {
-      const evalCp = [120, 20, -20, -120][index] ?? 0
-      return { ...game, evalCp }
+      const evalCp = [-40, -20, 0, 20, 40][index] ?? 0
+      return { ...game, evalCp, status: { tag: 'active' as const } }
     })
-    expect(microPawnHistogram({ ...match, games }, 1)).toEqual([
-      0, 1, 0, 2, 0, 1, 0,
-    ])
+    const bins = microPawnHistogram({ ...match, games }, 1)
+    expect(bins.reduce((total, count) => total + count, 0)).toBe(5)
+    const middle = bins.slice(1, bins.length - 1)
+    expect(middle.filter((count) => count > 0).length).toBeGreaterThan(1)
   })
 
   it('clamps mate scores into the outer bins', () => {
@@ -78,6 +78,7 @@ describe('microPawnHistogram', () => {
     const games = match.games.map((game, index) => ({
       ...game,
       evalCp: index === 0 ? MATE_CP : -MATE_CP,
+      status: { tag: 'active' as const },
     }))
     const bins = microPawnHistogram({ ...match, games }, 1)
     expect(bins[0]).toBe(1)
@@ -100,14 +101,15 @@ describe('formatMicroPawns', () => {
 })
 
 describe('microPawnHistogramLabel', () => {
-  it('describes the average and bucket counts for screen readers', () => {
+  it('describes the median and bucket counts for screen readers', () => {
     const match = initMatch(1, { gameCount: 3, whitePlayer: 1 })
     const games = match.games.map((game, index) => ({
       ...game,
-      evalCp: index === 0 ? MICRO_PAWN_HISTOGRAM_BIN_CP + 5 : 0,
+      evalCp: index === 0 ? 55 : 0,
+      status: { tag: 'active' as const },
     }))
     expect(microPawnHistogramLabel({ ...match, games }, 1)).toBe(
-      'Average position +0.18 pawns across 3 games; 1 ahead, 2 even, 0 behind',
+      'Median position 0.00 pawns across 3 games; 1 ahead, 0 even, 2 behind',
     )
   })
 })

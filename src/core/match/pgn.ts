@@ -12,7 +12,12 @@ import { makeSanAndPlay } from 'chessops/san'
 import { isNormal } from 'chessops/types'
 import { makeSquare, parseUci } from 'chessops/util'
 import { formatMicroPawns } from './eval'
-import type { MatchGame, RecordedMove } from './model'
+import type {
+  IssuedCommand,
+  MatchGame,
+  MatchState,
+  RecordedMove,
+} from './model'
 
 export interface GameMoveSourceCounts {
   readonly command: number
@@ -86,6 +91,18 @@ function outcomeForPgn(game: MatchGame): string {
     return makeOutcome({ winner: undefined })
   }
   return '*'
+}
+
+export function commandForPly(
+  match: MatchState,
+  game: MatchGame,
+  ply: number,
+): IssuedCommand | null {
+  if (ply <= 0) {
+    return null
+  }
+  const turn = game.activationTurn + ply - 1
+  return match.commands.find((command) => command.turn === turn) ?? null
 }
 
 export function replaySnapshot(game: MatchGame, ply: number): ReplaySnapshot {

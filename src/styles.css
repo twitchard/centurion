@@ -804,6 +804,91 @@ canvas {
   opacity: 0.85;
 }
 
+.centurion-recent-commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.centurion-reissue-btn {
+  font-size: 0.78rem;
+  padding: 4px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.centurion-stats-panel {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+
+.centurion-stats-panel > summary {
+  cursor: pointer;
+  color: var(--ink-dim);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.centurion-stats-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.centurion-stats-tab {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: var(--bg-deep);
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.centurion-stats-tab--active {
+  border-color: var(--gold);
+  color: var(--gold-pale);
+  background: var(--panel);
+}
+
+.centurion-stats-content {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.centurion-stats-content dt {
+  margin: 0;
+  color: var(--ink-faint);
+}
+
+.centurion-stats-content dd {
+  margin: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.centurion-arrow-entry--clickable {
+  cursor: pointer;
+}
+
+.centurion-arrow-entry--clickable:hover {
+  text-decoration: underline;
+}
+
+.centurion-replay-command {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-dim);
+  font-style: italic;
+}
+
 .centurion-meta-line {
   font-size: 0.82rem;
   color: var(--ink-dim);

@@ -5,16 +5,13 @@ import {
   type PlayerId,
 } from './model'
 
-/** Half-pawn width for each histogram bin (centipawns). */
-export const MICRO_PAWN_HISTOGRAM_BIN_CP = 50
-
-/** Symmetric bins around even; extremes clamp to the outer bars. */
+/** Inner histogram bins between the mate clamps (7 total = 2 mate + 5 spread). */
 export const MICRO_PAWN_HISTOGRAM_BIN_COUNT = 7
 
 export interface MicroPawnAggregate {
   readonly activeGames: number
-  /** Mean centipawns from `viewer`'s perspective across active games. */
-  readonly averageCp: number
+  /** Median centipawns from `viewer`'s perspective across active games. */
+  readonly medianCp: number
 }
 
 /** Centipawns from white's perspective after the last resolved half-move. */
@@ -30,25 +27,33 @@ export function evalForPlayer(game: MatchGame, player: PlayerId): number {
   return game.whiteOwner === player ? game.evalCp : -game.evalCp
 }
 
-function clampCpForHistogram(cp: number): number {
-  if (cp >= MATE_THRESHOLD_CP) {
-    return (
-      (Math.floor(MICRO_PAWN_HISTOGRAM_BIN_COUNT / 2) + 2) *
-      MICRO_PAWN_HISTOGRAM_BIN_CP
-    )
+function median(values: readonly number[]): number {
+  if (values.length === 0) {
+    return 0
   }
-  if (cp <= -MATE_THRESHOLD_CP) {
-    return (
-      -(Math.floor(MICRO_PAWN_HISTOGRAM_BIN_COUNT / 2) + 2) *
-      MICRO_PAWN_HISTOGRAM_BIN_CP
-    )
+  const sorted = [...values].sort((left, right) => left - right)
+  const mid = Math.floor(sorted.length / 2)
+  if (sorted.length % 2 === 0) {
+    return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
   }
-  return cp
+  return sorted[mid] ?? 0
+}
+
+function activeEvals(match: MatchState, viewer: PlayerId): number[] {
+  const evals: number[] = []
+  for (const game of match.games) {
+    if (game.status.tag !== 'active') {
+      continue
+    }
+    evals.push(evalForPlayer(game, viewer))
+  }
+  return evals
 }
 
 /**
- * Bucket active games by viewer-relative eval into a symmetric histogram.
- * The center bin is roughly even; outer bins clamp extreme scores.
+ * Bucket active games by viewer-relative eval. Mate scores clamp to the
+ * outer bars; everything else spreads across the middle bins using the
+ * current min/max so the histogram uses its full width.
  */
 export function microPawnHistogram(
   match: MatchState,
@@ -56,39 +61,58 @@ export function microPawnHistogram(
   binCount: number = MICRO_PAWN_HISTOGRAM_BIN_COUNT,
 ): readonly number[] {
   const bins = Array.from({ length: binCount }, () => 0)
-  const center = Math.floor(binCount / 2)
-  for (const game of match.games) {
-    if (game.status.tag !== 'active') {
+  if (binCount < 3) {
+    return bins
+  }
+  const evals = activeEvals(match, viewer)
+  const matesBehind = evals.filter((cp) => cp <= -MATE_THRESHOLD_CP).length
+  const matesAhead = evals.filter((cp) => cp >= MATE_THRESHOLD_CP).length
+  const normal = evals.filter(
+    (cp) => cp > -MATE_THRESHOLD_CP && cp < MATE_THRESHOLD_CP,
+  )
+
+  bins[0] = matesBehind
+  bins[binCount - 1] = matesAhead
+
+  if (normal.length === 0) {
+    return bins
+  }
+
+  const middleBinCount = binCount - 2
+  const sorted = [...normal].sort((left, right) => left - right)
+  const min = sorted[0] ?? 0
+  const max = sorted[sorted.length - 1] ?? 0
+  const range = max - min
+
+  for (const cp of normal) {
+    if (range === 0) {
+      const center = Math.floor(binCount / 2)
+      bins[center] = (bins[center] ?? 0) + 1
       continue
     }
-    const cp = clampCpForHistogram(evalForPlayer(game, viewer))
-    const offset = Math.round(cp / MICRO_PAWN_HISTOGRAM_BIN_CP)
-    const index = Math.max(0, Math.min(binCount - 1, center + offset))
-    bins[index] = (bins[index] ?? 0) + 1
+    const ratio = (cp - min) / range
+    const offset = Math.min(
+      middleBinCount - 1,
+      Math.max(0, Math.floor(ratio * middleBinCount)),
+    )
+    bins[1 + offset] = (bins[1 + offset] ?? 0) + 1
   }
+
   return bins
 }
 
 /**
  * Summarise how far `viewer` is ahead across every still-active game,
- * using each game's stored micro-pawn evaluation.
+ * using the median micro-pawn evaluation (robust to lopsided outliers).
  */
 export function aggregateMicroPawnStats(
   match: MatchState,
   viewer: PlayerId,
 ): MicroPawnAggregate {
-  let sum = 0
-  let activeGames = 0
-  for (const game of match.games) {
-    if (game.status.tag !== 'active') {
-      continue
-    }
-    activeGames += 1
-    sum += evalForPlayer(game, viewer)
-  }
+  const evals = activeEvals(match, viewer)
   return {
-    activeGames,
-    averageCp: activeGames === 0 ? 0 : sum / activeGames,
+    activeGames: evals.length,
+    medianCp: median(evals),
   }
 }
 
@@ -126,5 +150,5 @@ export function microPawnHistogramLabel(
     .slice(center + 1)
     .reduce((total, count) => total + count, 0)
   const even = bins[center] ?? 0
-  return `Average position ${formatMicroPawns(stats.averageCp)} pawns across ${stats.activeGames} games; ${ahead} ahead, ${even} even, ${behind} behind`
+  return `Median position ${formatMicroPawns(stats.medianCp)} pawns across ${stats.activeGames} games; ${ahead} ahead, ${even} even, ${behind} behind`
 }
