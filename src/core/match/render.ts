@@ -2,22 +2,19 @@ import type { Role } from 'chessops/types'
 import { buildSuperpositionRenderModel } from '../superposition/build-render-model'
 import type {
   ArrowCoordinate,
-  ArrowSegment,
   FenBoardPosition,
   FenPieceSymbol,
   PiecePlacement,
   SuperpositionRenderModel,
 } from '../superposition/types'
 import {
-  type BoardArrow,
   type BoardSquare,
   type MatchGame,
   type MatchState,
   type PlayerId,
-  arrowPullWeight,
   otherPlayer,
 } from './model'
-import { type PendingResolution, flipSquare } from './resolve'
+import { flipSquare } from './resolve'
 
 const WHITE_SYMBOLS: Record<Role, FenPieceSymbol> = {
   pawn: 'P',
@@ -37,24 +34,12 @@ const BLACK_SYMBOLS: Record<Role, FenPieceSymbol> = {
   king: 'k',
 }
 
-/**
- * Convert between a viewer's visual square and the canonical (player 1)
- * frame. Player 2 sees the board rank-flipped; the transform is its own
- * inverse, so this works in both directions.
- */
-export function toCanonicalSquare(
-  viewer: PlayerId,
-  square: BoardSquare,
-): BoardSquare {
-  return viewer === 1 ? square : flipSquare(square)
+export function squareName(square: BoardSquare): string {
+  return `${String.fromCharCode(97 + (square & 7))}${(square >> 3) + 1}`
 }
 
 export function squareToCoordinate(square: BoardSquare): ArrowCoordinate {
   return { col: square & 7, row: square >> 3 }
-}
-
-export function squareName(square: BoardSquare): string {
-  return `${String.fromCharCode(97 + (square & 7))}${(square >> 3) + 1}`
 }
 
 export function visualSquare(
@@ -97,32 +82,6 @@ export function gameVisualPieces(
   return pieces
 }
 
-/** The arrow layer for the viewer, weighted at the match's current turn. */
-export function matchArrowSegments(
-  match: MatchState,
-  viewer: PlayerId,
-  placedArrows: readonly BoardArrow[] = match.arrows,
-): ArrowSegment[] {
-  const arrows: ArrowSegment[] = []
-  for (const boardArrow of placedArrows) {
-    const weight = arrowPullWeight(
-      boardArrow.cardinality,
-      boardArrow.placedTurn,
-      match.turn,
-    )
-    if (weight === 0) {
-      continue
-    }
-    arrows.push({
-      from: squareToCoordinate(toCanonicalSquare(viewer, boardArrow.from)),
-      to: squareToCoordinate(toCanonicalSquare(viewer, boardArrow.to)),
-      owner: boardArrow.owner,
-      count: weight,
-    })
-  }
-  return arrows
-}
-
 /**
  * Project the live match onto the unified superposition board as seen by
  * one player. The white owner's games render in the canonical frame; the
@@ -131,37 +90,18 @@ export function matchArrowSegments(
  *
  * Pieces are colored by ownership, not by chess color: the viewer's
  * pieces always render white and the opponent's black.
- *
- * While a turn is mid-resolution (Stockfish still computing), pass the
- * pending resolution so the just-placed arrow and any games it already
- * moved appear immediately instead of after the engine finishes.
  */
 export function matchRenderModel(
   match: MatchState,
   viewer: PlayerId,
-  selected: BoardSquare | null,
-  resolving: PendingResolution | null = null,
 ): SuperpositionRenderModel {
-  const games = resolving === null ? match.games : resolving.games
-  const placedArrows = resolving === null ? match.arrows : resolving.arrows
-
   const positions: FenBoardPosition[] = []
-  for (const game of games) {
+  for (const game of match.games) {
     if (game.status.tag !== 'active') {
       continue
     }
     positions.push({ pieces: gameVisualPieces(game, viewer) })
   }
-
-  const arrows = matchArrowSegments(match, viewer, placedArrows)
-
-  const base = buildSuperpositionRenderModel(positions, arrows)
-  if (selected === null) {
-    return { ...base, viewerPlayer: viewer }
-  }
-  return {
-    ...base,
-    viewerPlayer: viewer,
-    highlight: squareToCoordinate(selected),
-  }
+  const base = buildSuperpositionRenderModel(positions, [])
+  return { ...base, viewerPlayer: viewer }
 }

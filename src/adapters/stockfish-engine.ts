@@ -1,5 +1,7 @@
 import engineScriptUrl from 'stockfish/bin/stockfish-18-lite-single.js?url'
 import engineWasmUrl from 'stockfish/bin/stockfish-18-lite-single.wasm?url'
+import { MATE_CP } from '../core/match/model'
+import type { RankedMove } from '../core/match/resolve'
 import type { EnginePort } from '../ports/engine'
 
 const SEARCH_TIMEOUT_MS = 30_000
@@ -25,20 +27,29 @@ export function parseBestMoveLine(line: string): string | null {
 export interface MultiPvInfo {
   readonly rank: number
   readonly move: string
+  /** Centipawns from the mover's perspective; mates mapped near ±MATE_CP. */
+  readonly cp: number
 }
 
-/** Extract the rank and root move from a MultiPV `info` line. */
+/** Extract rank, root move, and score from a MultiPV `info` line. */
 export function parseMultiPvLine(line: string): MultiPvInfo | null {
-  const match = /^info\b.*?\bmultipv (\d+)\b.*?\bpv (\S+)/.exec(line)
+  const match =
+    /^info\b.*?\bmultipv (\d+)\b.*?\bscore (cp|mate) (-?\d+)\b.*?\bpv (\S+)/.exec(
+      line,
+    )
   if (match === null) {
     return null
   }
   const rank = Number(match[1])
-  const move = match[2]
-  if (move === undefined || !Number.isFinite(rank)) {
+  const kind = match[2]
+  const value = Number(match[3])
+  const move = match[4]
+  if (move === undefined || !Number.isFinite(rank) || !Number.isFinite(value)) {
     return null
   }
-  return { rank, move }
+  const cp =
+    kind === 'mate' ? (value >= 0 ? MATE_CP - value : -MATE_CP - value) : value
+  return { rank, move, cp }
 }
 
 export interface SearchPlan {
@@ -49,12 +60,11 @@ export interface SearchPlan {
 }
 
 /**
- * Centurion matches hold many games in literally the same position —
- * all 100 start identical, and identical positions receive identical
- * engine moves, so groups only split when an arrow picks one game out.
- * Searching each distinct position once routinely saves >90% of the
- * engine work (and guarantees identical positions get identical moves
- * regardless of transposition-table carry-over between searches).
+ * Centurion matches hold many games in literally the same position — all
+ * 100 start identical. Identical positions receive identical ranked
+ * lists; the games still diverge because each one samples its own move
+ * from the list with the match rng. Searching each distinct position
+ * once routinely saves >90% of the engine work.
  */
 export function planSearches(fens: readonly string[]): SearchPlan {
   const unique: string[] = []
@@ -75,52 +85,32 @@ export function planSearches(fens: readonly string[]): SearchPlan {
 /**
  * Single-threaded Stockfish (WASM) behind a web worker, speaking UCI.
  * Searches are serialised: one `position`/`go depth N` exchange at a
- * time, each resolving with the engine's `bestmove`.
+ * time, each resolving with the ranked root moves of the final
+ * iteration.
  */
 export class StockfishEngineAdapter implements EnginePort {
   private workerInit: Promise<Worker> | null = null
   private lineHandler: ((line: string) => void) | null = null
   private chain: Promise<unknown> = Promise.resolve()
 
-  bestMoves(
+  rankedMoves(
     fens: readonly string[],
     depth: number,
-  ): Promise<readonly string[]> {
-    return this.runBatch(fens, 1, (worker, fen) =>
-      this.search(worker, fen, depth),
-    )
-  }
-
-  worstMoves(
-    fens: readonly string[],
-    depth: number,
-  ): Promise<readonly string[]> {
-    return this.runBatch(fens, MULTIPV_ALL, (worker, fen) =>
-      this.searchWorst(worker, fen, depth),
-    )
-  }
-
-  private runBatch(
-    fens: readonly string[],
-    multiPv: number,
-    searchOne: (worker: Worker, fen: string) => Promise<string>,
-  ): Promise<readonly string[]> {
+  ): Promise<readonly (readonly RankedMove[])[]> {
     const run = this.chain.then(async () => {
       const worker = await this.initWorker()
-      // Every batch states its own MultiPV, so best- and worst-move
-      // batches can interleave without leaking the option.
-      worker.postMessage(`setoption name MultiPV value ${multiPv}`)
+      worker.postMessage(`setoption name MultiPV value ${MULTIPV_ALL}`)
       const plan = planSearches(fens)
-      const uniqueMoves: string[] = []
+      const uniqueLists: (readonly RankedMove[])[] = []
       for (const fen of plan.unique) {
-        uniqueMoves.push(await searchOne(worker, fen))
+        uniqueLists.push(await this.searchRanked(worker, fen, depth))
       }
       return plan.indices.map((index) => {
-        const move = uniqueMoves[index]
-        if (move === undefined) {
+        const list = uniqueLists[index]
+        if (list === undefined) {
           throw new Error('Search plan produced a gap')
         }
-        return move
+        return list
       })
     })
     // Keep the chain alive even if a batch fails, so the next call runs.
@@ -161,40 +151,19 @@ export class StockfishEngineAdapter implements EnginePort {
     return this.workerInit
   }
 
-  private search(worker: Worker, fen: string, depth: number): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.lineHandler = null
-        reject(new Error('Stockfish search timed out'))
-      }, SEARCH_TIMEOUT_MS)
-      this.lineHandler = (line) => {
-        const move = parseBestMoveLine(line)
-        if (move === null) {
-          return
-        }
-        this.lineHandler = null
-        clearTimeout(timeout)
-        resolve(move)
-      }
-      worker.postMessage(`position fen ${fen}`)
-      worker.postMessage(`go depth ${depth}`)
-    })
-  }
-
   /**
-   * With MultiPV covering every root move, the engine streams one
-   * ranked `info` line per move per iteration; the highest rank at the
-   * final iteration is the worst move. Later lines overwrite earlier
-   * ones per rank, and every iteration ranks the same move count, so
-   * the map ends holding the deepest ranking.
+   * With MultiPV covering every root move, the engine streams one ranked
+   * `info` line per move per iteration; later lines overwrite earlier
+   * ones per rank, so the map ends holding the deepest ranking. The
+   * `bestmove` line closes the search.
    */
-  private searchWorst(
+  private searchRanked(
     worker: Worker,
     fen: string,
     depth: number,
-  ): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      const ranked = new Map<number, string>()
+  ): Promise<readonly RankedMove[]> {
+    return new Promise<readonly RankedMove[]>((resolve, reject) => {
+      const ranked = new Map<number, RankedMove>()
       const timeout = setTimeout(() => {
         this.lineHandler = null
         reject(new Error('Stockfish search timed out'))
@@ -202,17 +171,23 @@ export class StockfishEngineAdapter implements EnginePort {
       this.lineHandler = (line) => {
         const info = parseMultiPvLine(line)
         if (info !== null) {
-          ranked.set(info.rank, info.move)
+          ranked.set(info.rank, { uci: info.move, cp: info.cp })
           return
         }
         const best = parseBestMoveLine(line)
-        if (best === null) {
+        if (best === null && !line.startsWith('bestmove')) {
           return
         }
         this.lineHandler = null
         clearTimeout(timeout)
-        const worstRank = Math.max(0, ...ranked.keys())
-        resolve(ranked.get(worstRank) ?? best)
+        const list = [...ranked.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([, move]) => move)
+        if (list.length === 0 && best !== null) {
+          // Degenerate positions can skip info lines; trust bestmove.
+          list.push({ uci: best, cp: 0 })
+        }
+        resolve(list)
       }
       worker.postMessage(`position fen ${fen}`)
       worker.postMessage(`go depth ${depth}`)

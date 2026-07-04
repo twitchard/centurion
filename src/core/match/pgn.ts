@@ -14,32 +14,32 @@ import { makeSquare, parseUci } from 'chessops/util'
 import type { MatchGame, RecordedMove } from './model'
 
 export interface GameMoveSourceCounts {
-  readonly arrow: number
-  readonly engine: number
+  readonly command: number
+  readonly free: number
 }
 
 export function gameMoveSourceCounts(game: MatchGame): GameMoveSourceCounts {
-  let arrow = 0
-  let engine = 0
+  let command = 0
+  let free = 0
   for (const move of game.moves) {
-    if (move.source === 'arrow') {
-      arrow += 1
+    if (move.source === 'command') {
+      command += 1
     } else {
-      engine += 1
+      free += 1
     }
   }
-  return { arrow, engine }
+  return { command, free }
 }
 
-/** Games steered most by arrows (vs Stockfish) appear first. */
+/** Games steered most by commands (vs unled soldiers) appear first. */
 export function compareGamesForReplay(a: MatchGame, b: MatchGame): number {
   const aCounts = gameMoveSourceCounts(a)
   const bCounts = gameMoveSourceCounts(b)
-  if (bCounts.arrow !== aCounts.arrow) {
-    return bCounts.arrow - aCounts.arrow
+  if (bCounts.command !== aCounts.command) {
+    return bCounts.command - aCounts.command
   }
-  if (aCounts.engine !== bCounts.engine) {
-    return aCounts.engine - bCounts.engine
+  if (aCounts.free !== bCounts.free) {
+    return aCounts.free - bCounts.free
   }
   return a.id - b.id
 }
@@ -168,7 +168,7 @@ export function describeGameReplayLabel(
   names: PlayerNames = DEFAULT_PLAYER_NAMES,
 ): string {
   const counts = gameMoveSourceCounts(game)
-  return `Game ${game.id + 1} (${counts.arrow} arrow / ${counts.engine} engine, ${describeGameResult(game, names)}, ${game.moves.length} plies)`
+  return `Game ${game.id + 1} (${counts.command} ordered / ${counts.free} free, ${describeGameResult(game, names)}, ${game.moves.length} plies)`
 }
 
 export function describeGameResult(

@@ -68,31 +68,49 @@ vi.mock('chessground', () => ({
 
 vi.mock('./adapters/stockfish-engine', () => {
   class MockStockfishEngineAdapter {
-    async bestMoves(fens: readonly string[]): Promise<readonly string[]> {
+    async rankedMoves(
+      fens: readonly string[],
+    ): Promise<readonly (readonly { uci: string; cp: number }[])[]> {
       const { Chess } = await import('chessops/chess')
       const { parseFen } = await import('chessops/fen')
       const { makeUci, squareRank } = await import('chessops/util')
       return fens.map((fen) => {
         const position = Chess.fromSetup(parseFen(fen).unwrap()).unwrap()
+        const moves: { uci: string; cp: number }[] = []
         for (const [from, dests] of position.allDests()) {
           for (const to of dests) {
             const isPawn = position.board.getRole(from) === 'pawn'
             const toRank = squareRank(to)
-            if (isPawn && (toRank === 0 || toRank === 7)) {
-              return makeUci({ from, to, promotion: 'queen' })
-            }
-            return makeUci({ from, to })
+            const uci =
+              isPawn && (toRank === 0 || toRank === 7)
+                ? makeUci({ from, to, promotion: 'queen' })
+                : makeUci({ from, to })
+            moves.push({ uci, cp: 0 })
           }
         }
-        throw new Error(`No legal move in ${fen}`)
+        return moves
       })
-    }
-
-    async worstMoves(fens: readonly string[]): Promise<readonly string[]> {
-      return this.bestMoves(fens)
     }
   }
   return { StockfishEngineAdapter: MockStockfishEngineAdapter }
+})
+
+vi.mock('./adapters/http-command-compiler', () => {
+  class MockHttpCommandCompilerAdapter {
+    async compile(_endpoint: string, _command: string) {
+      return {
+        tag: 'compiled' as const,
+        predicate: {
+          tag: 'piece' as const,
+          roles: ['knight' as const],
+        },
+      }
+    }
+  }
+  return {
+    HttpCommandCompilerAdapter: MockHttpCommandCompilerAdapter,
+    defaultCommandCompilerEndpoint: () => '/api/compile',
+  }
 })
 
 type Listener = (event: FakeEvent) => void
@@ -588,6 +606,11 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-result-banner', 'element'],
     ['centurion-board-hint', 'element'],
     ['centurion-resolution-summary', 'element'],
+    ['centurion-command-input', 'textarea'],
+    ['centurion-compile-btn', 'button'],
+    ['centurion-issue-btn', 'button'],
+    ['centurion-pass-btn', 'button'],
+    ['centurion-command-status', 'element'],
     ['centurion-game-replay', 'element'],
     ['centurion-game-select', 'select'],
     ['centurion-replay-board', 'element'],
@@ -597,7 +620,7 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-replay-prev', 'button'],
     ['centurion-replay-next', 'button'],
     ['centurion-replay-end', 'button'],
-    ['centurion-arrow-history', 'element'],
+    ['centurion-command-history', 'element'],
     ['centurion-leave-btn', 'button'],
     ['centurion-connection-log-list', 'element'],
     ['centurion-connection-log-clear', 'button'],
@@ -859,29 +882,42 @@ describe('main app wiring', () => {
     expect(scoreBottom.textContent).toBe('0')
     expect(metaLine.textContent).toContain('Turn 1')
     expect(metaLine.textContent).toContain('100/100 games')
-    // Pass-and-play: exactly one side is prompted to place.
+    // Pass-and-play: exactly one side is prompted to command.
     expect(
       [statusTop.textContent, statusBottom.textContent].filter(
-        (text) => text === 'Place an arrow',
+        (text) => text === 'Issue a command',
       ),
     ).toHaveLength(1)
 
-    const boardCanvas = documentRef.getElementById(
-      'centurion-canvas',
-    ) as FakeCanvasElement
-    const boardHint = documentRef.getElementById(
-      'centurion-board-hint',
+    const commandBox = documentRef.getElementById(
+      'centurion-command-input',
+    ) as FakeTextAreaElement
+    const compileButton = documentRef.getElementById(
+      'centurion-compile-btn',
+    ) as FakeButtonElement
+    const issueButton = documentRef.getElementById(
+      'centurion-issue-btn',
+    ) as FakeButtonElement
+    const commandStatus = documentRef.getElementById(
+      'centurion-command-status',
     ) as FakeHTMLElement
     const history = documentRef.getElementById(
-      'centurion-arrow-history',
+      'centurion-command-history',
     ) as FakeHTMLElement
 
-    expect(boardHint.textContent).toContain('Tap the start square')
-    boardCanvas.clickSquare('e2')
-    expect(boardHint.textContent).toContain('tap the destination')
-    boardCanvas.clickSquare('e4')
+    expect(commandStatus.textContent).toContain('Type an order')
 
-    // The arrow phase is synchronous; Stockfish (mocked) answers async.
+    commandBox.value = 'move a knight'
+    commandBox.dispatch('input')
+    compileButton.click()
+    // The mocked compiler answers async with a knight predicate.
+    await vi.waitFor(() => {
+      expect(commandStatus.textContent).toContain('Reads as')
+    })
+    expect(commandStatus.textContent).toContain('knight')
+    expect(commandStatus.textContent).toContain('100 of 100 games')
+
+    issueButton.click()
     expect(metaLine.textContent).toContain('Resolving')
     await vi.waitFor(() => {
       expect(metaLine.textContent).toContain('Turn 2')
@@ -891,7 +927,7 @@ describe('main app wiring', () => {
     const summary = documentRef.getElementById(
       'centurion-resolution-summary',
     ) as FakeHTMLElement
-    expect(summary.textContent).toContain('followed arrows')
+    expect(summary.textContent).toContain('followed the order')
 
     const leaveButton = documentRef.getElementById(
       'centurion-leave-btn',

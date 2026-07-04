@@ -1,50 +1,48 @@
 import { Chess } from 'chessops/chess'
 import { makeFen, parseFen } from 'chessops/fen'
-import { makeUci, parseSquare, squareRank } from 'chessops/util'
+import { makeUci, squareRank } from 'chessops/util'
 import { describe, expect, it } from 'vitest'
+import type { CommandPredicate } from '../../core/command/model'
 import { activePlacer, otherPlayer } from '../../core/match/model'
+import type { RankedMove } from '../../core/match/resolve'
 import { type CenturionModel, initCenturionModel } from './model'
 import { type CenturionCmd, type CenturionMsg, updateCenturion } from './update'
 
-function sq(name: string): number {
-  const square = parseSquare(name)
-  if (square === undefined) {
-    throw new Error(`Bad square: ${name}`)
-  }
-  return square
-}
+const KNIGHTS: CommandPredicate = { tag: 'piece', roles: ['knight'] }
 
-/** Stand-in for Stockfish in tests: the first legal move per position. */
-function firstLegalUci(fen: string): string {
+/** Stand-in for Stockfish in tests: every legal move at cp 0. */
+function rankedFor(fen: string): RankedMove[] {
   const position = Chess.fromSetup(parseFen(fen).unwrap()).unwrap()
+  const moves: RankedMove[] = []
   for (const [from, dests] of position.allDests()) {
     for (const to of dests) {
       const isPawn = position.board.getRole(from) === 'pawn'
       const toRank = squareRank(to)
-      if (isPawn && (toRank === 0 || toRank === 7)) {
-        return makeUci({ from, to, promotion: 'queen' })
-      }
-      return makeUci({ from, to })
+      const uci =
+        isPawn && (toRank === 0 || toRank === 7)
+          ? makeUci({ from, to, promotion: 'queen' })
+          : makeUci({ from, to })
+      moves.push({ uci, cp: 0 })
     }
   }
-  throw new Error(`No legal move in ${fen}`)
+  return moves
 }
 
 /**
- * Run the async half of a turn: take the compute-engine-moves command
- * issued by the reducer, answer it with first-legal moves, and return
- * the follow-up message.
+ * Run the async half of a turn: take the compute-ranked-moves command
+ * issued by the reducer, answer it with flat rankings, and return the
+ * follow-up message.
  */
 function engineAnswer(
   commands: ReturnType<typeof updateCenturion>[1],
 ): CenturionMsg {
-  const compute = commands.find((cmd) => cmd.tag === 'compute-engine-moves')
-  if (compute === undefined || compute.tag !== 'compute-engine-moves') {
-    throw new Error('expected a compute-engine-moves command')
+  const compute = commands.find((cmd) => cmd.tag === 'compute-ranked-moves')
+  if (compute === undefined || compute.tag !== 'compute-ranked-moves') {
+    throw new Error('expected a compute-ranked-moves command')
   }
   return {
-    tag: 'engine-moves-computed',
-    moves: compute.fens.map(firstLegalUci),
+    tag: 'ranked-moves-computed',
+    ranked: compute.fens.map(rankedFor),
   }
 }
 
@@ -62,6 +60,19 @@ function apply(
   return [current, lastCommands]
 }
 
+/** Type, compile (with a canned result), leaving the draft previewed. */
+function compiledDraftMsgs(text: string): CenturionMsg[] {
+  return [
+    { tag: 'command-input-updated', value: text },
+    { tag: 'command-compile-requested' },
+    {
+      tag: 'command-compile-finished',
+      text,
+      result: { tag: 'compiled', predicate: KNIGHTS },
+    },
+  ]
+}
+
 describe('pass and play', () => {
   it('starts a local 100-game match', () => {
     const [model, commands] = apply(initCenturionModel(), {
@@ -76,17 +87,35 @@ describe('pass and play', () => {
     expect(model.session.match.games).toHaveLength(100)
   })
 
-  it('places an arrow via two board clicks and resolves the turn', () => {
+  it('compiles a command into a previewed draft', () => {
+    const [model, commands] = apply(
+      initCenturionModel(),
+      { tag: 'pass-and-play-requested', seed: 11 },
+      { tag: 'command-input-updated', value: 'all knights advance' },
+      { tag: 'command-compile-requested' },
+    )
+    if (model.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(model.session.draft).toEqual({
+      tag: 'compiling',
+      text: 'all knights advance',
+    })
+    expect(commands).toEqual([
+      { tag: 'compile-command', text: 'all knights advance' },
+    ])
+  })
+
+  it('issues a compiled command and resolves the turn', () => {
     const [pendingModel, commands] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
-      { tag: 'board-square-clicked', square: sq('e2') },
-      { tag: 'board-square-clicked', square: sq('e4') },
+      ...compiledDraftMsgs('all knights advance'),
+      { tag: 'command-issue-requested' },
     )
     if (pendingModel.tag !== 'playing') {
       throw new Error('expected playing state')
     }
-    // The arrow phase ran synchronously; Stockfish moves are now pending.
     expect(pendingModel.session.resolving).not.toBeNull()
     expect(pendingModel.session.match.turn).toBe(1)
 
@@ -96,40 +125,108 @@ describe('pass and play', () => {
     }
     expect(model.session.resolving).toBeNull()
     expect(model.session.match.turn).toBe(2)
-    expect(model.session.match.arrows).toHaveLength(1)
-    expect(model.session.selectedSquare).toBeNull()
+    expect(model.session.match.commands).toHaveLength(1)
+    expect(model.session.match.commands[0]?.text).toBe('all knights advance')
+    expect(model.session.commandInput).toBe('')
+    expect(model.session.draft).toEqual({ tag: 'idle' })
+    for (const game of model.session.match.games) {
+      expect(game.moves[0]?.source).toBe('command')
+    }
   })
 
-  it('ignores board clicks and rejects submits while resolving', () => {
-    const [pendingModel] = apply(
+  it('passes the turn without a command', () => {
+    const [pendingModel, commands] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
-      { tag: 'board-square-clicked', square: sq('e2') },
-      { tag: 'board-square-clicked', square: sq('e4') },
+      { tag: 'pass-requested' },
     )
-    if (pendingModel.tag !== 'playing') {
+    const [model] = apply(pendingModel, engineAnswer(commands))
+    if (model.tag !== 'playing') {
       throw new Error('expected playing state')
     }
-    const [clicked, clickCommands] = apply(pendingModel, {
-      tag: 'board-square-clicked',
-      square: sq('d2'),
+    expect(model.session.match.turn).toBe(2)
+    expect(model.session.match.commands).toHaveLength(0)
+    for (const game of model.session.match.games) {
+      expect(game.moves[0]?.source).toBe('free')
+    }
+  })
+
+  it('rejects issuing before a compile and over-limit commands', () => {
+    const base = apply(initCenturionModel(), {
+      tag: 'pass-and-play-requested',
+      seed: 11,
+    })[0]
+
+    const [noDraft] = apply(base, { tag: 'command-issue-requested' })
+    if (noDraft.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(noDraft.session.inputError).toContain('Compile')
+
+    const [tooLong] = apply(
+      base,
+      { tag: 'command-input-updated', value: 'word '.repeat(21) },
+      { tag: 'command-compile-requested' },
+    )
+    if (tooLong.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(tooLong.session.inputError).toContain('21 words')
+  })
+
+  it('invalidates the draft when the text changes and drops stale results', () => {
+    const [edited] = apply(
+      initCenturionModel(),
+      { tag: 'pass-and-play-requested', seed: 11 },
+      ...compiledDraftMsgs('all knights advance'),
+      { tag: 'command-input-updated', value: 'push pawns' },
+    )
+    if (edited.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(edited.session.draft).toEqual({ tag: 'idle' })
+
+    const [stale] = apply(edited, {
+      tag: 'command-compile-finished',
+      text: 'all knights advance',
+      result: { tag: 'compiled', predicate: KNIGHTS },
     })
-    if (clicked.tag !== 'playing') {
+    if (stale.tag !== 'playing') {
       throw new Error('expected playing state')
     }
-    expect(clicked.session.selectedSquare).toBeNull()
-    expect(clickCommands).toEqual([])
+    expect(stale.session.draft).toEqual({ tag: 'idle' })
+  })
+
+  it('surfaces compile failures on the draft', () => {
+    const [model] = apply(
+      initCenturionModel(),
+      { tag: 'pass-and-play-requested', seed: 11 },
+      { tag: 'command-input-updated', value: 'castle' },
+      { tag: 'command-compile-requested' },
+      {
+        tag: 'command-compile-finished',
+        text: 'castle',
+        result: { tag: 'failed', message: 'endpoint unreachable' },
+      },
+    )
+    if (model.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(model.session.draft).toEqual({
+      tag: 'failed',
+      text: 'castle',
+      message: 'endpoint unreachable',
+    })
   })
 
   it('abandons the turn when the engine fails', () => {
     const [pendingModel] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
-      { tag: 'board-square-clicked', square: sq('e2') },
-      { tag: 'board-square-clicked', square: sq('e4') },
+      { tag: 'pass-requested' },
     )
     const [model] = apply(pendingModel, {
-      tag: 'engine-moves-failed',
+      tag: 'ranked-moves-failed',
       message: 'worker crashed.',
     })
     if (model.tag !== 'playing') {
@@ -137,92 +234,31 @@ describe('pass and play', () => {
     }
     expect(model.session.resolving).toBeNull()
     expect(model.session.match.turn).toBe(1)
-    expect(model.session.match.arrows).toHaveLength(0)
     expect(model.session.notice).toContain('worker crashed')
   })
 
-  it('toggles square selection off when re-clicked', () => {
-    const [model] = apply(
+  it('blocks turn actions while resolving', () => {
+    const [pendingModel] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
-      { tag: 'board-square-clicked', square: sq('e2') },
-      { tag: 'board-square-clicked', square: sq('e2') },
+      { tag: 'pass-requested' },
     )
+    const [model, commands] = apply(pendingModel, { tag: 'pass-requested' })
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
     }
-    expect(model.session.selectedSquare).toBeNull()
-    expect(model.session.match.turn).toBe(1)
-  })
-
-  it('places an arrow from text notation', () => {
-    const [pendingModel, commands] = apply(
-      initCenturionModel(),
-      { tag: 'pass-and-play-requested', seed: 11 },
-      { tag: 'arrow-input-updated', value: 'e2->e4' },
-      { tag: 'arrow-submit-requested' },
-    )
-    const [model] = apply(pendingModel, engineAnswer(commands))
-    if (model.tag !== 'playing') {
-      throw new Error('expected playing state')
-    }
-    expect(model.session.match.turn).toBe(2)
-    expect(model.session.arrowInput).toBe('')
-  })
-
-  it('rejects malformed arrow notation with a diagnostic', () => {
-    const [model] = apply(
-      initCenturionModel(),
-      { tag: 'pass-and-play-requested', seed: 11 },
-      { tag: 'arrow-input-updated', value: 'nonsense' },
-      { tag: 'arrow-submit-requested' },
-    )
-    if (model.tag !== 'playing') {
-      throw new Error('expected playing state')
-    }
-    expect(model.session.match.turn).toBe(1)
-    expect(model.session.inputError).not.toBeNull()
+    expect(commands).toEqual([])
+    expect(model.session.inputError).toContain('resolving')
   })
 })
 
 describe('solo mode', () => {
-  /**
-   * Drive a full solo turn: the player's arrow, the white-ply engine
-   * answer, the auto black ply, leaving the Centurion's trap pending.
-   */
-  function soloTurnToTrap(): ReturnType<typeof updateCenturion> {
+  it('plays two half-turns per command: yours ordered, black unled', () => {
     const [pendingFirst, firstCommands] = apply(
       initCenturionModel(),
       { tag: 'solo-requested', seed: 21 },
-      { tag: 'board-square-clicked', square: sq('e2') },
-      { tag: 'board-square-clicked', square: sq('e4') },
-    )
-    const [pendingSecond, secondCommands] = apply(
-      pendingFirst,
-      engineAnswer(firstCommands),
-    )
-    return apply(pendingSecond, engineAnswer(secondCommands))
-  }
-
-  function trapAnswer(
-    commands: ReturnType<typeof updateCenturion>[1],
-  ): CenturionMsg {
-    const compute = commands.find((cmd) => cmd.tag === 'compute-worst-moves')
-    if (compute === undefined || compute.tag !== 'compute-worst-moves') {
-      throw new Error('expected a compute-worst-moves command')
-    }
-    return {
-      tag: 'worst-moves-computed',
-      moves: compute.fens.map(firstLegalUci),
-    }
-  }
-
-  it('plays two half-turns per arrow, then the Centurion lays a trap', () => {
-    const [pendingFirst, firstCommands] = apply(
-      initCenturionModel(),
-      { tag: 'solo-requested', seed: 21 },
-      { tag: 'board-square-clicked', square: sq('e2') },
-      { tag: 'board-square-clicked', square: sq('e4') },
+      ...compiledDraftMsgs('all knights advance'),
+      { tag: 'command-issue-requested' },
     )
     if (pendingFirst.tag !== 'playing') {
       throw new Error('expected playing state')
@@ -232,7 +268,7 @@ describe('solo mode', () => {
     expect(pendingFirst.session.match.games[0]?.whiteOwner).toBe(1)
 
     // First engine answer settles the white ply, then the black ply
-    // begins automatically with another engine command.
+    // begins automatically with another ranked search.
     const [pendingSecond, secondCommands] = apply(
       pendingFirst,
       engineAnswer(firstCommands),
@@ -243,87 +279,22 @@ describe('solo mode', () => {
     expect(pendingSecond.session.match.turn).toBe(2)
     expect(pendingSecond.session.resolving).not.toBeNull()
 
-    // The black ply settles into the Centurion's trap computation.
-    const [pendingTrap, trapCommands] = apply(
+    const [model, finalCommands] = apply(
       pendingSecond,
       engineAnswer(secondCommands),
     )
-    if (pendingTrap.tag !== 'playing') {
-      throw new Error('expected playing state')
-    }
-    expect(pendingTrap.session.match.turn).toBe(3)
-    expect(pendingTrap.session.resolving).toBeNull()
-    expect(pendingTrap.session.trap).not.toBeNull()
-    expect(trapCommands.map((cmd) => cmd.tag)).toEqual(['compute-worst-moves'])
-
-    const [model, finalCommands] = apply(pendingTrap, trapAnswer(trapCommands))
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
     }
     expect(finalCommands).toEqual([])
-    expect(model.session.trap).toBeNull()
-    // Your arrow plus the Centurion's trap, stamped with its half-turn
-    // so it pulls at full weight on your reply.
-    expect(model.session.match.arrows).toHaveLength(2)
-    expect(model.session.match.arrows[0]?.owner).toBe(1)
-    expect(model.session.match.arrows[1]?.owner).toBe(2)
-    expect(model.session.match.arrows[1]?.placedTurn).toBe(2)
+    expect(model.session.match.turn).toBe(3)
+    expect(model.session.resolving).toBeNull()
     for (const game of model.session.match.games) {
       expect(game.position.fullmoves).toBe(2)
       expect(game.position.turn).toBe('white')
+      expect(game.moves[0]?.source).toBe('command')
+      expect(game.moves[1]?.source).toBe('free')
     }
-  })
-
-  it('blocks input while the trap is pending', () => {
-    const [pendingTrap] = soloTurnToTrap()
-    if (pendingTrap.tag !== 'playing') {
-      throw new Error('expected playing state')
-    }
-    const [clicked, clickCommands] = apply(pendingTrap, {
-      tag: 'board-square-clicked',
-      square: sq('d2'),
-    })
-    if (clicked.tag !== 'playing') {
-      throw new Error('expected playing state')
-    }
-    expect(clicked.session.selectedSquare).toBeNull()
-    expect(clickCommands).toEqual([])
-
-    const [submitted] = apply(
-      pendingTrap,
-      { tag: 'arrow-input-updated', value: 'd2->d4' },
-      { tag: 'arrow-submit-requested' },
-    )
-    if (submitted.tag !== 'playing') {
-      throw new Error('expected playing state')
-    }
-    expect(submitted.session.match.turn).toBe(3)
-    expect(submitted.session.inputError).toContain('Computer')
-  })
-
-  it('skips the trap arrow when the worst-move search fails', () => {
-    const [pendingTrap] = soloTurnToTrap()
-    const [model] = apply(pendingTrap, {
-      tag: 'worst-moves-failed',
-      message: 'worker crashed.',
-    })
-    if (model.tag !== 'playing') {
-      throw new Error('expected playing state')
-    }
-    expect(model.session.trap).toBeNull()
-    expect(model.session.match.arrows).toHaveLength(1)
-    expect(model.session.notice).toContain('worker crashed')
-
-    // The player can place the next arrow normally afterwards.
-    const [next] = apply(
-      model,
-      { tag: 'board-square-clicked', square: sq('d2') },
-      { tag: 'board-square-clicked', square: sq('d4') },
-    )
-    if (next.tag !== 'playing') {
-      throw new Error('expected playing state')
-    }
-    expect(next.session.resolving).not.toBeNull()
   })
 })
 
@@ -427,24 +398,20 @@ describe('multiplayer flow', () => {
     expect(guestFens).toEqual(hostFens)
   })
 
-  it('keeps both players in lockstep across an exchanged arrow', () => {
+  it('keeps both players in lockstep across an exchanged command', () => {
     const [host, hostCommands] = hostToPlaying()
     const [guest] = guestFromHost(hostCommands)
     if (host.tag !== 'playing' || guest.tag !== 'playing') {
       throw new Error('expected playing states')
     }
 
-    const placer = activePlacer(host.session.match)
-    const [mover, receiver] = placer === 1 ? [host, guest] : [guest, host]
+    const commander = activePlacer(host.session.match)
+    const [mover, receiver] = commander === 1 ? [host, guest] : [guest, host]
 
-    // The mover clicks in their own visual frame; player 2's view is
-    // rank-flipped, so both pick the square they see as e2/e4. The arrow
-    // phase runs, Stockfish moves arrive, then the settled snapshot is
-    // published to the room.
     const [pendingModel, pendingCommands] = apply(
       mover,
-      { tag: 'board-square-clicked', square: sq('e2') },
-      { tag: 'board-square-clicked', square: sq('e4') },
+      ...compiledDraftMsgs('all knights advance'),
+      { tag: 'command-issue-requested' },
     )
     const [movedModel, commands] = apply(
       pendingModel,
@@ -460,8 +427,8 @@ describe('multiplayer flow', () => {
     }
     expect(receivedModel.session.match.turn).toBe(2)
     expect(receivedModel.session.match.rng).toBe(movedModel.session.match.rng)
-    expect(receivedModel.session.match.arrows).toEqual(
-      movedModel.session.match.arrows,
+    expect(receivedModel.session.match.commands).toEqual(
+      movedModel.session.match.commands,
     )
     const moverFens = movedModel.session.match.games.map((game) =>
       makeFen(game.position.toSetup()),
@@ -503,26 +470,23 @@ describe('multiplayer flow', () => {
     expect(commands).toEqual([])
   })
 
-  it('rejects arrow placement when it is not your turn', () => {
+  it('rejects turn actions when it is not your turn', () => {
     const [host] = hostToPlaying()
     if (host.tag !== 'playing') {
       throw new Error('expected playing state')
     }
     const notYourTurn = activePlacer(host.session.match) === otherPlayer(1)
-    const [model, commands] = apply(host, {
-      tag: 'board-square-clicked',
-      square: sq('e2'),
-    })
+    const [model, commands] = apply(host, { tag: 'pass-requested' })
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
     }
     if (notYourTurn) {
       expect(model.session.inputError).not.toBeNull()
-      expect(model.session.selectedSquare).toBeNull()
+      expect(commands).toEqual([])
     } else {
-      expect(model.session.selectedSquare).toBe(sq('e2'))
+      expect(model.session.resolving).not.toBeNull()
+      expect(commands.map((cmd) => cmd.tag)).toEqual(['compute-ranked-moves'])
     }
-    expect(commands).toEqual([])
   })
 
   it('surfaces presence changes as connection notices', () => {

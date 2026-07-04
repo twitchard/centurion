@@ -2,7 +2,7 @@ import { Chess } from 'chessops/chess'
 import { parseFen } from 'chessops/fen'
 import { makeUci, squareRank } from 'chessops/util'
 import { describe, expect, it } from 'vitest'
-import { type MatchGame, initMatch } from './model'
+import { type MatchGame, type MatchState, initMatch } from './model'
 import {
   compareGamesForReplay,
   gameMoveSourceCounts,
@@ -10,42 +10,47 @@ import {
   replaySnapshot,
 } from './pgn'
 import {
+  type RankedMove,
   beginAutoResolution,
   beginResolution,
   completeResolution,
 } from './resolve'
 
-function firstLegalUci(fen: string): string {
+function rankedFor(fen: string): RankedMove[] {
   const position = Chess.fromSetup(parseFen(fen).unwrap()).unwrap()
+  const moves: RankedMove[] = []
   for (const [from, dests] of position.allDests()) {
     for (const to of dests) {
       const isPawn = position.board.getRole(from) === 'pawn'
       const toRank = squareRank(to)
-      if (isPawn && (toRank === 0 || toRank === 7)) {
-        return makeUci({ from, to, promotion: 'queen' })
-      }
-      return makeUci({ from, to })
+      const uci =
+        isPawn && (toRank === 0 || toRank === 7)
+          ? makeUci({ from, to, promotion: 'queen' })
+          : makeUci({ from, to })
+      moves.push({ uci, cp: 0 })
     }
   }
-  throw new Error(`No legal move in ${fen}`)
+  return moves
+}
+
+function autoResolve(match: MatchState): MatchState {
+  const resolution = beginAutoResolution(match)
+  if (resolution === null) {
+    throw new Error('expected resolution')
+  }
+  const next = completeResolution(
+    resolution,
+    resolution.pending.map((entry) => rankedFor(entry.fen)),
+  )
+  if (next === null) {
+    throw new Error('expected completed resolution')
+  }
+  return next
 }
 
 describe('matchGameToPgn', () => {
   it('exports a PGN with SAN moves after one ply', () => {
-    let match = initMatch(42, { gameCount: 2 })
-    const resolution = beginAutoResolution(match)
-    if (resolution === null) {
-      throw new Error('expected resolution')
-    }
-    const engineMoves = resolution.pending.map((entry) =>
-      firstLegalUci(entry.fen),
-    )
-    const next = completeResolution(resolution, engineMoves)
-    if (next === null) {
-      throw new Error('expected completed resolution')
-    }
-    match = next
-
+    const match = autoResolve(initMatch(42, { gameCount: 2 }))
     const game = match.games[0]
     if (game === undefined) {
       throw new Error('missing game')
@@ -60,19 +65,7 @@ describe('matchGameToPgn', () => {
 
 describe('replaySnapshot', () => {
   it('replays moves up to the requested ply', () => {
-    let match = initMatch(7, { gameCount: 1 })
-    const resolution = beginAutoResolution(match)
-    if (resolution === null) {
-      throw new Error('expected resolution')
-    }
-    const engineMoves = resolution.pending.map((entry) =>
-      firstLegalUci(entry.fen),
-    )
-    const next = completeResolution(resolution, engineMoves)
-    if (next === null) {
-      throw new Error('expected completed resolution')
-    }
-    match = next
+    const match = autoResolve(initMatch(7, { gameCount: 1 }))
     const game = match.games[0]
     if (game === undefined) {
       throw new Error('missing game')
@@ -94,14 +87,17 @@ describe('replaySnapshot', () => {
       whitePlayer: 1,
       firstPlacer: 1,
     })
-    // Arrow e2->e4 pulls the only game, so ply 1 is an arrow move.
-    const resolution = beginResolution(match, { from: 12, to: 28 })
+    // "Move a knight" constrains the only game, so ply 1 is a command move.
+    const resolution = beginResolution(match, {
+      text: 'move a knight',
+      predicate: { tag: 'piece', roles: ['knight'] },
+    })
     if (resolution === null) {
       throw new Error('expected resolution')
     }
     const next = completeResolution(
       resolution,
-      resolution.pending.map((entry) => firstLegalUci(entry.fen)),
+      resolution.pending.map((entry) => rankedFor(entry.fen)),
     )
     if (next === null) {
       throw new Error('expected completed resolution')
@@ -112,58 +108,45 @@ describe('replaySnapshot', () => {
     }
 
     const snapshot = replaySnapshot(game, 1)
-    expect(snapshot.lastMoveRecord).toEqual({
-      uci: 'e2e4',
-      source: 'arrow',
-      arrowOwner: 1,
+    expect(snapshot.lastMoveRecord).toMatchObject({
+      source: 'command',
+      commandOwner: 1,
     })
   })
 })
 
 describe('gameMoveSourceCounts', () => {
-  it('counts arrow and engine moves separately', () => {
-    let match = initMatch(7, { gameCount: 1 })
-    const resolution = beginAutoResolution(match)
-    if (resolution === null) {
-      throw new Error('expected resolution')
-    }
-    const engineMoves = resolution.pending.map((entry) =>
-      firstLegalUci(entry.fen),
-    )
-    const next = completeResolution(resolution, engineMoves)
-    if (next === null) {
-      throw new Error('expected completed resolution')
-    }
-    match = next
+  it('counts command and free moves separately', () => {
+    const match = autoResolve(initMatch(7, { gameCount: 1 }))
     const game = match.games[0]
     if (game === undefined) {
       throw new Error('missing game')
     }
     const counts = gameMoveSourceCounts(game)
-    expect(counts.arrow + counts.engine).toBe(game.moves.length)
-    expect(counts.engine).toBe(game.moves.length)
-    expect(counts.arrow).toBe(0)
+    expect(counts.command + counts.free).toBe(game.moves.length)
+    expect(counts.free).toBe(game.moves.length)
+    expect(counts.command).toBe(0)
   })
 })
 
 describe('compareGamesForReplay', () => {
-  it('ranks games with more arrow moves ahead of engine-only games', () => {
-    const arrowHeavy = {
+  it('ranks games with more command moves ahead of free-only games', () => {
+    const commandHeavy = {
       id: 1,
       moves: [
-        { uci: 'e2e4', source: 'arrow' },
-        { uci: 'e7e5', source: 'arrow' },
-        { uci: 'g1f3', source: 'engine' },
+        { uci: 'e2e4', source: 'command' },
+        { uci: 'e7e5', source: 'command' },
+        { uci: 'g1f3', source: 'free' },
       ],
     } as unknown as MatchGame
-    const engineOnly = {
+    const freeOnly = {
       id: 0,
       moves: [
-        { uci: 'd2d4', source: 'engine' },
-        { uci: 'd7d5', source: 'engine' },
-        { uci: 'c2c4', source: 'engine' },
+        { uci: 'd2d4', source: 'free' },
+        { uci: 'd7d5', source: 'free' },
+        { uci: 'c2c4', source: 'free' },
       ],
     } as unknown as MatchGame
-    expect(compareGamesForReplay(arrowHeavy, engineOnly)).toBeLessThan(0)
+    expect(compareGamesForReplay(commandHeavy, freeOnly)).toBeLessThan(0)
   })
 })

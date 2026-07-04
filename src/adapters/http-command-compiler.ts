@@ -5,6 +5,22 @@ import type {
 } from '../ports/command-compiler'
 
 /**
+ * Where compile requests go: api/compile.ts when the app is served by
+ * Vercel, the local Bun server in dev, or wherever
+ * VITE_COMMAND_COMPILER_URL points (e.g. GitHub Pages builds calling
+ * the Vercel endpoint cross-origin).
+ */
+export function defaultCommandCompilerEndpoint(): string {
+  const configured = import.meta.env.VITE_COMMAND_COMPILER_URL?.trim()
+  if (configured !== undefined && configured.length > 0) {
+    return configured
+  }
+  return import.meta.env.DEV
+    ? 'http://localhost:8787/api/compile'
+    : '/api/compile'
+}
+
+/**
  * Calls the compile endpoint (api/compile.ts on Vercel, or the local Bun
  * server) and re-validates the returned predicate through the codec —
  * the client never trusts the wire.
