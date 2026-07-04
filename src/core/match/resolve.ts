@@ -19,6 +19,7 @@ import {
   otherPlayer,
   positionKey,
 } from './model'
+import { effectiveSoldierMode } from './soldier-mode-rotation'
 
 export function flipSquare(square: number): number {
   return square ^ 56
@@ -261,6 +262,8 @@ function chooseSoldierMove(
   game: MatchGame,
   ranked: readonly RankedMove[],
   command: PendingCommand | null,
+  turn: number,
+  soldierModeRotation: MatchState['soldierModeRotation'],
 ): SoldierChoice | null {
   const moves = legalRankedMoves(game.position, ranked)
   if (moves.length === 0) {
@@ -288,7 +291,13 @@ function chooseSoldierMove(
     }
   }
 
-  const style = soldierStyle(game.soldierMode, movingOwner(game))
+  const mode = effectiveSoldierMode(
+    soldierModeRotation,
+    game.id,
+    game.soldierMode,
+    turn,
+  )
+  const style = soldierStyle(mode, movingOwner(game))
   const chosen = pickByStyle(allowed, style, bestCp)
   const recorded: RecordedMove =
     source === 'command' && command !== null
@@ -330,7 +339,13 @@ export function completeResolution(
     if (game === undefined || game.status.tag !== 'active') {
       return null
     }
-    const choice = chooseSoldierMove(game, list, resolution.command)
+    const choice = chooseSoldierMove(
+      game,
+      list,
+      resolution.command,
+      base.turn,
+      base.soldierModeRotation,
+    )
     if (choice === null) {
       return null
     }

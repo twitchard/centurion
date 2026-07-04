@@ -15,6 +15,11 @@ import type {
   ResolutionSummary,
   SoldierMode,
 } from './model'
+import {
+  LEGACY_STATIC_SOLDIER_MODE_ROTATION,
+  type SoldierModeRotationSpec,
+  isSoldierModeRotationSpec,
+} from './soldier-mode-rotation'
 
 export interface GameStatusSnapshot {
   readonly tag: 'active' | 'won' | 'drawn'
@@ -56,6 +61,7 @@ export interface MatchSnapshot {
   readonly firstPlacer: PlayerId
   readonly scores: { readonly p1: number; readonly p2: number }
   readonly rng: number
+  readonly soldierModeRotation?: SoldierModeRotationSpec
   readonly phase: MatchPhase
   readonly lastResolution: ResolutionSummary | null
 }
@@ -213,6 +219,7 @@ export function encodeMatchState(match: MatchState): MatchSnapshot {
     firstPlacer: match.firstPlacer,
     scores: { ...match.scores },
     rng: match.rng,
+    soldierModeRotation: match.soldierModeRotation,
     phase: match.phase,
     lastResolution: match.lastResolution,
   }
@@ -329,6 +336,9 @@ export function decodeMatchSnapshot(snapshot: unknown): MatchState | null {
   if (games.length !== raw.gameCount) {
     return null
   }
+  const soldierModeRotation = isSoldierModeRotationSpec(raw.soldierModeRotation)
+    ? raw.soldierModeRotation
+    : LEGACY_STATIC_SOLDIER_MODE_ROTATION
   return {
     gameCount: raw.gameCount,
     games,
@@ -337,6 +347,7 @@ export function decodeMatchSnapshot(snapshot: unknown): MatchState | null {
     firstPlacer: raw.firstPlacer,
     scores: { p1: raw.scores.p1, p2: raw.scores.p2 },
     rng: raw.rng >>> 0,
+    soldierModeRotation,
     phase: raw.phase,
     lastResolution: raw.lastResolution,
   }

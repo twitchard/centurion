@@ -3,6 +3,13 @@ import { makeFen, parseFen } from 'chessops/fen'
 import type { Color } from 'chessops/types'
 import type { CommandPredicate } from '../command/model'
 import { type RngState, pickIndex, seedRng } from '../rng'
+import {
+  DEFAULT_SOLDIER_MODE_ROTATION_TAG,
+  type SoldierModeRotationSpec,
+  type SoldierModeRotationTag,
+  initSoldierModeRotation,
+  isSoldierModeRotationSpec,
+} from './soldier-mode-rotation'
 
 export type PlayerId = 1 | 2
 
@@ -74,6 +81,15 @@ export interface MatchGame {
   readonly evalCp: number
 }
 
+export type {
+  SoldierModeRotationSpec,
+  SoldierModeRotationTag,
+} from './soldier-mode-rotation'
+export {
+  DEFAULT_SOLDIER_MODE_ROTATION_TAG,
+  effectiveSoldierMode,
+} from './soldier-mode-rotation'
+
 export interface ResolutionSummary {
   readonly turn: number
   readonly commandMoves: number
@@ -96,6 +112,7 @@ export interface MatchState {
   readonly firstPlacer: PlayerId
   readonly scores: { readonly p1: number; readonly p2: number }
   readonly rng: RngState
+  readonly soldierModeRotation: SoldierModeRotationSpec
   readonly phase: MatchPhase
   readonly lastResolution: ResolutionSummary | null
 }
@@ -134,6 +151,13 @@ export interface MatchOptions {
   readonly firstPlacer?: PlayerId
   /** Fix soldier modes per game instead of drawing them from the seed. */
   readonly soldierModes?: readonly SoldierMode[]
+  /**
+   * Which rotation policy assigns effective soldier modes over time.
+   * Pass a tag to draw fresh state from the seed, or a full spec to fix it.
+   */
+  readonly soldierModeRotation?:
+    | SoldierModeRotationTag
+    | SoldierModeRotationSpec
 }
 
 export function otherPlayer(player: PlayerId): PlayerId {
@@ -243,6 +267,31 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     })
   }
 
+  let soldierModeRotation: SoldierModeRotationSpec
+  if (options?.soldierModeRotation !== undefined) {
+    if (isSoldierModeRotationSpec(options.soldierModeRotation)) {
+      soldierModeRotation = options.soldierModeRotation
+    } else {
+      const [drawn, nextRng] = initSoldierModeRotation(
+        options.soldierModeRotation,
+        gameCount,
+        soldierModes,
+        rng,
+      )
+      rng = nextRng
+      soldierModeRotation = drawn
+    }
+  } else {
+    const [drawn, nextRng] = initSoldierModeRotation(
+      DEFAULT_SOLDIER_MODE_ROTATION_TAG,
+      gameCount,
+      soldierModes,
+      rng,
+    )
+    rng = nextRng
+    soldierModeRotation = drawn
+  }
+
   // Turn 1 resolves white's half-move in every game, so unless a mode
   // overrides it (solo does), the white owner also commands first: one
   // draw decides both who moves first and who commands first.
@@ -256,6 +305,7 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     firstPlacer,
     scores: { p1: 0, p2: 0 },
     rng,
+    soldierModeRotation,
     phase: { tag: 'active' },
     lastResolution: null,
   }

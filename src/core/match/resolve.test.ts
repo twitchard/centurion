@@ -336,6 +336,33 @@ describe('completeResolution', () => {
     expect(activeGameCount(next)).toBe(1)
     expect(next.phase).toEqual({ tag: 'active' })
   })
+
+  it('rotates effective soldier modes after the dwell window', () => {
+    const match = initMatch(1, {
+      gameCount: 1,
+      soldierModes: [0],
+      whitePlayer: 1,
+      soldierModeRotation: {
+        tag: 'staggered-schedule',
+        dwellTurns: 2,
+        permutations: [[0, 3, 1, 2]],
+      },
+    })
+    const cpOf = (uci: string): number =>
+      uci === 'e2e4' ? 200 : uci === 'd2d4' ? 100 : -400
+
+    const turnOne = resolveTurn(match, null, null, cpOf)
+    expect(turnOne.games[0]?.moves[0]?.uci).toBe('e2e4')
+
+    const turnThree = resolveTurn(
+      resolveTurn(turnOne, null, null, cpOf),
+      null,
+      null,
+      cpOf,
+    )
+    expect(turnThree.turn).toBe(4)
+    expect(turnThree.games[0]?.moves[2]?.uci).toBe('d2d4')
+  })
 })
 
 describe('soldierStyle', () => {

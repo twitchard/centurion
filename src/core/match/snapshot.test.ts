@@ -73,6 +73,7 @@ describe('match snapshot codec', () => {
 
     expect(decoded.turn).toBe(match.turn)
     expect(decoded.scores).toEqual(match.scores)
+    expect(decoded.soldierModeRotation).toEqual(match.soldierModeRotation)
     expect(decoded.games).toHaveLength(match.games.length)
     for (let index = 0; index < match.games.length; index++) {
       const before = match.games[index]
@@ -104,6 +105,17 @@ describe('match snapshot codec', () => {
     expect(decoded.games.map((game) => game.moves)).toEqual(
       next.games.map((game) => game.moves),
     )
+  })
+
+  it('decodes legacy snapshots without rotation metadata as static', () => {
+    const next = resolvedCommandMatch()
+    const encoded = encodeMatchState(next)
+    const { soldierModeRotation: _rotation, ...legacy } = encoded
+    const decoded = decodeMatchSnapshot(legacy)
+    if (decoded === null) {
+      throw new Error('expected decoded match')
+    }
+    expect(decoded.soldierModeRotation).toEqual({ tag: 'static' })
   })
 
   it('rejects snapshots whose command predicate fails the codec', () => {
