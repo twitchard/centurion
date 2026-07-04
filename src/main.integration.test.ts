@@ -63,6 +63,7 @@ vi.mock('chessground', () => ({
     set: vi.fn(),
     redrawAll: vi.fn(),
     destroy: vi.fn(),
+    stop: vi.fn(),
   })),
 }))
 

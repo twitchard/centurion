@@ -17,9 +17,11 @@ export class CommandBoard {
     container: HTMLElement,
     private readonly onMove: (text: string) => void,
   ) {
+    // Event listeners bind only at init time; viewOnly must be false then
+    // or click/drag input never works (api.set cannot attach them later).
     this.api = Chessground(container, {
       coordinates: true,
-      viewOnly: true,
+      viewOnly: false,
       draggable: { enabled: false },
       selectable: { enabled: false },
       highlight: { lastMove: false, check: true },
@@ -31,6 +33,7 @@ export class CommandBoard {
   sync(snapshot: InteractiveBoardSnapshot | null, enabled: boolean): void {
     this.snapshot = snapshot
     if (snapshot === null || !enabled) {
+      this.api.stop()
       this.api.set({
         viewOnly: true,
         draggable: { enabled: false },

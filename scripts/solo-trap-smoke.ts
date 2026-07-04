@@ -22,16 +22,16 @@ async function main(): Promise<void> {
   await page.click('#centurion-solo-btn')
   console.log('Solo match started; tapping e2 then e4...')
 
-  // The board is tap-only: convert squares to canvas positions (white
-  // at the bottom for the solo player).
-  const canvas = page.locator('#centurion-canvas')
-  const box = await canvas.boundingBox()
+  // Click-to-move on the command-board overlay (not the canvas beneath).
+  const board = page.locator('#centurion-command-board cg-board')
+  await board.waitFor({ state: 'visible', timeout: 30_000 })
+  const box = await board.boundingBox()
   if (box === null) {
-    throw new Error('Centurion canvas not visible')
+    throw new Error('Command board not visible')
   }
   const cell = box.width / 8
   const tap = async (file: number, rank: number) => {
-    await canvas.click({
+    await board.click({
       position: { x: (file + 0.5) * cell, y: (8 - rank + 0.5) * cell },
     })
   }
