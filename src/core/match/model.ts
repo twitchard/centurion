@@ -38,6 +38,7 @@ export type DrawReason =
   | 'threefold-repetition'
 
 export type GameStatus =
+  | { readonly tag: 'pending' }
   | { readonly tag: 'active' }
   | { readonly tag: 'won'; readonly by: PlayerId }
   | { readonly tag: 'drawn'; readonly reason: DrawReason }
@@ -69,6 +70,8 @@ export type SoldierMode = 0 | 1 | 2 | 3
 export interface MatchGame {
   readonly id: number
   readonly whiteOwner: PlayerId
+  /** Half-move number when this game enters the match (wave start). */
+  readonly activationTurn: number
   /** FEN at the start of this game (for PGN export and replay). */
   readonly startingFen: string
   readonly position: Chess
@@ -119,8 +122,19 @@ export interface MatchState {
 
 export const DEFAULT_GAME_COUNT = 100
 
+/** How many fresh games join the match each turn until the full set is live. */
+export const GAMES_PER_WAVE = 2
+
+/** Turn when the last wave of games enters (2 × 50 = 100). */
+export const LAST_WAVE_TURN = DEFAULT_GAME_COUNT / GAMES_PER_WAVE
+
 /** After this turn number, players can no longer issue commands; the match auto-plays out. */
 export const COMMAND_LAST_TURN = 100
+
+/** The turn on which a game id first becomes playable. */
+export function activationTurnForGame(gameId: number): number {
+  return Math.floor(gameId / GAMES_PER_WAVE) + 1
+}
 
 /**
  * When a soldier is told to play its worst move, it never blunders more
@@ -179,6 +193,11 @@ export function activeGameCount(match: MatchState): number {
   return match.games.filter((game) => game.status.tag === 'active').length
 }
 
+/** Games that have entered the match (active or finished). */
+export function startedGameCount(match: MatchState): number {
+  return match.games.filter((game) => game.status.tag !== 'pending').length
+}
+
 export function positionKey(position: Chess): string {
   return makeFen(position.toSetup()).split(' ').slice(0, 4).join(' ')
 }
@@ -190,26 +209,12 @@ function positionFromFen(fen: string): Chess {
 
 function shuffledSoldierModes(
   gameCount: number,
-  rng: RngState,
+  _rng: RngState,
 ): readonly [readonly SoldierMode[], RngState] {
-  const modes: SoldierMode[] = []
-  const perBucket = Math.floor(gameCount / 4)
-  const remainder = gameCount % 4
-  for (let bucket = 0; bucket < 4; bucket++) {
-    const count = perBucket + (bucket < remainder ? 1 : 0)
-    for (let index = 0; index < count; index++) {
-      modes.push(bucket as SoldierMode)
-    }
-  }
-  let state = rng
-  for (let index = modes.length - 1; index > 0; index--) {
-    const [pick, nextState] = pickIndex(state, index + 1)
-    state = nextState
-    const swap = modes[index]
-    modes[index] = modes[pick]!
-    modes[pick] = swap!
-  }
-  return [modes, state]
+  // With staggered waves, every soldier plays its worst move (capped at one
+  // pawn below best). Mode 3 is worst for both players.
+  const modes: SoldierMode[] = Array.from({ length: gameCount }, () => 3)
+  return [modes, _rng]
 }
 
 export function initMatch(seed: number, options?: MatchOptions): MatchState {
@@ -254,13 +259,15 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     if (mode === undefined) {
       throw new Error(`missing soldier mode for game ${id}`)
     }
+    const activationTurn = activationTurnForGame(id)
     games.push({
       id,
       whiteOwner: whitePlayer,
+      activationTurn,
       startingFen: makeFen(position.toSetup()),
       position,
       repetition,
-      status: { tag: 'active' },
+      status: activationTurn === 1 ? { tag: 'active' } : { tag: 'pending' },
       moves: [],
       soldierMode: mode,
       evalCp: 0,

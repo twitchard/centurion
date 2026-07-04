@@ -63,11 +63,11 @@ function planFixture() {
 describe('planResolutionAnimation', () => {
   it('schedules one move per advanced game, command slides first', () => {
     const { plan } = planFixture()
-    expect(plan.moves).toHaveLength(10)
+    expect(plan.moves).toHaveLength(2)
 
     const slides = plan.moves.filter((move) => move.source === 'command')
-    // Every game had a legal knight move, so every move is a slide.
-    expect(slides).toHaveLength(10)
+    // Every active game had a legal knight move, so every move is a slide.
+    expect(slides).toHaveLength(2)
 
     for (const move of plan.moves) {
       expect(move.startMs).toBeGreaterThanOrEqual(0)

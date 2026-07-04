@@ -291,8 +291,18 @@ class FakeElement {
     return child
   }
 
+  append(...children: FakeElement[]): void {
+    for (const child of children) {
+      this.appendChild(child)
+    }
+  }
+
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value)
+  }
+
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null
   }
 
   click(): void {
@@ -619,6 +629,12 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-issue-btn', 'button'],
     ['centurion-pass-btn', 'button'],
     ['centurion-command-status', 'element'],
+    ['centurion-recent-commands', 'element'],
+    ['centurion-stats-panel', 'element'],
+    ['centurion-stats-content', 'element'],
+    ['centurion-stats-tab-overview', 'button'],
+    ['centurion-stats-tab-material', 'button'],
+    ['centurion-stats-tab-threats', 'button'],
     ['centurion-game-replay', 'element'],
     ['centurion-game-select', 'select'],
     ['centurion-replay-board', 'element'],
@@ -889,7 +905,8 @@ describe('main app wiring', () => {
     expect(scoreTop.textContent).toBe('0')
     expect(scoreBottom.textContent).toBe('0')
     expect(metaLine.textContent).toContain('Turn 1')
-    expect(metaLine.textContent).toContain('100/100 games')
+    expect(metaLine.textContent).toContain('2 active')
+    expect(metaLine.textContent).toContain('2/100 in match')
     // Pass-and-play: exactly one side is prompted to command.
     expect(
       [statusTop.textContent, statusBottom.textContent].filter(

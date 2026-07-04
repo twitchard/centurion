@@ -15,6 +15,7 @@ import type {
   ResolutionSummary,
   SoldierMode,
 } from './model'
+import { activationTurnForGame } from './model'
 import {
   LEGACY_STATIC_SOLDIER_MODE_ROTATION,
   type SoldierModeRotationSpec,
@@ -22,7 +23,7 @@ import {
 } from './soldier-mode-rotation'
 
 export interface GameStatusSnapshot {
-  readonly tag: 'active' | 'won' | 'drawn'
+  readonly tag: 'pending' | 'active' | 'won' | 'drawn'
   readonly by?: PlayerId
   readonly reason?: DrawReason
 }
@@ -36,6 +37,7 @@ export interface RecordedMoveSnapshot {
 export interface GameSnapshot {
   readonly id: number
   readonly whiteOwner: PlayerId
+  readonly activationTurn: number
   readonly startingFen: string
   readonly fen: string
   readonly repetition: readonly (readonly [string, number])[]
@@ -67,6 +69,9 @@ export interface MatchSnapshot {
 }
 
 function encodeGameStatus(status: GameStatus): GameStatusSnapshot {
+  if (status.tag === 'pending') {
+    return { tag: 'pending' }
+  }
   if (status.tag === 'active') {
     return { tag: 'active' }
   }
@@ -77,6 +82,9 @@ function encodeGameStatus(status: GameStatus): GameStatusSnapshot {
 }
 
 function decodeGameStatus(snapshot: GameStatusSnapshot): GameStatus | null {
+  if (snapshot.tag === 'pending') {
+    return { tag: 'pending' }
+  }
   if (snapshot.tag === 'active') {
     return { tag: 'active' }
   }
@@ -109,6 +117,7 @@ function encodeGame(game: MatchGame): GameSnapshot {
   return {
     id: game.id,
     whiteOwner: game.whiteOwner,
+    activationTurn: game.activationTurn,
     startingFen: game.startingFen,
     fen: makeFen(game.position.toSetup()),
     repetition: [...game.repetition.entries()],
@@ -194,6 +203,11 @@ function decodeGame(snapshot: GameSnapshot): MatchGame | null {
   return {
     id: snapshot.id,
     whiteOwner: snapshot.whiteOwner,
+    activationTurn:
+      typeof snapshot.activationTurn === 'number' &&
+      snapshot.activationTurn >= 1
+        ? snapshot.activationTurn
+        : activationTurnForGame(snapshot.id),
     startingFen: snapshot.startingFen,
     position,
     repetition,

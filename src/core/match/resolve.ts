@@ -70,9 +70,10 @@ export interface CommandInput {
 }
 
 /**
- * Phase one of a turn: record the command (if any) and list every active
- * game for the ranked search. Commands are only accepted through
- * COMMAND_LAST_TURN and always belong to this turn's active player.
+ * Phase one of a turn: activate any games joining this wave, record the
+ * command (if any), and list every active game for the ranked search.
+ * Commands are only accepted through COMMAND_LAST_TURN and always belong
+ * to this turn's active player.
  */
 export function beginResolution(
   match: MatchState,
@@ -84,8 +85,17 @@ export function beginResolution(
   if (command !== null && !canIssueCommands(match)) {
     return null
   }
+
+  const games = match.games.map((game) => {
+    if (game.status.tag === 'pending' && game.activationTurn === match.turn) {
+      return { ...game, status: { tag: 'active' as const } }
+    }
+    return game
+  })
+  const activated: MatchState = { ...match, games }
+
   const pending: PendingEngineGame[] = []
-  for (const game of match.games) {
+  for (const game of activated.games) {
     if (game.status.tag !== 'active') {
       continue
     }
@@ -101,12 +111,12 @@ export function beginResolution(
     command === null
       ? null
       : {
-          turn: match.turn,
-          owner: activePlacer(match),
+          turn: activated.turn,
+          owner: activePlacer(activated),
           text: command.text,
           predicate: command.predicate,
         }
-  return { base: match, command: issued, pending }
+  return { base: activated, command: issued, pending }
 }
 
 /** Advance one ply with no command: the soldiers play unled. */

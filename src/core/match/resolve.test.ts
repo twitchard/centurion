@@ -6,12 +6,12 @@ import type { CommandPredicate } from '../command/model'
 import {
   MATE_CP,
   type MatchState,
-  type SoldierMode,
   activeGameCount,
   activePlacer,
   canIssueCommands,
   initMatch,
   sideToMove,
+  startedGameCount,
 } from './model'
 import {
   type PendingResolution,
@@ -102,16 +102,20 @@ describe('initMatch', () => {
     expect(activePlacer(first)).toBe(first.firstPlacer)
   })
 
-  it('assigns each soldier mode to a quarter of the games', () => {
+  it('assigns every soldier the worst-move mode', () => {
     const match = initMatch(42)
-    const counts = new Map<SoldierMode, number>()
     for (const game of match.games) {
-      counts.set(game.soldierMode, (counts.get(game.soldierMode) ?? 0) + 1)
+      expect(game.soldierMode).toBe(3)
     }
-    expect(counts.get(0)).toBe(25)
-    expect(counts.get(1)).toBe(25)
-    expect(counts.get(2)).toBe(25)
-    expect(counts.get(3)).toBe(25)
+  })
+
+  it('starts only the first wave as active', () => {
+    const match = initMatch(42)
+    expect(activeGameCount(match)).toBe(2)
+    expect(startedGameCount(match)).toBe(2)
+    expect(match.games.filter((g) => g.status.tag === 'pending')).toHaveLength(
+      98,
+    )
   })
 
   it('flipSquare is a rank flip and its own inverse', () => {
@@ -121,18 +125,28 @@ describe('initMatch', () => {
 })
 
 describe('beginResolution', () => {
-  it('lists every active game for the ranked search', () => {
+  it('lists only active games for the ranked search', () => {
     const match = initMatch(3, { gameCount: 10 })
     const resolution = beginResolution(match, {
       text: 'all knights advance',
       predicate: KNIGHTS,
     })
-    expect(resolution?.pending).toHaveLength(10)
+    expect(resolution?.pending).toHaveLength(2)
     expect(resolution?.command).toMatchObject({
       turn: 1,
       owner: match.firstPlacer,
       text: 'all knights advance',
     })
+  })
+
+  it('activates the next wave at the start of its turn', () => {
+    const match = initMatch(3, { gameCount: 6 })
+    const afterTurn1 = resolveTurn(match, null, null)
+    expect(startedGameCount(afterTurn1)).toBe(2)
+    const resolution = beginAutoResolution(afterTurn1)
+    expect(resolution?.pending).toHaveLength(4)
+    expect(resolution?.base.games[2]?.status.tag).toBe('active')
+    expect(resolution?.base.games[4]?.status.tag).toBe('pending')
   })
 
   it('rejects commands after turn 100 but still auto-plays out', () => {
@@ -155,18 +169,22 @@ describe('completeResolution', () => {
     expect(next.turn).toBe(2)
     expect(sideToMove(next)).toBe('black')
     for (const game of next.games) {
+      if (game.status.tag === 'pending') {
+        continue
+      }
       expect(game.position.turn).toBe('black')
       expect(game.position.fullmoves).toBe(1)
     }
     const summary = next.lastResolution
     expect(summary).not.toBeNull()
-    expect((summary?.commandMoves ?? 0) + (summary?.freeMoves ?? 0)).toBe(10)
+    expect((summary?.commandMoves ?? 0) + (summary?.freeMoves ?? 0)).toBe(2)
   })
 
   it('stores micro pawn eval from white perspective after each ply', () => {
     const match = initMatch(1, {
       gameCount: 1,
       whitePlayer: 1,
+      soldierModes: [0],
       soldierModeRotation: 'static',
     })
     const afterWhite = resolveTurn(match, null, null, (uci) =>
@@ -175,11 +193,14 @@ describe('completeResolution', () => {
     expect(afterWhite.games[0]?.evalCp).toBe(30)
   })
 
-  it('constrains every game to matching moves and records the owner', () => {
+  it('constrains active games to matching moves and records the owner', () => {
     const match = initMatch(3, { gameCount: 10, whitePlayer: 1 })
     const next = resolveTurn(match, 'move a knight', KNIGHTS)
     expect(next.commands).toHaveLength(1)
     for (const game of next.games) {
+      if (game.status.tag === 'pending') {
+        continue
+      }
       const [move] = game.moves
       expect(move?.source).toBe('command')
       expect(move?.commandOwner).toBe(1)
@@ -190,31 +211,32 @@ describe('completeResolution', () => {
 
   it('falls back to free soldier moves when nothing matches', () => {
     const match = initMatch(3, { gameCount: 4 })
-    // No castling move exists on turn 1.
+    // No castling move exists on turn 1; only the first wave plays.
     const next = resolveTurn(match, 'castle', CASTLES)
     for (const game of next.games) {
+      if (game.status.tag === 'pending') {
+        continue
+      }
       expect(game.moves[0]?.source).toBe('free')
       expect(game.moves[0]?.commandOwner).toBeUndefined()
     }
-    expect(next.lastResolution?.freeMoves).toBe(4)
+    expect(next.lastResolution?.freeMoves).toBe(2)
   })
 
-  it('diverges games through different soldier modes', () => {
+  it('plays the worst allowed move for every soldier by default', () => {
     const match = initMatch(1, {
-      gameCount: 4,
+      gameCount: 2,
       whitePlayer: 1,
-      soldierModes: [0, 1, 2, 3],
       soldierModeRotation: 'static',
     })
     const cpOf = (uci: string): number =>
       uci === 'e2e4' ? 200 : uci === 'd2d4' ? 150 : uci === 'g1f3' ? 50 : -400
     const next = resolveTurn(match, null, null, cpOf)
-    const moves = next.games.map((game) => game.moves[0]?.uci)
-    expect(moves[0]).toBe('e2e4')
-    expect(moves[1]).toBe('e2e4')
-    expect(moves[2]).toBe('d2d4')
-    expect(moves[3]).toBe('d2d4')
-    expect(new Set(moves).size).toBeGreaterThan(1)
+    const moves = next.games
+      .filter((game) => game.status.tag !== 'pending')
+      .map((game) => game.moves[0]?.uci)
+    expect(moves[0]).toBe('d2d4')
+    expect(moves[1]).toBe('d2d4')
   })
 
   it('plays the best allowed move when the soldier mode demands it', () => {

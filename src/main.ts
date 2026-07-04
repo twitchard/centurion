@@ -50,14 +50,17 @@ import {
   activeGameCount,
   activePlacer,
   canIssueCommands,
+  startedGameCount,
 } from './core/match/model'
 import {
+  commandForPly,
   describeGameReplayLabel,
   gameMoveSourceCounts,
   gamesForReplaySelection,
   matchGameToPgn,
   replaySnapshot,
 } from './core/match/pgn'
+import { aggregatePositionStats } from './core/match/position-stats'
 import { matchRenderModel } from './core/match/render'
 import { ENGINE_DEPTH } from './core/match/resolve'
 import type { ParseResult } from './core/parsing/types'
@@ -185,6 +188,12 @@ const centurionCommandInput = textarea('centurion-command-input')
 const centurionIssueButton = button('centurion-issue-btn')
 const centurionPassButton = button('centurion-pass-btn')
 const centurionCommandStatus = element('centurion-command-status')
+const centurionRecentCommands = element('centurion-recent-commands')
+const centurionStatsPanel = element('centurion-stats-panel')
+const centurionStatsContent = element('centurion-stats-content')
+const centurionStatsTabOverview = button('centurion-stats-tab-overview')
+const centurionStatsTabMaterial = button('centurion-stats-tab-material')
+const centurionStatsTabThreats = button('centurion-stats-tab-threats')
 const centurionCommandHistory = element('centurion-command-history')
 const centurionLeaveButton = button('centurion-leave-btn')
 const centurionGameReplay = element('centurion-game-replay')
@@ -200,6 +209,7 @@ const centurionReplayNextButton = button('centurion-replay-next')
 const centurionReplayEndButton = button('centurion-replay-end')
 const centurionReplayBoard = new ReplayBoard(centurionReplayBoardHost)
 let centurionGameReplayOptionsKey = ''
+let centurionActiveStatsTab: 'overview' | 'material' | 'threats' = 'overview'
 const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
@@ -654,7 +664,7 @@ function matchMetaText(session: MatchSession): string {
   if (match.phase.tag === 'finished') {
     return 'Match over'
   }
-  const games = `${activeGameCount(match)}/${match.gameCount} games`
+  const games = `${activeGameCount(match)} active · ${startedGameCount(match)}/${match.gameCount} in match`
   if (session.resolving !== null) {
     return `Turn ${match.turn} · ${games} · Resolving...`
   }
@@ -693,12 +703,13 @@ function renderMicroPawnEval(session: MatchSession): void {
     return
   }
 
-  const avgText = formatMicroPawns(stats.averageCp)
+  const avgText = formatMicroPawns(stats.medianCp)
   centurionMicroPawnAvg.textContent = avgText
-  if (stats.averageCp > 10) {
+  centurionMicroPawnAvg.title = 'Median position across active games'
+  if (stats.medianCp > 10) {
     centurionMicroPawnAvg.className =
       'centurion-micro-pawn-avg centurion-micro-pawn-avg--ahead'
-  } else if (stats.averageCp < -10) {
+  } else if (stats.medianCp < -10) {
     centurionMicroPawnAvg.className =
       'centurion-micro-pawn-avg centurion-micro-pawn-avg--behind'
   } else {
@@ -734,11 +745,96 @@ function resolutionSummaryText(session: MatchSession): string {
     return 'No turns resolved yet.'
   }
   const base = `Turn ${summary.turn}: ${summary.commandMoves} game(s) followed the order, ${summary.freeMoves} moved freely.`
+  const command = session.match.commands.find(
+    (entry) => entry.turn === summary.turn,
+  )
+  const interpretation =
+    command === undefined
+      ? ''
+      : ` Interpreted as: ${describeCommandPredicate(command.predicate)}.`
   const decided = summary.p1Wins + summary.p2Wins + summary.draws
   if (decided === 0) {
-    return base
+    return `${base}${interpretation}`
   }
-  return `${base} Decided: ${scoreLabel(session, 1)} +${summary.p1Wins}, ${scoreLabel(session, 2)} +${summary.p2Wins}, draws +${summary.draws}.`
+  return `${base}${interpretation} Decided: ${scoreLabel(session, 1)} +${summary.p1Wins}, ${scoreLabel(session, 2)} +${summary.p2Wins}, draws +${summary.draws}.`
+}
+
+function renderPositionStats(session: MatchSession): void {
+  const stats = aggregatePositionStats(session.match, sessionViewer(session))
+  const showPanel = stats.activeGames > 0
+  centurionStatsPanel.hidden = !showPanel
+  if (!showPanel) {
+    centurionStatsContent.innerHTML = ''
+    return
+  }
+
+  for (const tab of [
+    centurionStatsTabOverview,
+    centurionStatsTabMaterial,
+    centurionStatsTabThreats,
+  ]) {
+    const active =
+      tab.getAttribute('data-stats-tab') === centurionActiveStatsTab
+    tab.classList.toggle('centurion-stats-tab--active', active)
+    tab.setAttribute('aria-selected', active ? 'true' : 'false')
+  }
+
+  const rows: ReadonlyArray<readonly [string, string]> =
+    centurionActiveStatsTab === 'material'
+      ? [
+          ['Your queens', String(stats.queens)],
+          ['Avg pawn rank', stats.averagePawnRank.toFixed(1)],
+        ]
+      : centurionActiveStatsTab === 'threats'
+        ? [
+            ['Games in check', String(stats.gamesInCheck)],
+            ['Castles available', String(stats.castlesAvailable)],
+            ['Promotions available', String(stats.promotionsAvailable)],
+          ]
+        : [
+            ['Active games', String(stats.activeGames)],
+            [
+              'Median eval',
+              formatMicroPawns(
+                aggregateMicroPawnStats(session.match, sessionViewer(session))
+                  .medianCp,
+              ),
+            ],
+            [
+              'Started games',
+              `${startedGameCount(session.match)}/${session.match.gameCount}`,
+            ],
+          ]
+
+  centurionStatsContent.innerHTML = ''
+  for (const [label, value] of rows) {
+    const dt = document.createElement('dt')
+    dt.textContent = label
+    const dd = document.createElement('dd')
+    dd.textContent = value
+    centurionStatsContent.append(dt, dd)
+  }
+}
+
+function renderRecentCommands(session: MatchSession): void {
+  const recent = session.match.commands.slice(-4).reverse()
+  const yours = turnIsYours(session)
+  centurionRecentCommands.hidden = recent.length === 0 || !yours
+  centurionRecentCommands.innerHTML = ''
+  for (const command of recent) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'btn btn-outline centurion-reissue-btn'
+    btn.title = describeCommandPredicate(command.predicate)
+    btn.textContent = command.text
+    btn.addEventListener('click', () => {
+      dispatchCenturion({
+        tag: 'command-input-updated',
+        value: command.text,
+      })
+    })
+    centurionRecentCommands.appendChild(btn)
+  }
 }
 
 function boardHintText(session: MatchSession): string {
@@ -840,12 +936,17 @@ function renderGameReplay(session: MatchSession): void {
   centurionReplayBoard.redraw()
 
   const sourceCounts = gameMoveSourceCounts(selectedGame)
+  const command = commandForPly(match, selectedGame, snapshot.ply)
+  const commandNote =
+    command === null
+      ? ''
+      : `\nOrder: "${command.text}" → ${describeCommandPredicate(command.predicate)}`
   const sourceNote =
     record === undefined ? '' : ` · ${replayMoveSourceText(session, record)}`
   centurionReplayMoveInfo.textContent =
     snapshot.moveCount === 0
       ? 'No moves recorded for this game.'
-      : `Ply ${snapshot.ply} of ${snapshot.moveCount} (${sourceCounts.command} ordered, ${sourceCounts.free} free)${sourceNote}`
+      : `Ply ${snapshot.ply} of ${snapshot.moveCount} (${sourceCounts.command} ordered, ${sourceCounts.free} free)${sourceNote}${commandNote}`
 
   centurionReplayPgn.value = matchGameToPgn(selectedGame, {
     white: playerLabel(session, selectedGame.whiteOwner),
@@ -1048,6 +1149,8 @@ function renderCenturionSession(session: MatchSession): void {
 
   centurionResolutionSummary.textContent = resolutionSummaryText(session)
   renderMicroPawnEval(session)
+  renderPositionStats(session)
+  renderRecentCommands(session)
 
   const yours = turnIsYours(session)
   if (centurionCommandInput.value !== session.commandInput) {
@@ -1065,11 +1168,21 @@ function renderCenturionSession(session: MatchSession): void {
   const orders: readonly IssuedCommand[] = match.commands
   for (const command of [...orders].reverse()) {
     const item = document.createElement('li')
-    item.className = `centurion-arrow-entry centurion-arrow-entry--player-${command.owner}`
-    item.title = describeCommandPredicate(command.predicate)
+    const clickable = turnIsYours(session)
+    item.className = `centurion-arrow-entry centurion-arrow-entry--player-${command.owner}${clickable ? ' centurion-arrow-entry--clickable' : ''}`
     const gamesNote =
       command.commandMoves === 1 ? '1 game' : `${command.commandMoves} games`
-    item.textContent = `T${command.turn} ${scoreLabel(session, command.owner)}: "${command.text}" — ${gamesNote}`
+    const dsl = describeCommandPredicate(command.predicate)
+    item.textContent = `T${command.turn} ${scoreLabel(session, command.owner)}: "${command.text}" — ${gamesNote} · ${dsl}`
+    item.title = clickable ? `Click to reissue: ${command.text}` : dsl
+    if (clickable) {
+      item.addEventListener('click', () => {
+        dispatchCenturion({
+          tag: 'command-input-updated',
+          value: command.text,
+        })
+      })
+    }
     centurionCommandHistory.appendChild(item)
   }
 
@@ -1310,6 +1423,19 @@ function bindEvents(): void {
   centurionPassButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'pass-requested' })
   })
+  for (const tab of [
+    centurionStatsTabOverview,
+    centurionStatsTabMaterial,
+    centurionStatsTabThreats,
+  ]) {
+    tab.addEventListener('click', () => {
+      const next = tab.getAttribute('data-stats-tab')
+      if (next === 'overview' || next === 'material' || next === 'threats') {
+        centurionActiveStatsTab = next
+        render()
+      }
+    })
+  }
   centurionGameSelect.addEventListener('change', () => {
     dispatchCenturion({
       tag: 'game-replay-game-selected',
