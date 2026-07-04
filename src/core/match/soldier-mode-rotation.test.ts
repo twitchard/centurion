@@ -5,17 +5,43 @@ import {
   STAGGERED_SCHEDULE_DWELL_TURNS,
   effectiveSoldierMode,
   initSoldierModeRotation,
-  soldierModeRotationStrategies,
 } from './soldier-mode-rotation'
 
 describe('soldier mode rotation strategies', () => {
   it('static strategy keeps birth modes on every turn', () => {
     const spec = { tag: 'static' as const }
-    const strategy = soldierModeRotationStrategies.static
     for (const birthMode of [0, 1, 2, 3] as const) {
-      expect(strategy.effectiveMode(spec, 7, birthMode, 1)).toBe(birthMode)
-      expect(strategy.effectiveMode(spec, 7, birthMode, 99)).toBe(birthMode)
+      const [mode, rng] = effectiveSoldierMode(spec, 7, birthMode, 1, 42)
+      expect(mode).toBe(birthMode)
+      expect(rng).toBe(42)
+      const [lateMode, lateRng] = effectiveSoldierMode(
+        spec,
+        7,
+        birthMode,
+        99,
+        42,
+      )
+      expect(lateMode).toBe(birthMode)
+      expect(lateRng).toBe(42)
     }
+  })
+
+  it('per-turn random draws a fresh mode and advances the rng', () => {
+    const spec = { tag: 'per-turn-random' as const }
+    const [firstMode, afterFirst] = effectiveSoldierMode(spec, 0, 0, 1, 99)
+    const [secondMode, afterSecond] = effectiveSoldierMode(
+      spec,
+      1,
+      0,
+      1,
+      afterFirst,
+    )
+    expect(firstMode).toBeGreaterThanOrEqual(0)
+    expect(firstMode).toBeLessThanOrEqual(3)
+    expect(secondMode).toBeGreaterThanOrEqual(0)
+    expect(secondMode).toBeLessThanOrEqual(3)
+    expect(afterSecond).not.toBe(99)
+    expect(afterSecond).not.toBe(afterFirst)
   })
 
   it('staggered schedule starts on birth mode and advances after dwell turns', () => {
@@ -37,12 +63,22 @@ describe('soldier mode rotation strategies', () => {
     const dwell = spec.dwellTurns
     const gameId = 0
     const perm = spec.permutations[gameId]!
-    expect(effectiveSoldierMode(spec, gameId, birthModes[gameId]!, dwell)).toBe(
-      perm[0],
+    const [beforeFlip] = effectiveSoldierMode(
+      spec,
+      gameId,
+      birthModes[gameId]!,
+      dwell,
+      0,
     )
-    expect(
-      effectiveSoldierMode(spec, gameId, birthModes[gameId]!, dwell + 1),
-    ).toBe(perm[1])
+    const [afterFlip] = effectiveSoldierMode(
+      spec,
+      gameId,
+      birthModes[gameId]!,
+      dwell + 1,
+      0,
+    )
+    expect(beforeFlip).toBe(perm[0])
+    expect(afterFlip).toBe(perm[1])
   })
 
   it('staggers rotation flips across game ids', () => {
@@ -62,25 +98,28 @@ describe('soldier mode rotation strategies', () => {
     for (let gameId = 0; gameId < 3; gameId++) {
       const birth = birthModes[gameId]!
       const perm = spec.permutations[gameId]!
-      expect(
-        effectiveSoldierMode(spec, gameId, birth, flipsAtTurn(gameId) - 1),
-      ).toBe(perm[0])
-      expect(
-        effectiveSoldierMode(spec, gameId, birth, flipsAtTurn(gameId)),
-      ).toBe(perm[1])
+      const [beforeFlip] = effectiveSoldierMode(
+        spec,
+        gameId,
+        birth,
+        flipsAtTurn(gameId) - 1,
+        0,
+      )
+      const [afterFlip] = effectiveSoldierMode(
+        spec,
+        gameId,
+        birth,
+        flipsAtTurn(gameId),
+        0,
+      )
+      expect(beforeFlip).toBe(perm[0])
+      expect(afterFlip).toBe(perm[1])
     }
   })
 
-  it('initMatch uses staggered schedule by default', () => {
+  it('initMatch uses per-turn random by default', () => {
     const match = initMatch(42, { gameCount: 4 })
-    expect(match.soldierModeRotation.tag).toBe('staggered-schedule')
-    if (match.soldierModeRotation.tag !== 'staggered-schedule') {
-      throw new Error('expected staggered schedule')
-    }
-    expect(match.soldierModeRotation.dwellTurns).toBe(
-      STAGGERED_SCHEDULE_DWELL_TURNS,
-    )
-    expect(match.soldierModeRotation.permutations).toHaveLength(4)
+    expect(match.soldierModeRotation).toEqual({ tag: 'per-turn-random' })
   })
 
   it('initMatch accepts a static rotation override for tests', () => {
@@ -89,5 +128,19 @@ describe('soldier mode rotation strategies', () => {
       soldierModeRotation: 'static',
     })
     expect(match.soldierModeRotation).toEqual({ tag: 'static' })
+  })
+
+  it('initMatch can still opt into staggered schedule', () => {
+    const match = initMatch(42, {
+      gameCount: 4,
+      soldierModeRotation: 'staggered-schedule',
+    })
+    if (match.soldierModeRotation.tag !== 'staggered-schedule') {
+      throw new Error('expected staggered schedule')
+    }
+    expect(match.soldierModeRotation.dwellTurns).toBe(
+      STAGGERED_SCHEDULE_DWELL_TURNS,
+    )
+    expect(match.soldierModeRotation.permutations).toHaveLength(4)
   })
 })

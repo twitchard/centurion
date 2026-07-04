@@ -4,6 +4,7 @@ import { type NormalMove, isNormal } from 'chessops/types'
 import { makeUci, parseUci } from 'chessops/util'
 import { moveMatches } from '../command/evaluate'
 import type { CommandPredicate } from '../command/model'
+import type { RngState } from '../rng'
 import {
   type GameStatus,
   MATE_THRESHOLD_CP,
@@ -264,7 +265,8 @@ function chooseSoldierMove(
   command: PendingCommand | null,
   turn: number,
   soldierModeRotation: MatchState['soldierModeRotation'],
-): SoldierChoice | null {
+  rng: RngState,
+): readonly [SoldierChoice, RngState] | null {
   const moves = legalRankedMoves(game.position, ranked)
   if (moves.length === 0) {
     return null
@@ -276,7 +278,10 @@ function chooseSoldierMove(
     if (best === undefined) {
       return null
     }
-    return { recorded: { uci: best.uci, source: 'free' }, moveCp: best.cp }
+    return [
+      { recorded: { uci: best.uci, source: 'free' }, moveCp: best.cp },
+      rng,
+    ]
   }
 
   let allowed = moves
@@ -291,11 +296,12 @@ function chooseSoldierMove(
     }
   }
 
-  const mode = effectiveSoldierMode(
+  const [mode, nextRng] = effectiveSoldierMode(
     soldierModeRotation,
     game.id,
     game.soldierMode,
     turn,
+    rng,
   )
   const style = soldierStyle(mode, movingOwner(game))
   const chosen = pickByStyle(allowed, style, bestCp)
@@ -303,7 +309,7 @@ function chooseSoldierMove(
     source === 'command' && command !== null
       ? { uci: chosen.uci, source, commandOwner: command.owner }
       : { uci: chosen.uci, source: 'free' }
-  return { recorded, moveCp: chosen.cp }
+  return [{ recorded, moveCp: chosen.cp }, nextRng]
 }
 
 /**
@@ -327,6 +333,7 @@ export function completeResolution(
   const games = [...base.games]
   let commandMoves = 0
   let freeMoves = 0
+  let rng = base.rng
 
   for (let index = 0; index < resolution.pending.length; index++) {
     const entry = resolution.pending[index]
@@ -339,16 +346,19 @@ export function completeResolution(
     if (game === undefined || game.status.tag !== 'active') {
       return null
     }
-    const choice = chooseSoldierMove(
+    const choiceResult = chooseSoldierMove(
       game,
       list,
       resolution.command,
       base.turn,
       base.soldierModeRotation,
+      rng,
     )
-    if (choice === null) {
+    if (choiceResult === null) {
       return null
     }
+    const [choice, nextRng] = choiceResult
+    rng = nextRng
     const moverIsWhite = game.position.turn === 'white'
     const evalCp = moverIsWhite ? choice.moveCp : -choice.moveCp
     games[gameIndex] = applyMoveToGame(game, choice.recorded, evalCp)
@@ -398,7 +408,7 @@ export function completeResolution(
         : [...base.commands, { ...resolution.command, commandMoves }],
     turn: base.turn + 1,
     scores,
-    rng: base.rng,
+    rng,
     phase: matchPhaseFor(games, scores),
     lastResolution: {
       turn: base.turn,

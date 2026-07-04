@@ -7,6 +7,7 @@ import type { SoldierMode } from './model'
  */
 export type SoldierModeRotationSpec =
   | { readonly tag: 'static' }
+  | { readonly tag: 'per-turn-random' }
   | {
       readonly tag: 'staggered-schedule'
       readonly dwellTurns: number
@@ -17,7 +18,7 @@ export type SoldierModeRotationSpec =
 /** How many turns a game keeps one mode before advancing its schedule. */
 export const STAGGERED_SCHEDULE_DWELL_TURNS = 25
 
-export const DEFAULT_SOLDIER_MODE_ROTATION_TAG = 'staggered-schedule' as const
+export const DEFAULT_SOLDIER_MODE_ROTATION_TAG = 'per-turn-random' as const
 
 export type SoldierModeRotationTag = SoldierModeRotationSpec['tag']
 
@@ -25,6 +26,9 @@ export type SoldierModeRotationTag = SoldierModeRotationSpec['tag']
  * Pluggable policy for which soldier mode applies on a given turn.
  * Add a new implementation and register it in
  * {@link soldierModeRotationStrategies} to try a different rotation scheme.
+ *
+ * Strategies that draw randomness return an updated RNG so multiplayer
+ * peers stay in sync.
  */
 export interface SoldierModeRotationStrategy {
   readonly tag: SoldierModeRotationTag
@@ -38,7 +42,8 @@ export interface SoldierModeRotationStrategy {
     gameId: number,
     birthMode: SoldierMode,
     turn: number,
-  ): SoldierMode
+    rng: RngState,
+  ): readonly [SoldierMode, RngState]
 }
 
 const staticStrategy: SoldierModeRotationStrategy = {
@@ -46,8 +51,22 @@ const staticStrategy: SoldierModeRotationStrategy = {
   init(_gameCount, _birthModes, rng) {
     return [{ tag: 'static' }, rng]
   },
-  effectiveMode(_spec, _gameId, birthMode) {
-    return birthMode
+  effectiveMode(_spec, _gameId, birthMode, _turn, rng) {
+    return [birthMode, rng]
+  },
+}
+
+const perTurnRandomStrategy: SoldierModeRotationStrategy = {
+  tag: 'per-turn-random',
+  init(_gameCount, _birthModes, rng) {
+    return [{ tag: 'per-turn-random' }, rng]
+  },
+  effectiveMode(spec, _gameId, birthMode, _turn, rng) {
+    if (spec.tag !== 'per-turn-random') {
+      return [birthMode, rng]
+    }
+    const [pick, nextRng] = pickIndex(rng, 4)
+    return [pick as SoldierMode, nextRng]
   },
 }
 
@@ -74,26 +93,27 @@ const staggeredScheduleStrategy: SoldierModeRotationStrategy = {
       state,
     ]
   },
-  effectiveMode(spec, gameId, birthMode, turn) {
+  effectiveMode(spec, gameId, birthMode, turn, rng) {
     if (spec.tag !== 'staggered-schedule') {
-      return birthMode
+      return [birthMode, rng]
     }
     const perm = spec.permutations[gameId]
     if (perm === undefined || perm.length !== 4) {
-      return birthMode
+      return [birthMode, rng]
     }
     const offset = gameId % spec.dwellTurns
     const adjustedTurn = turn - 1 - offset
     if (adjustedTurn < 0) {
-      return perm[0]!
+      return [perm[0]!, rng]
     }
     const phase = Math.floor(adjustedTurn / spec.dwellTurns)
-    return perm[phase % 4]!
+    return [perm[phase % 4]!, rng]
   },
 }
 
 export const soldierModeRotationStrategies = {
   static: staticStrategy,
+  'per-turn-random': perTurnRandomStrategy,
   'staggered-schedule': staggeredScheduleStrategy,
 } satisfies Record<SoldierModeRotationTag, SoldierModeRotationStrategy>
 
@@ -117,8 +137,15 @@ export function effectiveSoldierMode(
   gameId: number,
   birthMode: SoldierMode,
   turn: number,
-): SoldierMode {
-  return strategyForTag(spec.tag).effectiveMode(spec, gameId, birthMode, turn)
+  rng: RngState,
+): readonly [SoldierMode, RngState] {
+  return strategyForTag(spec.tag).effectiveMode(
+    spec,
+    gameId,
+    birthMode,
+    turn,
+    rng,
+  )
 }
 
 function shuffledModePermutation(
@@ -149,7 +176,7 @@ export function isSoldierModeRotationSpec(
     return false
   }
   const raw = value as SoldierModeRotationSpec
-  if (raw.tag === 'static') {
+  if (raw.tag === 'static' || raw.tag === 'per-turn-random') {
     return true
   }
   if (raw.tag !== 'staggered-schedule') {

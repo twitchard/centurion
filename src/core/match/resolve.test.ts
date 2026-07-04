@@ -164,7 +164,11 @@ describe('completeResolution', () => {
   })
 
   it('stores micro pawn eval from white perspective after each ply', () => {
-    const match = initMatch(1, { gameCount: 1, whitePlayer: 1 })
+    const match = initMatch(1, {
+      gameCount: 1,
+      whitePlayer: 1,
+      soldierModeRotation: 'static',
+    })
     const afterWhite = resolveTurn(match, null, null, (uci) =>
       uci === 'e2e4' ? 30 : 0,
     )
@@ -200,6 +204,7 @@ describe('completeResolution', () => {
       gameCount: 4,
       whitePlayer: 1,
       soldierModes: [0, 1, 2, 3],
+      soldierModeRotation: 'static',
     })
     const cpOf = (uci: string): number =>
       uci === 'e2e4' ? 200 : uci === 'd2d4' ? 150 : uci === 'g1f3' ? 50 : -400
@@ -217,6 +222,7 @@ describe('completeResolution', () => {
       gameCount: 1,
       soldierModes: [0],
       whitePlayer: 1,
+      soldierModeRotation: 'static',
     })
     const cpOf = (uci: string): number =>
       uci === 'e2e4' ? 200 : uci === 'd2d4' ? 100 : -400
@@ -229,6 +235,7 @@ describe('completeResolution', () => {
       gameCount: 1,
       soldierModes: [3],
       whitePlayer: 1,
+      soldierModeRotation: 'static',
     })
     const cpOf = (uci: string): number => {
       if (uci === 'e2e4') return 200
@@ -362,6 +369,31 @@ describe('completeResolution', () => {
     )
     expect(turnThree.turn).toBe(4)
     expect(turnThree.games[0]?.moves[2]?.uci).toBe('d2d4')
+  })
+
+  it('draws a fresh soldier mode every turn by default', () => {
+    const match = initMatch(1, {
+      gameCount: 1,
+      soldierModes: [0],
+      whitePlayer: 1,
+    })
+    const cpOf = (uci: string): number =>
+      uci === 'e2e4' ? 200 : uci === 'd2d4' ? 100 : -400
+
+    const turnOne = resolveTurn(match, null, null, cpOf)
+    expect(turnOne.rng).not.toBe(match.rng)
+
+    const replay = resolveTurn(
+      initMatch(1, {
+        gameCount: 1,
+        soldierModes: [0],
+        whitePlayer: 1,
+      }),
+      null,
+      null,
+      cpOf,
+    )
+    expect(replay.rng).toBe(turnOne.rng)
   })
 })
 
