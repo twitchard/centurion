@@ -4,7 +4,6 @@ import { type NormalMove, isNormal } from 'chessops/types'
 import { makeUci, parseUci } from 'chessops/util'
 import { moveMatches } from '../command/evaluate'
 import type { CommandPredicate } from '../command/model'
-import { type RngState, pickWeighted } from '../rng'
 import {
   type GameStatus,
   type IssuedCommand,
@@ -14,8 +13,8 @@ import {
   type MatchState,
   type PlayerId,
   type RecordedMove,
-  SOLDIER_TARGET_CP,
-  SOLDIER_TEMP_CP,
+  SOLDIER_WORST_BLUNDER_CAP_CP,
+  type SoldierMode,
   activePlacer,
   canIssueCommands,
   otherPlayer,
@@ -196,22 +195,59 @@ function legalRankedMoves(
   return legal
 }
 
+/** Which player owns the side to move in this game. */
+export function movingOwner(game: MatchGame): PlayerId {
+  return game.position.turn === 'white'
+    ? game.whiteOwner
+    : otherPlayer(game.whiteOwner)
+}
+
+/** Best or worst play for one owner in this game's soldier mode. */
+export function soldierStyle(
+  mode: SoldierMode,
+  owner: PlayerId,
+): 'best' | 'worst' {
+  switch (mode) {
+    case 0:
+      return 'best'
+    case 1:
+      return owner === 1 ? 'best' : 'worst'
+    case 2:
+      return owner === 1 ? 'worst' : 'best'
+    case 3:
+      return 'worst'
+  }
+}
+
+function pickByStyle(
+  allowed: readonly LegalRankedMove[],
+  style: 'best' | 'worst',
+  bestCp: number,
+): LegalRankedMove {
+  if (style === 'best') {
+    return allowed.reduce((best, entry) => (entry.cp > best.cp ? entry : best))
+  }
+  const floorCp = bestCp - SOLDIER_WORST_BLUNDER_CAP_CP
+  const capped = allowed.filter((entry) => entry.cp >= floorCp)
+  const pool = capped.length > 0 ? capped : allowed
+  return pool.reduce((worst, entry) => (entry.cp < worst.cp ? entry : worst))
+}
+
 interface SoldierChoice {
   readonly recorded: RecordedMove
-  readonly rng: RngState
 }
 
 /**
  * One soldier's move: filter the ranked legal moves through the command
- * (falling back to all moves when nothing matches), then sample aiming
- * SOLDIER_TARGET_CP below the position's best move. A soldier who can
- * see a forced mate takes the top move instead — games must end.
+ * (falling back to all moves when nothing matches), then play the best or
+ * worst move this game's mode assigns to the mover. Worst is capped at one
+ * pawn below the position's best allowed move. A soldier who can see a
+ * forced mate takes the top move instead — games must end.
  */
 function chooseSoldierMove(
   game: MatchGame,
   ranked: readonly RankedMove[],
   command: IssuedCommand | null,
-  rng: RngState,
 ): SoldierChoice | null {
   const moves = legalRankedMoves(game.position, ranked)
   if (moves.length === 0) {
@@ -224,7 +260,7 @@ function chooseSoldierMove(
     if (best === undefined) {
       return null
     }
-    return { recorded: { uci: best.uci, source: 'free' }, rng }
+    return { recorded: { uci: best.uci, source: 'free' } }
   }
 
   let allowed = moves
@@ -239,29 +275,17 @@ function chooseSoldierMove(
     }
   }
 
-  const target = bestCp - SOLDIER_TARGET_CP
-  const weights = allowed.map((entry) =>
-    Math.exp(-Math.abs(entry.cp - target) / SOLDIER_TEMP_CP),
-  )
-  const [pick, nextRng] = pickWeighted(rng, weights)
-  const chosen =
-    pick >= 0
-      ? allowed[pick]
-      : // All weights underflowed (every allowed move is catastrophically
-        // far from the target): a cornered soldier plays its best option.
-        allowed.reduce((best, entry) => (entry.cp > best.cp ? entry : best))
-  if (chosen === undefined) {
-    return null
-  }
+  const style = soldierStyle(game.soldierMode, movingOwner(game))
+  const chosen = pickByStyle(allowed, style, bestCp)
   const recorded: RecordedMove =
     source === 'command' && command !== null
       ? { uci: chosen.uci, source, commandOwner: command.owner }
       : { uci: chosen.uci, source: 'free' }
-  return { recorded, rng: nextRng }
+  return { recorded }
 }
 
 /**
- * Phase two of a turn: apply one sampled soldier move to every active
+ * Phase two of a turn: apply one soldier move to every active game using
  * game using the ranked lists (aligned with `resolution.pending`), then
  * score newly decided games and check the match end conditions.
  *
@@ -279,7 +303,6 @@ export function completeResolution(
 
   const base = resolution.base
   const games = [...base.games]
-  let rng = base.rng
   let commandMoves = 0
   let freeMoves = 0
 
@@ -294,11 +317,10 @@ export function completeResolution(
     if (game === undefined || game.status.tag !== 'active') {
       return null
     }
-    const choice = chooseSoldierMove(game, list, resolution.command, rng)
+    const choice = chooseSoldierMove(game, list, resolution.command)
     if (choice === null) {
       return null
     }
-    rng = choice.rng
     games[gameIndex] = applyMoveToGame(game, choice.recorded)
     if (choice.recorded.source === 'command') {
       commandMoves += 1
@@ -346,7 +368,7 @@ export function completeResolution(
         : [...base.commands, resolution.command],
     turn: base.turn + 1,
     scores,
-    rng,
+    rng: base.rng,
     phase: matchPhaseFor(games, scores),
     lastResolution: {
       turn: base.turn,

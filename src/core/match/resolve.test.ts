@@ -6,6 +6,7 @@ import type { CommandPredicate } from '../command/model'
 import {
   MATE_CP,
   type MatchState,
+  type SoldierMode,
   activeGameCount,
   activePlacer,
   canIssueCommands,
@@ -19,6 +20,7 @@ import {
   beginResolution,
   completeResolution,
   flipSquare,
+  soldierStyle,
 } from './resolve'
 
 const KNIGHTS: CommandPredicate = { tag: 'piece', roles: ['knight'] }
@@ -26,8 +28,7 @@ const CASTLES: CommandPredicate = { tag: 'castles' }
 
 /**
  * Stand-in for Stockfish in tests: every legal move of the position,
- * scored by `cpOf` (default all zero, making the soldier sample
- * uniformly among them).
+ * scored by `cpOf` (default all zero, so best/worst ties break on order).
  */
 function rankedFor(
   fen: string,
@@ -99,6 +100,18 @@ describe('initMatch', () => {
     expect(first.firstPlacer).toBe(second.firstPlacer)
     expect([1, 2]).toContain(first.firstPlacer)
     expect(activePlacer(first)).toBe(first.firstPlacer)
+  })
+
+  it('assigns each soldier mode to a quarter of the games', () => {
+    const match = initMatch(42)
+    const counts = new Map<SoldierMode, number>()
+    for (const game of match.games) {
+      counts.set(game.soldierMode, (counts.get(game.soldierMode) ?? 0) + 1)
+    }
+    expect(counts.get(0)).toBe(25)
+    expect(counts.get(1)).toBe(25)
+    expect(counts.get(2)).toBe(25)
+    expect(counts.get(3)).toBe(25)
   })
 
   it('flipSquare is a rank flip and its own inverse', () => {
@@ -174,29 +187,49 @@ describe('completeResolution', () => {
     expect(next.lastResolution?.freeMoves).toBe(4)
   })
 
-  it('diverges identical games through sampling', () => {
-    const match = initMatch(11, { gameCount: 20 })
-    const next = resolveTurn(match, null, null)
-    const firstMoves = new Set(next.games.map((game) => game.moves[0]?.uci))
-    expect(firstMoves.size).toBeGreaterThan(1)
+  it('diverges games through different soldier modes', () => {
+    const match = initMatch(1, {
+      gameCount: 4,
+      whitePlayer: 1,
+      soldierModes: [0, 1, 2, 3],
+    })
+    const cpOf = (uci: string): number =>
+      uci === 'e2e4' ? 200 : uci === 'd2d4' ? 150 : uci === 'g1f3' ? 50 : -400
+    const next = resolveTurn(match, null, null, cpOf)
+    const moves = next.games.map((game) => game.moves[0]?.uci)
+    expect(moves[0]).toBe('e2e4')
+    expect(moves[1]).toBe('e2e4')
+    expect(moves[2]).toBe('d2d4')
+    expect(moves[3]).toBe('d2d4')
+    expect(new Set(moves).size).toBeGreaterThan(1)
   })
 
-  it('samples toward the target distance below the best move', () => {
-    const match = initMatch(17, { gameCount: 50 })
-    // e2e4 is "best" at +200; d2d4 sits exactly at the soldier target
-    // (200 - 100); everything else is far below.
+  it('plays the best allowed move when the soldier mode demands it', () => {
+    const match = initMatch(1, {
+      gameCount: 1,
+      soldierModes: [0],
+      whitePlayer: 1,
+    })
     const cpOf = (uci: string): number =>
       uci === 'e2e4' ? 200 : uci === 'd2d4' ? 100 : -400
     const next = resolveTurn(match, null, null, cpOf)
-    let targetHits = 0
-    for (const game of next.games) {
-      if (game.moves[0]?.uci === 'd2d4') {
-        targetHits += 1
-      }
+    expect(next.games[0]?.moves[0]?.uci).toBe('e2e4')
+  })
+
+  it('caps worst moves at one pawn below the best allowed move', () => {
+    const match = initMatch(1, {
+      gameCount: 1,
+      soldierModes: [3],
+      whitePlayer: 1,
+    })
+    const cpOf = (uci: string): number => {
+      if (uci === 'e2e4') return 200
+      if (uci === 'd2d4') return 150
+      if (uci === 'g1f3') return 50
+      return -400
     }
-    // Weight(d2d4) = 1 vs weight(e2e4) = exp(-100/60) ~ 0.19: the
-    // on-target move should dominate.
-    expect(targetHits).toBeGreaterThan(30)
+    const next = resolveTurn(match, null, null, cpOf)
+    expect(next.games[0]?.moves[0]?.uci).toBe('d2d4')
   })
 
   it('takes a forced mate even against the command', () => {
@@ -294,5 +327,18 @@ describe('completeResolution', () => {
     expect(next.scores.p1).toBe(1)
     expect(activeGameCount(next)).toBe(1)
     expect(next.phase).toEqual({ tag: 'active' })
+  })
+})
+
+describe('soldierStyle', () => {
+  it('maps each mode to the right best/worst pairing', () => {
+    expect(soldierStyle(0, 1)).toBe('best')
+    expect(soldierStyle(0, 2)).toBe('best')
+    expect(soldierStyle(1, 1)).toBe('best')
+    expect(soldierStyle(1, 2)).toBe('worst')
+    expect(soldierStyle(2, 1)).toBe('worst')
+    expect(soldierStyle(2, 2)).toBe('best')
+    expect(soldierStyle(3, 1)).toBe('worst')
+    expect(soldierStyle(3, 2)).toBe('worst')
   })
 })

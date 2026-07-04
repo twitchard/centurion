@@ -46,6 +46,17 @@ export interface RecordedMove {
   readonly commandOwner?: PlayerId
 }
 
+/**
+ * How the two players' soldiers play in this game. Each quadrant is
+ * assigned to ~25% of games at match start:
+ *   0 — P1 best, P2 best
+ *   1 — P1 best, P2 worst
+ *   2 — P1 worst, P2 best
+ *   3 — P1 worst, P2 worst
+ * "Worst" is capped at one pawn below the position's best move.
+ */
+export type SoldierMode = 0 | 1 | 2 | 3
+
 export interface MatchGame {
   readonly id: number
   readonly whiteOwner: PlayerId
@@ -56,6 +67,7 @@ export interface MatchGame {
   readonly status: GameStatus
   /** Half-moves played from `startingFen`, with resolution source. */
   readonly moves: readonly RecordedMove[]
+  readonly soldierMode: SoldierMode
 }
 
 export interface ResolutionSummary {
@@ -90,17 +102,10 @@ export const DEFAULT_GAME_COUNT = 100
 export const COMMAND_LAST_TURN = 100
 
 /**
- * The soldiers: each game's engine is a deliberately imperfect player.
- * When a game moves — unled, or within the moves a command allows — it
- * samples among its ranked legal moves with weight
- * exp(-|cp - (best - SOLDIER_TARGET_CP)| / SOLDIER_TEMP_CP), i.e. it
- * aims a set centipawn distance below the position's best move, with
- * spread. The sampling is what diverges the hundred games; a command's
- * value is exactly how much your idea improves on this default.
+ * When a soldier is told to play its worst move, it never blunders more
+ * than this many centipawns below the position's best allowed move.
  */
-export const SOLDIER_TARGET_CP = 100
-
-export const SOLDIER_TEMP_CP = 60
+export const SOLDIER_WORST_BLUNDER_CAP_CP = 100
 
 /**
  * Ranked-move scores at or above this magnitude encode forced mates
@@ -123,6 +128,8 @@ export interface MatchOptions {
   readonly whitePlayer?: PlayerId
   /** Fix who commands first instead of drawing it from the seed. */
   readonly firstPlacer?: PlayerId
+  /** Fix soldier modes per game instead of drawing them from the seed. */
+  readonly soldierModes?: readonly SoldierMode[]
 }
 
 export function otherPlayer(player: PlayerId): PlayerId {
@@ -153,6 +160,30 @@ function positionFromFen(fen: string): Chess {
   return Chess.fromSetup(setup).unwrap()
 }
 
+function shuffledSoldierModes(
+  gameCount: number,
+  rng: RngState,
+): readonly [readonly SoldierMode[], RngState] {
+  const modes: SoldierMode[] = []
+  const perBucket = Math.floor(gameCount / 4)
+  const remainder = gameCount % 4
+  for (let bucket = 0; bucket < 4; bucket++) {
+    const count = perBucket + (bucket < remainder ? 1 : 0)
+    for (let index = 0; index < count; index++) {
+      modes.push(bucket as SoldierMode)
+    }
+  }
+  let state = rng
+  for (let index = modes.length - 1; index > 0; index--) {
+    const [pick, nextState] = pickIndex(state, index + 1)
+    state = nextState
+    const swap = modes[index]
+    modes[index] = modes[pick]!
+    modes[pick] = swap!
+  }
+  return [modes, state]
+}
+
 export function initMatch(seed: number, options?: MatchOptions): MatchState {
   const fens = options?.fens
   const gameCount =
@@ -173,12 +204,28 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     whitePlayer = pick === 0 ? 1 : 2
   }
 
+  let soldierModes: readonly SoldierMode[]
+  if (options?.soldierModes !== undefined) {
+    if (options.soldierModes.length !== gameCount) {
+      throw new Error('soldierModes length must match game count')
+    }
+    soldierModes = options.soldierModes
+  } else {
+    const [drawn, nextRng] = shuffledSoldierModes(gameCount, rng)
+    rng = nextRng
+    soldierModes = drawn
+  }
+
   const games: MatchGame[] = []
   for (let id = 0; id < gameCount; id++) {
     const fen = fens?.[id]
     const position = fen === undefined ? Chess.default() : positionFromFen(fen)
     const repetition = new Map<string, number>()
     repetition.set(positionKey(position), 1)
+    const mode = soldierModes[id]
+    if (mode === undefined) {
+      throw new Error(`missing soldier mode for game ${id}`)
+    }
     games.push({
       id,
       whiteOwner: whitePlayer,
@@ -187,6 +234,7 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
       repetition,
       status: { tag: 'active' },
       moves: [],
+      soldierMode: mode,
     })
   }
 

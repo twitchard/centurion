@@ -13,6 +13,7 @@ import type {
   PlayerId,
   RecordedMove,
   ResolutionSummary,
+  SoldierMode,
 } from './model'
 
 export interface GameStatusSnapshot {
@@ -35,6 +36,7 @@ export interface GameSnapshot {
   readonly repetition: readonly (readonly [string, number])[]
   readonly status: GameStatusSnapshot
   readonly moves: readonly RecordedMoveSnapshot[]
+  readonly soldierMode: 0 | 1 | 2 | 3
 }
 
 export interface IssuedCommandSnapshot {
@@ -91,6 +93,10 @@ function decodeGameStatus(snapshot: GameStatusSnapshot): GameStatus | null {
   return { tag: 'drawn', reason: snapshot.reason }
 }
 
+function isSoldierMode(value: unknown): value is SoldierMode {
+  return value === 0 || value === 1 || value === 2 || value === 3
+}
+
 function encodeGame(game: MatchGame): GameSnapshot {
   return {
     id: game.id,
@@ -108,11 +114,15 @@ function encodeGame(game: MatchGame): GameSnapshot {
             commandOwner: move.commandOwner,
           },
     ),
+    soldierMode: game.soldierMode,
   }
 }
 
 function decodeGame(snapshot: GameSnapshot): MatchGame | null {
   if (snapshot.whiteOwner !== 1 && snapshot.whiteOwner !== 2) {
+    return null
+  }
+  if (!isSoldierMode(snapshot.soldierMode)) {
     return null
   }
   const status = decodeGameStatus(snapshot.status)
@@ -171,6 +181,7 @@ function decodeGame(snapshot: GameSnapshot): MatchGame | null {
     repetition,
     status,
     moves,
+    soldierMode: snapshot.soldierMode,
   }
 }
 

@@ -84,6 +84,7 @@ describe('match snapshot codec', () => {
         makeFen(before.position.toSetup()),
       )
       expect(after.moves).toEqual(before.moves)
+      expect(after.soldierMode).toBe(before.soldierMode)
     }
   })
 
