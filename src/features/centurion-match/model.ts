@@ -1,4 +1,3 @@
-import type { CommandPredicate } from '../../core/command/model'
 import type { MatchState, PlayerId } from '../../core/match/model'
 import type { PendingResolution } from '../../core/match/resolve'
 
@@ -18,18 +17,12 @@ export interface GameReplayState {
 }
 
 /**
- * The turn's command as it moves through the compile-preview-issue flow:
- * typed words are compiled to a predicate at the edge, echoed back for
- * the player to read, and only issued once confirmed.
+ * The turn's command while it is being submitted: typed words compile to
+ * a predicate at the edge, then the turn resolves immediately.
  */
 export type CommandDraft =
   | { readonly tag: 'idle' }
   | { readonly tag: 'compiling'; readonly text: string }
-  | {
-      readonly tag: 'compiled'
-      readonly text: string
-      readonly predicate: CommandPredicate
-    }
   | {
       readonly tag: 'failed'
       readonly text: string

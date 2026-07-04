@@ -60,17 +60,19 @@ function apply(
   return [current, lastCommands]
 }
 
-/** Type, compile (with a canned result), leaving the draft previewed. */
-function compiledDraftMsgs(text: string): CenturionMsg[] {
+function submitCommandMsgs(text: string): CenturionMsg[] {
   return [
     { tag: 'command-input-updated', value: text },
-    { tag: 'command-compile-requested' },
-    {
-      tag: 'command-compile-finished',
-      text,
-      result: { tag: 'compiled', predicate: KNIGHTS },
-    },
+    { tag: 'command-issue-requested' },
   ]
+}
+
+function compileFinished(text: string): CenturionMsg {
+  return {
+    tag: 'command-compile-finished',
+    text,
+    result: { tag: 'compiled', predicate: KNIGHTS },
+  }
 }
 
 describe('pass and play', () => {
@@ -87,12 +89,11 @@ describe('pass and play', () => {
     expect(model.session.match.games).toHaveLength(100)
   })
 
-  it('compiles a command into a previewed draft', () => {
+  it('starts compiling when a command is submitted', () => {
     const [model, commands] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
-      { tag: 'command-input-updated', value: 'all knights advance' },
-      { tag: 'command-compile-requested' },
+      ...submitCommandMsgs('all knights advance'),
     )
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
@@ -106,12 +107,19 @@ describe('pass and play', () => {
     ])
   })
 
-  it('issues a compiled command and resolves the turn', () => {
-    const [pendingModel, commands] = apply(
+  it('submits a command and resolves the turn', () => {
+    const [compilingModel, compileCommands] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
-      ...compiledDraftMsgs('all knights advance'),
-      { tag: 'command-issue-requested' },
+      ...submitCommandMsgs('all knights advance'),
+    )
+    expect(compileCommands).toEqual([
+      { tag: 'compile-command', text: 'all knights advance' },
+    ])
+
+    const [pendingModel, rankCommands] = apply(
+      compilingModel,
+      compileFinished('all knights advance'),
     )
     if (pendingModel.tag !== 'playing') {
       throw new Error('expected playing state')
@@ -119,7 +127,7 @@ describe('pass and play', () => {
     expect(pendingModel.session.resolving).not.toBeNull()
     expect(pendingModel.session.match.turn).toBe(1)
 
-    const [model] = apply(pendingModel, engineAnswer(commands))
+    const [model] = apply(pendingModel, engineAnswer(rankCommands))
     if (model.tag !== 'playing') {
       throw new Error('expected playing state')
     }
@@ -127,6 +135,7 @@ describe('pass and play', () => {
     expect(model.session.match.turn).toBe(2)
     expect(model.session.match.commands).toHaveLength(1)
     expect(model.session.match.commands[0]?.text).toBe('all knights advance')
+    expect(model.session.match.commands[0]?.commandMoves).toBe(100)
     expect(model.session.commandInput).toBe('')
     expect(model.session.draft).toEqual({ tag: 'idle' })
     for (const game of model.session.match.games) {
@@ -151,22 +160,22 @@ describe('pass and play', () => {
     }
   })
 
-  it('rejects issuing before a compile and over-limit commands', () => {
+  it('rejects empty and over-limit commands on submit', () => {
     const base = apply(initCenturionModel(), {
       tag: 'pass-and-play-requested',
       seed: 11,
     })[0]
 
-    const [noDraft] = apply(base, { tag: 'command-issue-requested' })
-    if (noDraft.tag !== 'playing') {
+    const [empty] = apply(base, { tag: 'command-issue-requested' })
+    if (empty.tag !== 'playing') {
       throw new Error('expected playing state')
     }
-    expect(noDraft.session.inputError).toContain('Compile')
+    expect(empty.session.inputError).toContain('empty')
 
     const [tooLong] = apply(
       base,
       { tag: 'command-input-updated', value: 'word '.repeat(21) },
-      { tag: 'command-compile-requested' },
+      { tag: 'command-issue-requested' },
     )
     if (tooLong.tag !== 'playing') {
       throw new Error('expected playing state')
@@ -175,34 +184,33 @@ describe('pass and play', () => {
   })
 
   it('invalidates the draft when the text changes and drops stale results', () => {
-    const [edited] = apply(
+    const [compiling] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
-      ...compiledDraftMsgs('all knights advance'),
-      { tag: 'command-input-updated', value: 'push pawns' },
+      ...submitCommandMsgs('all knights advance'),
     )
+    const [edited] = apply(compiling, {
+      tag: 'command-input-updated',
+      value: 'push pawns',
+    })
     if (edited.tag !== 'playing') {
       throw new Error('expected playing state')
     }
     expect(edited.session.draft).toEqual({ tag: 'idle' })
 
-    const [stale] = apply(edited, {
-      tag: 'command-compile-finished',
-      text: 'all knights advance',
-      result: { tag: 'compiled', predicate: KNIGHTS },
-    })
+    const [stale] = apply(edited, compileFinished('all knights advance'))
     if (stale.tag !== 'playing') {
       throw new Error('expected playing state')
     }
     expect(stale.session.draft).toEqual({ tag: 'idle' })
+    expect(stale.session.resolving).toBeNull()
   })
 
   it('surfaces compile failures on the draft', () => {
     const [model] = apply(
       initCenturionModel(),
       { tag: 'pass-and-play-requested', seed: 11 },
-      { tag: 'command-input-updated', value: 'castle' },
-      { tag: 'command-compile-requested' },
+      ...submitCommandMsgs('castle'),
       {
         tag: 'command-compile-finished',
         text: 'castle',
@@ -254,16 +262,22 @@ describe('pass and play', () => {
 
 describe('solo mode', () => {
   it('plays two half-turns per command: yours ordered, black unled', () => {
-    const [pendingFirst, firstCommands] = apply(
+    const [compilingFirst, compileCommands] = apply(
       initCenturionModel(),
       { tag: 'solo-requested', seed: 21 },
-      ...compiledDraftMsgs('all knights advance'),
-      { tag: 'command-issue-requested' },
+      ...submitCommandMsgs('all knights advance'),
+    )
+    const [pendingFirst, firstCommands] = apply(
+      compilingFirst,
+      compileFinished('all knights advance'),
     )
     if (pendingFirst.tag !== 'playing') {
       throw new Error('expected playing state')
     }
     expect(pendingFirst.session.mode).toEqual({ tag: 'solo' })
+    expect(compileCommands).toEqual([
+      { tag: 'compile-command', text: 'all knights advance' },
+    ])
     // The player always owns white in solo.
     expect(pendingFirst.session.match.games[0]?.whiteOwner).toBe(1)
 
@@ -408,10 +422,13 @@ describe('multiplayer flow', () => {
     const commander = activePlacer(host.session.match)
     const [mover, receiver] = commander === 1 ? [host, guest] : [guest, host]
 
-    const [pendingModel, pendingCommands] = apply(
+    const [compilingModel] = apply(
       mover,
-      ...compiledDraftMsgs('all knights advance'),
-      { tag: 'command-issue-requested' },
+      ...submitCommandMsgs('all knights advance'),
+    )
+    const [pendingModel, pendingCommands] = apply(
+      compilingModel,
+      compileFinished('all knights advance'),
     )
     const [movedModel, commands] = apply(
       pendingModel,

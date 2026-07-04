@@ -6,7 +6,6 @@ import { moveMatches } from '../command/evaluate'
 import type { CommandPredicate } from '../command/model'
 import {
   type GameStatus,
-  type IssuedCommand,
   MATE_THRESHOLD_CP,
   type MatchGame,
   type MatchPhase,
@@ -43,6 +42,13 @@ export interface PendingEngineGame {
   readonly fen: string
 }
 
+export interface PendingCommand {
+  readonly turn: number
+  readonly owner: PlayerId
+  readonly text: string
+  readonly predicate: CommandPredicate
+}
+
 /**
  * The state of a turn between issuing a command and receiving the
  * soldiers' ranked move lists. `base` is the match as it was before the
@@ -52,7 +58,7 @@ export interface PendingEngineGame {
  */
 export interface PendingResolution {
   readonly base: MatchState
-  readonly command: IssuedCommand | null
+  readonly command: PendingCommand | null
   readonly pending: readonly PendingEngineGame[]
 }
 
@@ -89,7 +95,7 @@ export function beginResolution(
   if (pending.length === 0) {
     return null
   }
-  const issued: IssuedCommand | null =
+  const issued: PendingCommand | null =
     command === null
       ? null
       : {
@@ -247,7 +253,7 @@ interface SoldierChoice {
 function chooseSoldierMove(
   game: MatchGame,
   ranked: readonly RankedMove[],
-  command: IssuedCommand | null,
+  command: PendingCommand | null,
 ): SoldierChoice | null {
   const moves = legalRankedMoves(game.position, ranked)
   if (moves.length === 0) {
@@ -365,7 +371,7 @@ export function completeResolution(
     commands:
       resolution.command === null
         ? base.commands
-        : [...base.commands, resolution.command],
+        : [...base.commands, { ...resolution.command, commandMoves }],
     turn: base.turn + 1,
     scores,
     rng: base.rng,

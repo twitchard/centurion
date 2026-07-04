@@ -128,7 +128,7 @@
         <ol class="centurion-rules-list">
           <li><strong>A hundred games.</strong> You own one color in a hundred simultaneous chess games, all shown stacked on one board.</li>
           <li><strong>Your soldiers are ordinary.</strong> Unled, each game&#39;s engine deliberately plays a mediocre move &mdash; aiming about a pawn below best &mdash; and every game drifts its own way.</li>
-          <li><strong>One order per turn.</strong> Type a command of up to 20 words (&ldquo;all knights advance&rdquo;, &ldquo;take the queen&rdquo;). It compiles to a formal order, you preview what it means, then issue it.</li>
+          <li><strong>One order per turn.</strong> Type a command of up to 20 words (&ldquo;all knights advance&rdquo;, &ldquo;take the queen&rdquo;) and submit it. The compiler interprets your words into a formal order and your soldiers act on it.</li>
           <li><strong>Orders constrain, soldiers choose.</strong> In every game with a matching legal move, your soldier picks among the moves you allowed &mdash; same imperfect judgment, better options. No match, and it plays freely.</li>
           <li><strong>Majority wins.</strong> Checkmates score a point each; take the majority of the undrawn games and the match is yours. After 100 turns the soldiers play it out alone.</li>
         </ol>
@@ -140,7 +140,7 @@
             <dt>Reading the board</dt>
             <dd>All games appear stacked on one board. Your pieces are drawn white and your opponent&#39;s black &mdash; whichever chess color you actually play. The number next to a piece shows how many games have it on that square. If you play black, your view is flipped; ranks in your orders always count from your own side.</dd>
             <dt>The compiler</dt>
-            <dd>Your words are translated into a formal move predicate by a language model, then echoed back in plain English with how many games it currently touches. Nothing is issued until you confirm. If the translation misses your intent, edit and recompile.</dd>
+            <dd>Your words are translated into a formal move predicate by a language model when you submit an order. The order log shows how many games followed each instruction.</dd>
             <dt>Scoring</dt>
             <dd>Checkmate scores a point for the side that delivered it. Draws score nothing, and finished games leave the board. The match ends early once a player&#39;s lead exceeds the number of games still running; if everything finishes level, the match is a draw.</dd>
             <dt>Who plays white</dt>
@@ -177,8 +177,7 @@
         <div class="centurion-section-label">Your command (max 20 words)</div>
         <textarea id="centurion-command-input" rows="2" spellcheck="true" placeholder="e.g. all knights advance"></textarea>
         <div class="centurion-command-actions">
-          <button class="btn btn-primary" id="centurion-compile-btn">Compile</button>
-          <button class="btn btn-secondary" id="centurion-issue-btn">Issue order</button>
+          <button class="btn btn-primary" id="centurion-issue-btn">Submit order</button>
           <button class="btn btn-outline" id="centurion-pass-btn">Pass</button>
         </div>
         <p id="centurion-command-status" class="centurion-command-status"></p>

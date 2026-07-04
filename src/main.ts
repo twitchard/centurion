@@ -31,8 +31,6 @@ import {
   renderConnectionLog,
 } from './connection-log'
 import { describeCommandPredicate } from './core/command/describe'
-import { matchingMoves } from './core/command/evaluate'
-import type { CommandPredicate } from './core/command/model'
 import {
   type ResolutionAnimationPlan,
   planResolutionAnimation,
@@ -175,7 +173,6 @@ const centurionResultBanner = element('centurion-result-banner')
 const centurionBoardHint = element('centurion-board-hint')
 const centurionResolutionSummary = element('centurion-resolution-summary')
 const centurionCommandInput = textarea('centurion-command-input')
-const centurionCompileButton = button('centurion-compile-btn')
 const centurionIssueButton = button('centurion-issue-btn')
 const centurionPassButton = button('centurion-pass-btn')
 const centurionCommandStatus = element('centurion-command-status')
@@ -693,24 +690,7 @@ function boardHintText(session: MatchSession): string {
   return ''
 }
 
-/** How many active games currently have a move matching the predicate. */
-function matchedGameCount(
-  match: MatchState,
-  predicate: CommandPredicate,
-): number {
-  let count = 0
-  for (const game of match.games) {
-    if (game.status.tag !== 'active') {
-      continue
-    }
-    if (matchingMoves(game.position, predicate).length > 0) {
-      count += 1
-    }
-  }
-  return count
-}
-
-/** Whether this client may compile/issue/pass right now. */
+/** Whether this client may submit/pass right now. */
 function turnIsYours(session: MatchSession): boolean {
   const match = session.match
   if (
@@ -730,18 +710,11 @@ function commandStatusText(session: MatchSession): string {
   const draft = session.draft
   switch (draft.tag) {
     case 'idle':
-      return turnIsYours(session)
-        ? 'Type an order, compile it, then issue.'
-        : ''
+      return turnIsYours(session) ? 'Type an order and submit it.' : ''
     case 'compiling':
-      return `Compiling "${draft.text}"...`
-    case 'compiled': {
-      const reads = describeCommandPredicate(draft.predicate)
-      const matches = matchedGameCount(session.match, draft.predicate)
-      return `Reads as: ${reads} — matches in ${matches} of ${activeGameCount(session.match)} games.`
-    }
+      return `Submitting "${draft.text}"...`
     case 'failed':
-      return `Compile failed: ${draft.message}`
+      return `Could not interpret order: ${draft.message}`
     default:
       return assertNever(draft)
   }
@@ -993,7 +966,7 @@ function renderCenturionSession(session: MatchSession): void {
     side.status.textContent = active
       ? session.mode.tag === 'remote' && side.player !== session.mode.you
         ? 'Their turn...'
-        : 'Issue a command'
+        : 'Submit an order'
       : ''
   }
 
@@ -1022,8 +995,10 @@ function renderCenturionSession(session: MatchSession): void {
     centurionCommandInput.value = session.commandInput
   }
   centurionCommandInput.disabled = !yours
-  centurionCompileButton.disabled = !yours || session.draft.tag === 'compiling'
-  centurionIssueButton.disabled = !yours || session.draft.tag !== 'compiled'
+  centurionIssueButton.disabled =
+    !yours ||
+    session.draft.tag === 'compiling' ||
+    session.commandInput.trim() === ''
   centurionPassButton.disabled = !yours
   centurionCommandStatus.textContent = commandStatusText(session)
 
@@ -1033,7 +1008,9 @@ function renderCenturionSession(session: MatchSession): void {
     const item = document.createElement('li')
     item.className = `centurion-arrow-entry centurion-arrow-entry--player-${command.owner}`
     item.title = describeCommandPredicate(command.predicate)
-    item.textContent = `T${command.turn} ${scoreLabel(session, command.owner)}: "${command.text}"`
+    const gamesNote =
+      command.commandMoves === 1 ? '1 game' : `${command.commandMoves} games`
+    item.textContent = `T${command.turn} ${scoreLabel(session, command.owner)}: "${command.text}" — ${gamesNote}`
     centurionCommandHistory.appendChild(item)
   }
 
@@ -1267,9 +1244,6 @@ function bindEvents(): void {
       tag: 'command-input-updated',
       value: (event.target as HTMLTextAreaElement).value,
     })
-  })
-  centurionCompileButton.addEventListener('click', () => {
-    dispatchCenturion({ tag: 'command-compile-requested' })
   })
   centurionIssueButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'command-issue-requested' })

@@ -256,6 +256,11 @@ class FakeElement {
     this.html = value
     this.children.length = 0
     this.scrollHeight = 0
+    this.textContent = value.replace(/<[^>]+>/g, '')
+  }
+
+  refreshAggregatedText(): void {
+    this.textContent = this.children.map((child) => child.textContent).join('')
   }
 
   get innerHTML(): string {
@@ -282,6 +287,7 @@ class FakeElement {
   appendChild(child: FakeElement): FakeElement {
     this.children.push(child)
     this.scrollHeight = this.children.length * 16
+    this.refreshAggregatedText()
     return child
   }
 
@@ -607,7 +613,6 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-board-hint', 'element'],
     ['centurion-resolution-summary', 'element'],
     ['centurion-command-input', 'textarea'],
-    ['centurion-compile-btn', 'button'],
     ['centurion-issue-btn', 'button'],
     ['centurion-pass-btn', 'button'],
     ['centurion-command-status', 'element'],
@@ -885,17 +890,14 @@ describe('main app wiring', () => {
     // Pass-and-play: exactly one side is prompted to command.
     expect(
       [statusTop.textContent, statusBottom.textContent].filter(
-        (text) => text === 'Issue a command',
+        (text) => text === 'Submit an order',
       ),
     ).toHaveLength(1)
 
     const commandBox = documentRef.getElementById(
       'centurion-command-input',
     ) as FakeTextAreaElement
-    const compileButton = documentRef.getElementById(
-      'centurion-compile-btn',
-    ) as FakeButtonElement
-    const issueButton = documentRef.getElementById(
+    const submitButton = documentRef.getElementById(
       'centurion-issue-btn',
     ) as FakeButtonElement
     const commandStatus = documentRef.getElementById(
@@ -909,20 +911,15 @@ describe('main app wiring', () => {
 
     commandBox.value = 'move a knight'
     commandBox.dispatch('input')
-    compileButton.click()
-    // The mocked compiler answers async with a knight predicate.
+    submitButton.click()
     await vi.waitFor(() => {
-      expect(commandStatus.textContent).toContain('Reads as')
+      expect(commandStatus.textContent).toContain('Submitting')
     })
-    expect(commandStatus.textContent).toContain('knight')
-    expect(commandStatus.textContent).toContain('100 of 100 games')
 
-    issueButton.click()
-    expect(metaLine.textContent).toContain('Resolving')
     await vi.waitFor(() => {
       expect(metaLine.textContent).toContain('Turn 2')
     })
-    expect(history.scrollHeight).toBeGreaterThan(0)
+    expect(history.textContent).toContain('games')
 
     const summary = documentRef.getElementById(
       'centurion-resolution-summary',

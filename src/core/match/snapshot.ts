@@ -44,6 +44,7 @@ export interface IssuedCommandSnapshot {
   readonly owner: PlayerId
   readonly text: string
   readonly predicate: unknown
+  readonly commandMoves?: number
 }
 
 export interface MatchSnapshot {
@@ -194,6 +195,7 @@ export function encodeMatchState(match: MatchState): MatchSnapshot {
       owner: command.owner,
       text: command.text,
       predicate: command.predicate,
+      commandMoves: command.commandMoves,
     })),
     turn: match.turn,
     firstPlacer: match.firstPlacer,
@@ -242,11 +244,21 @@ function decodeIssuedCommand(value: unknown): IssuedCommand | null {
     return null
   }
   const decoded: CommandPredicate = predicate.value
+  const commandMoves =
+    raw.commandMoves === undefined
+      ? 0
+      : typeof raw.commandMoves === 'number' && raw.commandMoves >= 0
+        ? raw.commandMoves
+        : null
+  if (commandMoves === null) {
+    return null
+  }
   return {
     turn: raw.turn,
     owner: raw.owner,
     text: raw.text,
     predicate: decoded,
+    commandMoves,
   }
 }
 

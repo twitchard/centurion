@@ -47,7 +47,6 @@ export type CenturionMsg =
   | { readonly tag: 'invite-copy-succeeded' }
   | { readonly tag: 'invite-copy-failed' }
   | { readonly tag: 'command-input-updated'; readonly value: string }
-  | { readonly tag: 'command-compile-requested' }
   | {
       readonly tag: 'command-compile-finished'
       readonly text: string
@@ -411,7 +410,7 @@ export function updateCenturion(
       if (model.tag !== 'playing') {
         return noCmd(model)
       }
-      // Editing the text invalidates any compiled preview.
+      // Editing the text invalidates any in-flight submit.
       return noCmd(
         withSession(model, {
           commandInput: msg.value,
@@ -421,7 +420,7 @@ export function updateCenturion(
       )
     }
 
-    case 'command-compile-requested': {
+    case 'command-issue-requested': {
       if (model.tag !== 'playing') {
         return noCmd(model)
       }
@@ -470,37 +469,9 @@ export function updateCenturion(
           }),
         )
       }
-      return noCmd(
-        withSession(model, {
-          draft: {
-            tag: 'compiled',
-            text: msg.text,
-            predicate: msg.result.predicate,
-          },
-        }),
-      )
-    }
-
-    case 'command-issue-requested': {
-      if (model.tag !== 'playing') {
-        return noCmd(model)
-      }
-      const session = model.session
-      const error = turnActionError(session)
-      if (error !== null) {
-        return noCmd(withSession(model, { inputError: error }))
-      }
-      const draft = session.draft
-      if (draft.tag !== 'compiled') {
-        return noCmd(
-          withSession(model, {
-            inputError: 'Compile your command before issuing it.',
-          }),
-        )
-      }
-      return issueTurn(session, {
-        text: draft.text,
-        predicate: draft.predicate,
+      return issueTurn(model.session, {
+        text: msg.text,
+        predicate: msg.result.predicate,
       })
     }
 

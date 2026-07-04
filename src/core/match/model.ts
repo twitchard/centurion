@@ -20,6 +20,8 @@ export interface IssuedCommand {
   readonly owner: PlayerId
   readonly text: string
   readonly predicate: CommandPredicate
+  /** Active games whose soldier followed this order on the issuing turn. */
+  readonly commandMoves: number
 }
 
 export type DrawReason =
