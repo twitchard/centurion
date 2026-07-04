@@ -18,7 +18,21 @@ import {
  */
 
 const PHRASES: readonly string[] = [
+  // Order log examples (literal + NL from the game UI)
+  'e4',
+  'e5',
+  'advance a pawn',
+  'control the center',
+  'capture',
+  'develop a knight',
+  'develop a knight towards the center',
+  'capture a major piece',
+  'capture a queen or else a knight',
+  'castle or capture',
+  'develop a bishop or check the king',
   'all knights advance',
+  'Nf3',
+  // Additional compile-eval phrases
   'push the kingside pawns',
   'castle if you can',
   'take the queen',
