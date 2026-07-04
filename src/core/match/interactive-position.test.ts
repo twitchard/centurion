@@ -11,7 +11,7 @@ import { initMatch } from './model'
 import { beginAutoResolution, completeResolution } from './resolve'
 
 describe('pickInteractiveGame', () => {
-  it('prefers an active game on the viewer side to move', () => {
+  it('prefers an active game on the commander side to move', () => {
     const match = initMatch(1, { gameCount: 3, whitePlayer: 1 })
     const afterTurn1 = (() => {
       const resolution = beginAutoResolution(match)
@@ -86,6 +86,22 @@ describe('handleSquareClick', () => {
         1,
         { col: 4, row: 1 },
         { col: 4, row: 3 },
+      ),
+    ).toBe('e4')
+  })
+
+  it('maps visual squares through a flipped viewer frame', () => {
+    const match = initMatch(1, { gameCount: 1, whitePlayer: 1 })
+    const game = match.games[0]
+    if (game === undefined) {
+      throw new Error('expected game')
+    }
+    expect(
+      commandTextForVisualSquares(
+        game,
+        2,
+        { col: 4, row: 6 },
+        { col: 4, row: 4 },
       ),
     ).toBe('e4')
   })

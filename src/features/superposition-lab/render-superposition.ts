@@ -182,14 +182,17 @@ export class SuperpositionRenderer {
       return null
     }
     const rect = this.canvas.getBoundingClientRect()
-    const x = clientX - rect.left
-    const y = clientY - rect.top
-    if (x < 0 || y < 0 || x >= this.boardWidth || y >= this.boardWidth) {
+    if (rect.width === 0 || rect.height === 0) {
       return null
     }
-    const col = Math.floor(x / this.squareSize)
-    const row = 7 - Math.floor(y / this.squareSize)
-    if (col < 0 || col > 7 || row < 0 || row > 7) {
+    const x = clientX - rect.left
+    const y = clientY - rect.top
+    if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
+      return null
+    }
+    const col = Math.min(7, Math.floor((x / rect.width) * 8))
+    const row = 7 - Math.min(7, Math.floor((y / rect.height) * 8))
+    if (col < 0 || row < 0) {
       return null
     }
     return { col, row }

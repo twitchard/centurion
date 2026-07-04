@@ -1,5 +1,12 @@
-import type { MatchState, PlayerId } from '../../core/match/model'
+import {
+  type MatchState,
+  type PlayerId,
+  activePlacer,
+} from '../../core/match/model'
 import type { PendingResolution } from '../../core/match/resolve'
+
+/** One-game solo match for verifying board controls behave like chess. */
+export const PRACTICE_GAME_COUNT = 1
 
 export type SessionMode =
   | { readonly tag: 'local' }
@@ -71,6 +78,18 @@ export function initCenturionModel(): CenturionModel {
   return { tag: 'lobby', joinCodeInput: '', notice: null }
 }
 
+/**
+ * Whose perspective the live board uses: remote clients stay fixed on
+ * their seat; pass-and-play flips with the active commander; solo is
+ * always player 1 commanding white.
+ */
 export function sessionViewer(session: MatchSession): PlayerId {
-  return session.mode.tag === 'remote' ? session.mode.you : 1
+  switch (session.mode.tag) {
+    case 'remote':
+      return session.mode.you
+    case 'local':
+      return activePlacer(session.match)
+    case 'solo':
+      return 1
+  }
 }
