@@ -7,6 +7,7 @@ import {
   type MatchGame,
   type MatchState,
   type PlayerId,
+  activePlacer,
   sideToMove,
 } from './model'
 import { actualSquare, boardSquareFromCoordinate, squareName } from './render'
@@ -15,7 +16,7 @@ import { movingOwner } from './resolve'
 /** Active game used to drive two-square command entry on the canvas. */
 export function pickInteractiveGame(
   match: MatchState,
-  viewer: PlayerId,
+  commander: PlayerId,
 ): MatchGame | null {
   const active = match.games.filter((game) => game.status.tag === 'active')
   if (active.length === 0) {
@@ -23,10 +24,15 @@ export function pickInteractiveGame(
   }
   const turn = sideToMove(match)
   const onSide = active.filter(
-    (game) => game.position.turn === turn && movingOwner(game) === viewer,
+    (game) => game.position.turn === turn && movingOwner(game) === commander,
   )
   const pool = onSide.length > 0 ? onSide : active
   return pool.reduce((best, game) => (game.id < best.id ? game : best))
+}
+
+/** Commander whose half-move canvas taps should target. */
+export function interactiveCommander(match: MatchState): PlayerId {
+  return activePlacer(match)
 }
 
 function legalMoveForSquares(

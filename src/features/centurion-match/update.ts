@@ -25,6 +25,7 @@ import type { RoomRole } from '../../ports/match-room'
 import {
   type CenturionModel,
   type MatchSession,
+  PRACTICE_GAME_COUNT,
   initCenturionModel,
 } from './model'
 import {
@@ -42,6 +43,7 @@ export type CenturionMsg =
   | { readonly tag: 'join-match-requested' }
   | { readonly tag: 'pass-and-play-requested'; readonly seed: number }
   | { readonly tag: 'solo-requested'; readonly seed: number }
+  | { readonly tag: 'practice-requested'; readonly seed: number }
   | { readonly tag: 'share-invite-requested' }
   | { readonly tag: 'copy-invite-requested' }
   | { readonly tag: 'invite-copy-succeeded' }
@@ -372,6 +374,18 @@ export function updateCenturion(
       // You are always player 1 (gold) and own white: you command each
       // white half-turn; black's soldiers play unled.
       const match = initMatch(msg.seed, { firstPlacer: 1, whitePlayer: 1 })
+      return noCmd(playing(startSession(match, { tag: 'solo' })))
+    }
+
+    case 'practice-requested': {
+      if (model.tag !== 'lobby') {
+        return noCmd(model)
+      }
+      const match = initMatch(msg.seed, {
+        gameCount: PRACTICE_GAME_COUNT,
+        firstPlacer: 1,
+        whitePlayer: 1,
+      })
       return noCmd(playing(startSession(match, { tag: 'solo' })))
     }
 

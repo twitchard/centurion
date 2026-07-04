@@ -266,6 +266,21 @@ describe('pass and play', () => {
   })
 })
 
+describe('practice mode', () => {
+  it('starts a one-game solo match', () => {
+    const [model] = apply(initCenturionModel(), {
+      tag: 'practice-requested',
+      seed: 7,
+    })
+    if (model.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    expect(model.session.mode).toEqual({ tag: 'solo' })
+    expect(model.session.match.gameCount).toBe(1)
+    expect(model.session.match.games).toHaveLength(1)
+  })
+})
+
 describe('solo mode', () => {
   it('plays two half-turns per command: yours ordered, black unled', () => {
     const [compilingFirst, compileCommands] = apply(

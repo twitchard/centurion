@@ -42,7 +42,10 @@ import {
   microPawnHistogram,
   microPawnHistogramLabel,
 } from './core/match/eval'
-import { pickInteractiveGame } from './core/match/interactive-position'
+import {
+  interactiveCommander,
+  pickInteractiveGame,
+} from './core/match/interactive-position'
 import {
   type IssuedCommand,
   type MatchState,
@@ -166,6 +169,7 @@ const centurionLobby = element('centurion-lobby')
 const centurionSession = element('centurion-session')
 const centurionStatusCopy = element('centurion-status-copy')
 const centurionSoloButton = button('centurion-solo-btn')
+const centurionPracticeButton = button('centurion-practice-btn')
 const centurionPassAndPlayButton = button('centurion-pass-and-play-btn')
 const centurionNewMatchButton = button('centurion-new-match-btn')
 const centurionJoinCodeInput = input('centurion-join-code-input')
@@ -871,6 +875,9 @@ function turnIsYours(session: MatchSession): boolean {
   ) {
     return false
   }
+  if (session.mode.tag === 'solo') {
+    return match.turn % 2 === 1
+  }
   if (session.mode.tag === 'remote') {
     return activePlacer(match) === session.mode.you
   }
@@ -1210,7 +1217,9 @@ function renderCenturionSession(session: MatchSession): void {
     session.draft.tag !== 'compiling'
   centurionCanvasMoveInput.sync(
     moveInputEnabled,
-    moveInputEnabled ? pickInteractiveGame(match, viewer) : null,
+    moveInputEnabled
+      ? pickInteractiveGame(match, interactiveCommander(match))
+      : null,
     viewer,
   )
   repaintCenturionBoard(session)
@@ -1248,6 +1257,7 @@ function renderCenturion(model: CenturionModel): void {
 
   const idle = model.tag === 'lobby'
   centurionSoloButton.disabled = !idle
+  centurionPracticeButton.disabled = !idle
   centurionPassAndPlayButton.disabled = !idle
   centurionNewMatchButton.disabled = !idle
   centurionJoinMatchButton.disabled = !idle || model.joinCodeInput.length !== 6
@@ -1400,6 +1410,9 @@ function bindEvents(): void {
   })
   centurionSoloButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'solo-requested', seed: newSeed() })
+  })
+  centurionPracticeButton.addEventListener('click', () => {
+    dispatchCenturion({ tag: 'practice-requested', seed: newSeed() })
   })
   centurionPassAndPlayButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'pass-and-play-requested', seed: newSeed() })

@@ -97,7 +97,17 @@ vi.mock('./adapters/stockfish-engine', () => {
 
 vi.mock('./adapters/http-command-compiler', () => {
   class MockHttpCommandCompilerAdapter {
-    async compile(_endpoint: string, _command: string) {
+    async compile(_endpoint: string, command: string) {
+      const { tryCompileLiteralNotation } = await import(
+        './core/command/parse-notation'
+      )
+      const literal = tryCompileLiteralNotation(command)
+      if (literal !== null) {
+        return {
+          tag: 'compiled' as const,
+          predicate: literal,
+        }
+      }
       return {
         tag: 'compiled' as const,
         predicate: {
@@ -385,11 +395,14 @@ class FakeCanvasElement extends FakeHTMLElement {
     width: number
     height: number
   } {
+    const width = Number.parseFloat(this.style.width ?? '') || this.clientWidth
+    const height =
+      Number.parseFloat(this.style.height ?? '') || this.clientHeight
     return {
       left: 0,
       top: 0,
-      width: this.clientWidth,
-      height: this.clientHeight,
+      width,
+      height,
     }
   }
 
@@ -397,9 +410,10 @@ class FakeCanvasElement extends FakeHTMLElement {
   clickSquare(square: string): void {
     const col = square.charCodeAt(0) - 'a'.charCodeAt(0)
     const rowFromTop = 8 - Number(square[1])
+    const rect = this.getBoundingClientRect()
     this.dispatch('click', {
-      clientX: ((col + 0.5) / 8) * this.clientWidth,
-      clientY: ((rowFromTop + 0.5) / 8) * this.clientHeight,
+      clientX: rect.left + ((col + 0.5) / 8) * rect.width,
+      clientY: rect.top + ((rowFromTop + 0.5) / 8) * rect.height,
     })
   }
 }
@@ -603,6 +617,7 @@ function setupDom(pathname = '/labs'): TestDom {
     ['centurion-session', 'element'],
     ['centurion-status-copy', 'element'],
     ['centurion-solo-btn', 'button'],
+    ['centurion-practice-btn', 'button'],
     ['centurion-pass-and-play-btn', 'button'],
     ['centurion-new-match-btn', 'button'],
     ['centurion-join-code-input', 'input'],
@@ -949,5 +964,42 @@ describe('main app wiring', () => {
     leaveButton.click()
     expect(lobby.style.display).toBe('flex')
     expect(session.style.display).toBe('none')
+  })
+
+  it('plays e4 from the board in solo practice mode', async () => {
+    vi.resetModules()
+    const { documentRef } = setupDom('/')
+
+    await import('./main')
+
+    const practiceButton = documentRef.getElementById(
+      'centurion-practice-btn',
+    ) as FakeButtonElement
+    const session = documentRef.getElementById(
+      'centurion-session',
+    ) as FakeHTMLElement
+    const metaLine = documentRef.getElementById(
+      'centurion-meta-line',
+    ) as FakeHTMLElement
+    const history = documentRef.getElementById(
+      'centurion-command-history',
+    ) as FakeHTMLElement
+    const canvas = documentRef.getElementById(
+      'centurion-canvas',
+    ) as FakeCanvasElement
+
+    practiceButton.click()
+    expect(session.style.display).toBe('grid')
+    expect(metaLine.textContent).toContain('1 active')
+    expect(metaLine.textContent).toContain('1/1 in match')
+
+    canvas.clickSquare('e2')
+    canvas.clickSquare('e4')
+
+    await vi.waitFor(() => {
+      expect(metaLine.textContent).toContain('Turn 3')
+    })
+    expect(history.textContent).toContain('e4')
+    expect(history.textContent).toContain('1 game')
   })
 })
