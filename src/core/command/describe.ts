@@ -56,6 +56,8 @@ function clause(predicate: CommandPredicate): string {
         : `that captures a ${roleList(predicate.roles)}`
     case 'gives-check':
       return 'that gives check'
+    case 'checkmates':
+      return 'that delivers checkmate'
     case 'castles':
       return 'that castles'
     case 'promotes':

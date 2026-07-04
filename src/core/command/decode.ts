@@ -222,6 +222,7 @@ function decodeNode(
       return roles === null ? null : { tag: 'captures', roles }
     }
     case 'gives-check':
+    case 'checkmates':
     case 'castles':
     case 'promotes':
     case 'advances':

@@ -59,6 +59,16 @@ describe('matchingMoves', () => {
     expect(matched).toContain('Rh2+')
   })
 
+  it('matches only mating moves for checkmates', () => {
+    const position = positionFromFen('6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1')
+    const mates = sans(position, { tag: 'checkmates' })
+    expect(mates).toEqual(['Ra8#'])
+    expect(sans(position, { tag: 'gives-check' })).toEqual(['Ra8#'])
+    const checkingOnly = positionFromFen('7k/8/8/8/8/8/R7/K7 w - - 0 1')
+    expect(sans(checkingOnly, { tag: 'checkmates' })).toEqual([])
+    expect(sans(checkingOnly, { tag: 'gives-check' }).length).toBeGreaterThan(0)
+  })
+
   it('treats escapes as a property of the moving piece', () => {
     // Black rook on d8 pins its eyes on the knight at d1; only knight
     // moves count as escaping.

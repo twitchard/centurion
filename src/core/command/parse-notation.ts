@@ -87,6 +87,16 @@ export function tryCompileLiteralNotation(
     return { tag: 'castles' }
   }
 
+  if (/^checkmate$/i.test(normalized)) {
+    return { tag: 'checkmates' }
+  }
+  if (/^(?:give|deliver)\s+checkmate$/i.test(normalized)) {
+    return { tag: 'checkmates' }
+  }
+  if (/^mate$/i.test(normalized)) {
+    return { tag: 'checkmates' }
+  }
+
   if (/^pxp$/i.test(normalized)) {
     return combine(piecePredicate('pawn'), {
       tag: 'captures',

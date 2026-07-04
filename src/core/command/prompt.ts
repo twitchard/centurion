@@ -84,6 +84,7 @@ export const SUBMIT_PREDICATE_INPUT_SCHEMA: Record<string, unknown> = {
             tag: {
               enum: [
                 'gives-check',
+                'checkmates',
                 'castles',
                 'promotes',
                 'advances',
@@ -187,6 +188,10 @@ const FEW_SHOT_EXAMPLES: readonly FewShotExample[] = [
   {
     command: 'give check',
     predicate: { tag: 'gives-check' },
+  },
+  {
+    command: 'checkmate',
+    predicate: { tag: 'checkmates' },
   },
   {
     command: 'do not move the queen',
@@ -336,6 +341,7 @@ export const COMPILE_SYSTEM_PROMPT = [
   "- {tag: 'from', region} / {tag: 'to', region} — the move starts/ends inside the region. Files are absolute letters a-h (kingside = e-h for both colors). Ranks 1-8 are counted from the mover's side: 1 is the mover's back rank, 8 the promotion rank.",
   "- {tag: 'captures', roles?} — the move captures (optionally a piece of the given roles).",
   "- {tag: 'gives-check'} — the move gives check.",
+  "- {tag: 'checkmates'} — the move delivers checkmate (not merely check).",
   "- {tag: 'castles'} — the move castles.",
   "- {tag: 'promotes'} — the move promotes a pawn.",
   "- {tag: 'advances'} / {tag: 'retreats'} — the move ends closer to / farther from the opponent's back rank.",

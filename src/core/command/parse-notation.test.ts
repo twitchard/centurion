@@ -150,6 +150,13 @@ describe('tryCompileLiteralNotation', () => {
     ).toEqual(['e5'])
   })
 
+  it('compiles checkmate phrases literally', () => {
+    expect(tryCompileLiteralNotation('checkmate')).toEqual({
+      tag: 'checkmates',
+    })
+    expect(tryCompileLiteralNotation('mate')).toEqual({ tag: 'checkmates' })
+  })
+
   it('returns null for natural-language commands', () => {
     expect(tryCompileLiteralNotation('all knights advance')).toBeNull()
     expect(tryCompileLiteralNotation('take the queen')).toBeNull()

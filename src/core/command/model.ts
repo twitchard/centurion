@@ -62,6 +62,8 @@ export type CommandPredicate =
   | { readonly tag: 'captures'; readonly roles?: readonly PieceRole[] }
   /** The move gives check. */
   | { readonly tag: 'gives-check' }
+  /** The move delivers checkmate. */
+  | { readonly tag: 'checkmates' }
   /** The move castles (either side). */
   | { readonly tag: 'castles' }
   /** The move promotes a pawn. */

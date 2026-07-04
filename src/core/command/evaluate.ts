@@ -154,6 +154,12 @@ export function moveMatches(
       after.play(move)
       return after.isCheck()
     }
+    case 'checkmates': {
+      const after = position.clone()
+      after.play(move)
+      const outcome = after.outcome()
+      return outcome !== undefined && outcome.winner === position.turn
+    }
     case 'castles':
       return isCastlingMove(position, move)
     case 'promotes': {
