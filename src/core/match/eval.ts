@@ -5,16 +5,16 @@ import {
   type PlayerId,
 } from './model'
 
-/** A quarter-pawn band counts as "even" when bucketing games. */
-export const MICRO_PAWN_EVEN_THRESHOLD_CP = 25
+/** Half-pawn width for each histogram bin (centipawns). */
+export const MICRO_PAWN_HISTOGRAM_BIN_CP = 50
+
+/** Symmetric bins around even; extremes clamp to the outer bars. */
+export const MICRO_PAWN_HISTOGRAM_BIN_COUNT = 7
 
 export interface MicroPawnAggregate {
   readonly activeGames: number
   /** Mean centipawns from `viewer`'s perspective across active games. */
   readonly averageCp: number
-  readonly ahead: number
-  readonly behind: number
-  readonly even: number
 }
 
 /** Centipawns from white's perspective after the last resolved half-move. */
@@ -30,14 +30,43 @@ export function evalForPlayer(game: MatchGame, player: PlayerId): number {
   return game.whiteOwner === player ? game.evalCp : -game.evalCp
 }
 
-function bucketCp(cp: number): 'ahead' | 'behind' | 'even' {
-  if (cp > MICRO_PAWN_EVEN_THRESHOLD_CP) {
-    return 'ahead'
+function clampCpForHistogram(cp: number): number {
+  if (cp >= MATE_THRESHOLD_CP) {
+    return (
+      (Math.floor(MICRO_PAWN_HISTOGRAM_BIN_COUNT / 2) + 2) *
+      MICRO_PAWN_HISTOGRAM_BIN_CP
+    )
   }
-  if (cp < -MICRO_PAWN_EVEN_THRESHOLD_CP) {
-    return 'behind'
+  if (cp <= -MATE_THRESHOLD_CP) {
+    return (
+      -(Math.floor(MICRO_PAWN_HISTOGRAM_BIN_COUNT / 2) + 2) *
+      MICRO_PAWN_HISTOGRAM_BIN_CP
+    )
   }
-  return 'even'
+  return cp
+}
+
+/**
+ * Bucket active games by viewer-relative eval into a symmetric histogram.
+ * The center bin is roughly even; outer bins clamp extreme scores.
+ */
+export function microPawnHistogram(
+  match: MatchState,
+  viewer: PlayerId,
+  binCount: number = MICRO_PAWN_HISTOGRAM_BIN_COUNT,
+): readonly number[] {
+  const bins = Array.from({ length: binCount }, () => 0)
+  const center = Math.floor(binCount / 2)
+  for (const game of match.games) {
+    if (game.status.tag !== 'active') {
+      continue
+    }
+    const cp = clampCpForHistogram(evalForPlayer(game, viewer))
+    const offset = Math.round(cp / MICRO_PAWN_HISTOGRAM_BIN_CP)
+    const index = Math.max(0, Math.min(binCount - 1, center + offset))
+    bins[index] = (bins[index] ?? 0) + 1
+  }
+  return bins
 }
 
 /**
@@ -50,36 +79,16 @@ export function aggregateMicroPawnStats(
 ): MicroPawnAggregate {
   let sum = 0
   let activeGames = 0
-  let ahead = 0
-  let behind = 0
-  let even = 0
   for (const game of match.games) {
     if (game.status.tag !== 'active') {
       continue
     }
     activeGames += 1
-    const cp = evalForPlayer(game, viewer)
-    sum += cp
-    switch (bucketCp(cp)) {
-      case 'ahead':
-        ahead += 1
-        break
-      case 'behind':
-        behind += 1
-        break
-      case 'even':
-        even += 1
-        break
-      default:
-        break
-    }
+    sum += evalForPlayer(game, viewer)
   }
   return {
     activeGames,
     averageCp: activeGames === 0 ? 0 : sum / activeGames,
-    ahead,
-    behind,
-    even,
   }
 }
 
@@ -99,15 +108,23 @@ export function formatMicroPawns(cp: number): string {
   return `${sign}${Math.abs(pawns).toFixed(2)}`
 }
 
-/** One-line summary for the match chrome. */
-export function microPawnSummaryText(
+/** Accessible label for the positional histogram. */
+export function microPawnHistogramLabel(
   match: MatchState,
   viewer: PlayerId,
-): string | null {
+): string {
   const stats = aggregateMicroPawnStats(match, viewer)
   if (stats.activeGames === 0) {
-    return null
+    return 'No active games'
   }
-  const avg = formatMicroPawns(stats.averageCp)
-  return `${avg} pawn avg · ${stats.ahead}↑ ${stats.even}= ${stats.behind}↓`
+  const bins = microPawnHistogram(match, viewer)
+  const center = Math.floor(bins.length / 2)
+  const behind = bins
+    .slice(0, center)
+    .reduce((total, count) => total + count, 0)
+  const ahead = bins
+    .slice(center + 1)
+    .reduce((total, count) => total + count, 0)
+  const even = bins[center] ?? 0
+  return `Average position ${formatMicroPawns(stats.averageCp)} pawns across ${stats.activeGames} games; ${ahead} ahead, ${even} even, ${behind} behind`
 }

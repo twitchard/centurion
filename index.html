@@ -160,6 +160,14 @@
         <div id="centurion-bar-top" class="centurion-player-bar">
           <span id="centurion-score-top" class="centurion-player-score"></span>
           <span id="centurion-status-top" class="centurion-player-status"></span>
+          <div id="centurion-micro-pawn-eval" class="centurion-micro-pawn-eval" hidden>
+            <span id="centurion-micro-pawn-avg" class="centurion-micro-pawn-avg"></span>
+            <div
+              id="centurion-micro-pawn-histogram"
+              class="centurion-micro-pawn-histogram"
+              role="img"
+            ></div>
+          </div>
           <span id="centurion-meta-line" class="centurion-bar-meta"></span>
         </div>
         <div class="panel board-panel" id="centurion-board-panel">
@@ -182,10 +190,6 @@
         </div>
         <p id="centurion-command-status" class="centurion-command-status"></p>
         <div id="centurion-resolution-summary" class="centurion-meta-line"></div>
-        <details id="centurion-micro-pawn-eval" class="centurion-micro-pawn-eval" hidden>
-          <summary id="centurion-micro-pawn-eval-summary">Micro pawn eval</summary>
-          <ul id="centurion-micro-pawn-eval-list" class="centurion-micro-pawn-eval-list"></ul>
-        </details>
         <div id="centurion-game-replay" class="centurion-game-replay" hidden>
           <div class="centurion-section-label">Review a game</div>
           <select id="centurion-game-select" class="centurion-game-select" aria-label="Choose a game to review"></select>
