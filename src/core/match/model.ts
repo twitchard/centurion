@@ -136,6 +136,25 @@ export function activationTurnForGame(gameId: number): number {
   return Math.floor(gameId / GAMES_PER_WAVE) + 1
 }
 
+export const STANDARD_WHITE_TO_MOVE_FEN = makeFen(Chess.default().toSetup())
+
+/** Standard position with black to move — used for odd-index wave games. */
+export const STANDARD_BLACK_TO_MOVE_FEN = ((): string => {
+  const setup = Chess.default().toSetup()
+  setup.turn = 'black'
+  return makeFen(setup)
+})()
+
+/**
+ * Starting FEN for a wave game. Even ids join on a white half-move; odd ids
+ * join on a black half-move so each new game lines up with the match turn.
+ */
+export function waveStartingFenForGame(gameId: number): string {
+  return gameId % 2 === 0
+    ? STANDARD_WHITE_TO_MOVE_FEN
+    : STANDARD_BLACK_TO_MOVE_FEN
+}
+
 /**
  * When a soldier is told to play its worst move, it never blunders more
  * than this many centipawns below the position's best allowed move.
@@ -251,8 +270,8 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
 
   const games: MatchGame[] = []
   for (let id = 0; id < gameCount; id++) {
-    const fen = fens?.[id]
-    const position = fen === undefined ? Chess.default() : positionFromFen(fen)
+    const fen = fens?.[id] ?? waveStartingFenForGame(id)
+    const position = positionFromFen(fen)
     const repetition = new Map<string, number>()
     repetition.set(positionKey(position), 1)
     const mode = soldierModes[id]
@@ -264,7 +283,7 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
       id,
       whiteOwner: whitePlayer,
       activationTurn,
-      startingFen: makeFen(position.toSetup()),
+      startingFen: fen,
       position,
       repetition,
       status: activationTurn === 1 ? { tag: 'active' } : { tag: 'pending' },
@@ -299,9 +318,9 @@ export function initMatch(seed: number, options?: MatchOptions): MatchState {
     soldierModeRotation = drawn
   }
 
-  // Turn 1 resolves white's half-move in every game, so unless a mode
-  // overrides it (solo does), the white owner also commands first: one
-  // draw decides both who moves first and who commands first.
+  // Turn 1 resolves white's half-move. Even-index wave games start white;
+  // odd-index games join later on black half-moves. One draw still decides
+  // who owns white and who commands on white turns.
   const firstPlacer: PlayerId = options?.firstPlacer ?? whitePlayer
 
   return {

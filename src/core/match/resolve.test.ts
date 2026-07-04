@@ -118,6 +118,16 @@ describe('initMatch', () => {
     )
   })
 
+  it('alternates which side moves first in each wave game', () => {
+    const match = initMatch(42, { gameCount: 4 })
+    expect(match.games[0]?.startingFen).toContain(' w ')
+    expect(match.games[0]?.position.turn).toBe('white')
+    expect(match.games[1]?.startingFen).toContain(' b ')
+    expect(match.games[1]?.position.turn).toBe('black')
+    expect(match.games[2]?.position.turn).toBe('white')
+    expect(match.games[3]?.position.turn).toBe('black')
+  })
+
   it('flipSquare is a rank flip and its own inverse', () => {
     expect(flipSquare(12)).toBe(52)
     expect(flipSquare(flipSquare(18))).toBe(18)
@@ -146,6 +156,7 @@ describe('beginResolution', () => {
     const resolution = beginAutoResolution(afterTurn1)
     expect(resolution?.pending).toHaveLength(2)
     expect(resolution?.base.games[1]?.status.tag).toBe('active')
+    expect(resolution?.base.games[1]?.position.turn).toBe('black')
     expect(resolution?.base.games[2]?.status.tag).toBe('pending')
   })
 
