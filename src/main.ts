@@ -61,6 +61,7 @@ import {
   matchGameToPgn,
   replaySnapshot,
 } from './core/match/pgn'
+import { positionStatCards } from './core/match/position-stat-cards'
 import { aggregatePositionStats } from './core/match/position-stats'
 import { matchRenderModel } from './core/match/render'
 import { ENGINE_DEPTH } from './core/match/resolve'
@@ -194,9 +195,11 @@ const centurionCommandStatus = element('centurion-command-status')
 const centurionRecentCommands = element('centurion-recent-commands')
 const centurionStatsPanel = element('centurion-stats-panel')
 const centurionStatsContent = element('centurion-stats-content')
-const centurionStatsTabOverview = button('centurion-stats-tab-overview')
-const centurionStatsTabMaterial = button('centurion-stats-tab-material')
-const centurionStatsTabThreats = button('centurion-stats-tab-threats')
+let centurionStatsTipCard: HTMLButtonElement | null = null
+const centurionStatsTouchTips =
+  typeof window.matchMedia === 'function'
+    ? window.matchMedia('(hover: none)')
+    : null
 const centurionCommandHistory = element('centurion-command-history')
 const centurionLeaveButton = button('centurion-leave-btn')
 const centurionGameReplay = element('centurion-game-replay')
@@ -212,7 +215,6 @@ const centurionReplayNextButton = button('centurion-replay-next')
 const centurionReplayEndButton = button('centurion-replay-end')
 const centurionReplayBoard = new ReplayBoard(centurionReplayBoardHost)
 let centurionGameReplayOptionsKey = ''
-let centurionActiveStatsTab: 'overview' | 'material' | 'threats' = 'overview'
 const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
@@ -798,54 +800,36 @@ function renderPositionStats(session: MatchSession): void {
   centurionStatsPanel.hidden = !showPanel
   if (!showPanel) {
     centurionStatsContent.innerHTML = ''
+    centurionStatsTipCard = null
     return
   }
 
-  for (const tab of [
-    centurionStatsTabOverview,
-    centurionStatsTabMaterial,
-    centurionStatsTabThreats,
-  ]) {
-    const active =
-      tab.getAttribute('data-stats-tab') === centurionActiveStatsTab
-    tab.classList.toggle('centurion-stats-tab--active', active)
-    tab.setAttribute('aria-selected', active ? 'true' : 'false')
-  }
-
-  const rows: ReadonlyArray<readonly [string, string]> =
-    centurionActiveStatsTab === 'material'
-      ? [
-          ['Your queens', String(stats.queens)],
-          ['Avg pawn rank', stats.averagePawnRank.toFixed(1)],
-        ]
-      : centurionActiveStatsTab === 'threats'
-        ? [
-            ['Games in check', String(stats.gamesInCheck)],
-            ['Castles available', String(stats.castlesAvailable)],
-            ['Promotions available', String(stats.promotionsAvailable)],
-          ]
-        : [
-            ['Active games', String(stats.activeGames)],
-            [
-              'Median eval',
-              formatMicroPawns(
-                aggregateMicroPawnStats(session.match, sessionViewer(session))
-                  .medianCp,
-              ),
-            ],
-            [
-              'Started games',
-              `${startedGameCount(session.match)}/${session.match.gameCount}`,
-            ],
-          ]
-
+  const cards = positionStatCards(session.match, sessionViewer(session))
   centurionStatsContent.innerHTML = ''
-  for (const [label, value] of rows) {
-    const dt = document.createElement('dt')
-    dt.textContent = label
-    const dd = document.createElement('dd')
-    dd.textContent = value
-    centurionStatsContent.append(dt, dd)
+  centurionStatsTipCard = null
+  for (const card of cards) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'centurion-stat-card'
+    button.setAttribute('role', 'listitem')
+    button.setAttribute('aria-label', `${card.label}: ${card.value}`)
+
+    const icon = document.createElement('span')
+    icon.className = 'centurion-stat-icon'
+    icon.setAttribute('aria-hidden', 'true')
+    icon.textContent = card.icon
+
+    const value = document.createElement('span')
+    value.className = 'centurion-stat-value'
+    value.textContent = card.value
+
+    const tip = document.createElement('span')
+    tip.className = 'centurion-stat-tip'
+    tip.setAttribute('role', 'tooltip')
+    tip.textContent = card.tip
+
+    button.append(icon, value, tip)
+    centurionStatsContent.appendChild(button)
   }
 }
 
@@ -1460,19 +1444,37 @@ function bindEvents(): void {
   centurionPassButton.addEventListener('click', () => {
     dispatchCenturion({ tag: 'pass-requested' })
   })
-  for (const tab of [
-    centurionStatsTabOverview,
-    centurionStatsTabMaterial,
-    centurionStatsTabThreats,
-  ]) {
-    tab.addEventListener('click', () => {
-      const next = tab.getAttribute('data-stats-tab')
-      if (next === 'overview' || next === 'material' || next === 'threats') {
-        centurionActiveStatsTab = next
-        render()
-      }
-    })
-  }
+  centurionStatsContent.addEventListener('click', (event) => {
+    if (centurionStatsTouchTips !== null && !centurionStatsTouchTips.matches) {
+      return
+    }
+    const target = event.target
+    if (!(target instanceof Element)) {
+      return
+    }
+    const card = target.closest('.centurion-stat-card')
+    if (!(card instanceof HTMLButtonElement)) {
+      return
+    }
+    event.stopPropagation()
+    if (centurionStatsTipCard === card) {
+      card.classList.remove('centurion-stat-card--tip-visible')
+      centurionStatsTipCard = null
+      return
+    }
+    if (centurionStatsTipCard !== null) {
+      centurionStatsTipCard.classList.remove('centurion-stat-card--tip-visible')
+    }
+    card.classList.add('centurion-stat-card--tip-visible')
+    centurionStatsTipCard = card
+  })
+  centurionSession.addEventListener('click', () => {
+    if (centurionStatsTipCard === null) {
+      return
+    }
+    centurionStatsTipCard.classList.remove('centurion-stat-card--tip-visible')
+    centurionStatsTipCard = null
+  })
   centurionGameSelect.addEventListener('change', () => {
     dispatchCenturion({
       tag: 'game-replay-game-selected',
