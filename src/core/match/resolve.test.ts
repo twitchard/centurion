@@ -111,10 +111,10 @@ describe('initMatch', () => {
 
   it('starts only the first wave as active', () => {
     const match = initMatch(42)
-    expect(activeGameCount(match)).toBe(2)
-    expect(startedGameCount(match)).toBe(2)
+    expect(activeGameCount(match)).toBe(1)
+    expect(startedGameCount(match)).toBe(1)
     expect(match.games.filter((g) => g.status.tag === 'pending')).toHaveLength(
-      98,
+      99,
     )
   })
 
@@ -131,7 +131,7 @@ describe('beginResolution', () => {
       text: 'all knights advance',
       predicate: KNIGHTS,
     })
-    expect(resolution?.pending).toHaveLength(2)
+    expect(resolution?.pending).toHaveLength(1)
     expect(resolution?.command).toMatchObject({
       turn: 1,
       owner: match.firstPlacer,
@@ -142,11 +142,11 @@ describe('beginResolution', () => {
   it('activates the next wave at the start of its turn', () => {
     const match = initMatch(3, { gameCount: 6 })
     const afterTurn1 = resolveTurn(match, null, null)
-    expect(startedGameCount(afterTurn1)).toBe(2)
+    expect(startedGameCount(afterTurn1)).toBe(1)
     const resolution = beginAutoResolution(afterTurn1)
-    expect(resolution?.pending).toHaveLength(4)
-    expect(resolution?.base.games[2]?.status.tag).toBe('active')
-    expect(resolution?.base.games[4]?.status.tag).toBe('pending')
+    expect(resolution?.pending).toHaveLength(2)
+    expect(resolution?.base.games[1]?.status.tag).toBe('active')
+    expect(resolution?.base.games[2]?.status.tag).toBe('pending')
   })
 
   it('rejects commands after turn 100 but still auto-plays out', () => {
@@ -177,7 +177,7 @@ describe('completeResolution', () => {
     }
     const summary = next.lastResolution
     expect(summary).not.toBeNull()
-    expect((summary?.commandMoves ?? 0) + (summary?.freeMoves ?? 0)).toBe(2)
+    expect((summary?.commandMoves ?? 0) + (summary?.freeMoves ?? 0)).toBe(1)
   })
 
   it('stores micro pawn eval from white perspective after each ply', () => {
@@ -220,7 +220,7 @@ describe('completeResolution', () => {
       expect(game.moves[0]?.source).toBe('free')
       expect(game.moves[0]?.commandOwner).toBeUndefined()
     }
-    expect(next.lastResolution?.freeMoves).toBe(2)
+    expect(next.lastResolution?.freeMoves).toBe(1)
   })
 
   it('plays the worst allowed move for every soldier by default', () => {
@@ -236,7 +236,7 @@ describe('completeResolution', () => {
       .filter((game) => game.status.tag !== 'pending')
       .map((game) => game.moves[0]?.uci)
     expect(moves[0]).toBe('d2d4')
-    expect(moves[1]).toBe('d2d4')
+    expect(moves).toHaveLength(1)
   })
 
   it('plays the best allowed move when the soldier mode demands it', () => {
@@ -362,7 +362,7 @@ describe('completeResolution', () => {
     const cpOf = (uci: string): number => (uci === 'a1a8' ? MATE_CP - 1 : 0)
     const next = resolveTurn(match, null, null, cpOf)
     expect(next.scores.p1).toBe(1)
-    expect(activeGameCount(next)).toBe(1)
+    expect(activeGameCount(next)).toBe(0)
     expect(next.phase).toEqual({ tag: 'active' })
   })
 

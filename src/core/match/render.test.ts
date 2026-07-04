@@ -25,7 +25,7 @@ describe('matchRenderModel', () => {
     const model = matchRenderModel(match, 2)
     expect(model.viewerPlayer).toBe(2)
     expect(model.arrows).toHaveLength(0)
-    expect(model.positionCount).toBe(2)
+    expect(model.positionCount).toBe(1)
   })
 
   it('drops finished games from the superposition', () => {

@@ -905,8 +905,8 @@ describe('main app wiring', () => {
     expect(scoreTop.textContent).toBe('0')
     expect(scoreBottom.textContent).toBe('0')
     expect(metaLine.textContent).toContain('Turn 1')
-    expect(metaLine.textContent).toContain('2 active')
-    expect(metaLine.textContent).toContain('2/100 in match')
+    expect(metaLine.textContent).toContain('1 active')
+    expect(metaLine.textContent).toContain('1/100 in match')
     // Pass-and-play: exactly one side is prompted to command.
     expect(
       [statusTop.textContent, statusBottom.textContent].filter(
@@ -939,7 +939,7 @@ describe('main app wiring', () => {
     await vi.waitFor(() => {
       expect(metaLine.textContent).toContain('Turn 2')
     })
-    expect(history.textContent).toContain('games')
+    expect(history.textContent).toContain('game')
 
     const summary = documentRef.getElementById(
       'centurion-resolution-summary',

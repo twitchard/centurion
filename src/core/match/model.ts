@@ -123,9 +123,9 @@ export interface MatchState {
 export const DEFAULT_GAME_COUNT = 100
 
 /** How many fresh games join the match each turn until the full set is live. */
-export const GAMES_PER_WAVE = 2
+export const GAMES_PER_WAVE = 1
 
-/** Turn when the last wave of games enters (2 × 50 = 100). */
+/** Turn when the last wave of games enters (1 × 100 = 100). */
 export const LAST_WAVE_TURN = DEFAULT_GAME_COUNT / GAMES_PER_WAVE
 
 /** After this turn number, players can no longer issue commands; the match auto-plays out. */

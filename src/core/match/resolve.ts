@@ -179,18 +179,24 @@ function applyMoveToGame(
   }
 }
 
+function undecidedGameCount(games: readonly MatchGame[]): number {
+  return games.filter(
+    (game) => game.status.tag === 'active' || game.status.tag === 'pending',
+  ).length
+}
+
 function matchPhaseFor(
   games: readonly MatchGame[],
   scores: { readonly p1: number; readonly p2: number },
 ): MatchPhase {
-  const active = games.filter((game) => game.status.tag === 'active').length
-  if (active === 0) {
+  const undecided = undecidedGameCount(games)
+  if (undecided === 0) {
     if (scores.p1 === scores.p2) {
       return { tag: 'finished', winner: 'draw' }
     }
     return { tag: 'finished', winner: scores.p1 > scores.p2 ? 1 : 2 }
   }
-  if (Math.abs(scores.p1 - scores.p2) > active) {
+  if (Math.abs(scores.p1 - scores.p2) > undecided) {
     return { tag: 'finished', winner: scores.p1 > scores.p2 ? 1 : 2 }
   }
   return { tag: 'active' }

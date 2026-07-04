@@ -52,7 +52,7 @@ describe('aggregateMicroPawnStats', () => {
         evalCp: 200,
         status: { tag: 'won' as const, by: 1 as const },
       },
-      { ...second, evalCp: -200 },
+      { ...second, evalCp: -200, status: { tag: 'active' as const } },
     ]
     const stats = aggregateMicroPawnStats({ ...match, games }, 1)
     expect(stats.activeGames).toBe(1)
