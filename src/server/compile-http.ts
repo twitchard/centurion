@@ -1,4 +1,9 @@
 import { describeCommandPredicate } from '../core/command/describe'
+import {
+  type CommandCorpusEnv,
+  type CommandCorpusSink,
+  commandCorpusSinkFromEnv,
+} from './command-corpus'
 import { type CompileOptions, compileCommand } from './compile-command'
 
 /**
@@ -30,6 +35,8 @@ export interface CompileEndpointConfig {
   readonly apiKey: string | undefined
   readonly model?: string | undefined
   readonly fetch?: CompileOptions['fetch']
+  readonly corpusSink?: CommandCorpusSink | undefined
+  readonly corpusEnv?: CommandCorpusEnv | undefined
 }
 
 export async function handleCompileRequest(
@@ -66,6 +73,11 @@ export async function handleCompileRequest(
     apiKey: config.apiKey,
     model: config.model,
     fetch: config.fetch,
+    corpusSink:
+      config.corpusSink ??
+      (config.corpusEnv === undefined
+        ? undefined
+        : commandCorpusSinkFromEnv(config.corpusEnv)),
   })
   switch (outcome.tag) {
     case 'compiled':

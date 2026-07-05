@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CommandPredicate } from '../core/command/model'
+import type { CommandCorpusEntry } from './command-corpus'
 import { compileCommand } from './compile-command'
 import { handleCompileRequest } from './compile-http'
 
@@ -151,6 +152,38 @@ describe('compileCommand', () => {
     if (outcome.tag === 'failed') {
       expect(outcome.message).toContain('connection refused')
     }
+  })
+
+  it('records corpus entries when a sink is provided', async () => {
+    const entries: CommandCorpusEntry[] = []
+    const outcome = await compileCommand('all knights advance', {
+      apiKey: 'test-key',
+      fetch: fetchReturning(anthropicMessage({ predicate: KNIGHTS_ADVANCE })),
+      corpusSink: (entry) => {
+        entries.push(entry)
+      },
+    })
+    expect(outcome).toEqual({ tag: 'compiled', predicate: KNIGHTS_ADVANCE })
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.command).toBe('all knights advance')
+    expect(entries[0]?.source).toBe('llm')
+    expect(entries[0]?.readsAs).toBe('a move by a knight and that advances')
+  })
+
+  it('records literal notation without calling the API', async () => {
+    const entries: CommandCorpusEntry[] = []
+    await compileCommand('c3', {
+      apiKey: 'test-key',
+      fetch: () => {
+        throw new Error('should not be called')
+      },
+      corpusSink: (entry) => {
+        entries.push(entry)
+      },
+    })
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.source).toBe('literal')
+    expect(entries[0]?.outcome).toBe('compiled')
   })
 })
 
