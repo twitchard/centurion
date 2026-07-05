@@ -7,6 +7,11 @@ import {
   SUBMIT_PREDICATE_TOOL_NAME,
 } from '../core/command/prompt'
 import { validateCommandText } from '../core/command/text'
+import {
+  type CommandCorpusSink,
+  buildCommandCorpusEntry,
+  recordCommandCorpusEntry,
+} from './command-corpus'
 
 /**
  * Default compile model. Compiling a short command against a cached system
@@ -39,6 +44,8 @@ export interface CompileOptions {
   readonly model?: string | undefined
   /** Injected for tests; defaults to the platform fetch. */
   readonly fetch?: typeof globalThis.fetch | undefined
+  /** Records each compile attempt for corpus building and prompt tuning. */
+  readonly corpusSink?: CommandCorpusSink | undefined
 }
 
 /**
@@ -81,6 +88,19 @@ function coerceJson(value: unknown): unknown {
   }
 }
 
+async function finishCompile(
+  command: string,
+  source: 'validation' | 'literal' | 'llm',
+  outcome: CompileOutcome,
+  options: CompileOptions,
+): Promise<CompileOutcome> {
+  await recordCommandCorpusEntry(
+    options.corpusSink,
+    buildCommandCorpusEntry(command, source, outcome, options.model),
+  )
+  return outcome
+}
+
 /**
  * Compile one natural-language command into a predicate. The LLM output
  * is untrusted: whatever it submits goes through `decodeCommandPredicate`,
@@ -92,17 +112,28 @@ export async function compileCommand(
 ): Promise<CompileOutcome> {
   const validated = validateCommandText(command)
   if (validated.tag === 'invalid') {
-    return { tag: 'rejected', status: 400, diagnostics: validated.diagnostics }
+    return finishCompile(
+      command,
+      'validation',
+      { tag: 'rejected', status: 400, diagnostics: validated.diagnostics },
+      options,
+    )
   }
 
   const literal = tryCompileLiteralNotation(validated.value)
   if (literal !== null) {
     const decoded = decodeCommandPredicate(literal)
     if (decoded.tag === 'valid') {
-      return { tag: 'compiled', predicate: decoded.value }
+      return finishCompile(
+        validated.value,
+        'literal',
+        { tag: 'compiled', predicate: decoded.value },
+        options,
+      )
     }
   }
 
+  const model = options.model ?? DEFAULT_COMPILE_MODEL
   const fetchImpl = options.fetch ?? globalThis.fetch
   let response: Response
   try {
@@ -114,7 +145,7 @@ export async function compileCommand(
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: options.model ?? DEFAULT_COMPILE_MODEL,
+        model,
         max_tokens: 1024,
         system: [
           {
@@ -136,40 +167,60 @@ export async function compileCommand(
       }),
     })
   } catch (error) {
-    return {
-      tag: 'failed',
-      status: 502,
-      message: `Could not reach the compile model: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    }
+    return finishCompile(
+      validated.value,
+      'llm',
+      {
+        tag: 'failed',
+        status: 502,
+        message: `Could not reach the compile model: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      },
+      options,
+    )
   }
   if (!response.ok) {
-    return {
-      tag: 'failed',
-      status: 502,
-      message: `Compile model error (${response.status}).`,
-    }
+    return finishCompile(
+      validated.value,
+      'llm',
+      {
+        tag: 'failed',
+        status: 502,
+        message: `Compile model error (${response.status}).`,
+      },
+      options,
+    )
   }
 
   let message: MessagesResponse
   try {
     message = (await response.json()) as MessagesResponse
   } catch {
-    return {
-      tag: 'failed',
-      status: 502,
-      message: 'Compile model returned a non-JSON response.',
-    }
+    return finishCompile(
+      validated.value,
+      'llm',
+      {
+        tag: 'failed',
+        status: 502,
+        message: 'Compile model returned a non-JSON response.',
+      },
+      options,
+    )
   }
 
   const input = coerceJson(extractToolInput(message))
   if (input === undefined) {
-    return {
-      tag: 'failed',
-      status: 502,
-      message: 'Compile model returned no predicate.',
-    }
+    return finishCompile(
+      validated.value,
+      'llm',
+      {
+        tag: 'failed',
+        status: 502,
+        message: 'Compile model returned no predicate.',
+      },
+      options,
+    )
   }
 
   // Accept both {predicate: ...} (the tool schema) and a bare predicate,
@@ -181,7 +232,17 @@ export async function compileCommand(
   )
   const decoded = decodeCommandPredicate(candidate)
   if (decoded.tag === 'invalid') {
-    return { tag: 'rejected', status: 422, diagnostics: decoded.diagnostics }
+    return finishCompile(
+      validated.value,
+      'llm',
+      { tag: 'rejected', status: 422, diagnostics: decoded.diagnostics },
+      options,
+    )
   }
-  return { tag: 'compiled', predicate: decoded.value }
+  return finishCompile(
+    validated.value,
+    'llm',
+    { tag: 'compiled', predicate: decoded.value },
+    options,
+  )
 }
