@@ -35,7 +35,8 @@ export type CompileOutcome =
     }
 
 export interface CompileOptions {
-  readonly apiKey: string
+  /** May be absent: literal notation still compiles, only the LLM path 503s. */
+  readonly apiKey: string | undefined
   readonly model?: string | undefined
   /** Injected for tests; defaults to the platform fetch. */
   readonly fetch?: typeof globalThis.fetch | undefined
@@ -100,6 +101,14 @@ export async function compileCommand(
     const decoded = decodeCommandPredicate(literal)
     if (decoded.tag === 'valid') {
       return { tag: 'compiled', predicate: decoded.value }
+    }
+  }
+
+  if (options.apiKey === undefined || options.apiKey.length === 0) {
+    return {
+      tag: 'failed',
+      status: 503,
+      message: 'Command compiler is not configured (missing API key).',
     }
   }
 

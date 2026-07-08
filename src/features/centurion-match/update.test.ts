@@ -107,6 +107,23 @@ describe('pass and play', () => {
     ])
   })
 
+  it('compiles literal notation locally without the compile endpoint', () => {
+    const [model, commands] = apply(
+      initCenturionModel(),
+      { tag: 'pass-and-play-requested', seed: 11 },
+      ...submitCommandMsgs('e4'),
+    )
+    if (model.tag !== 'playing') {
+      throw new Error('expected playing state')
+    }
+    // The order goes straight to resolution: no compile round-trip.
+    expect(model.session.resolving).not.toBeNull()
+    expect(commands.some((cmd) => cmd.tag === 'compile-command')).toBe(false)
+    expect(commands.some((cmd) => cmd.tag === 'compute-ranked-moves')).toBe(
+      true,
+    )
+  })
+
   it('submits a command and resolves the turn', () => {
     const [compilingModel, compileCommands] = apply(
       initCenturionModel(),

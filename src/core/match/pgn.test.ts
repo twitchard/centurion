@@ -4,6 +4,7 @@ import { makeUci, squareRank } from 'chessops/util'
 import { describe, expect, it } from 'vitest'
 import { type MatchGame, type MatchState, initMatch } from './model'
 import {
+  commandForPly,
   compareGamesForReplay,
   gameMoveSourceCounts,
   matchGameToPgn,
@@ -126,6 +127,46 @@ describe('gameMoveSourceCounts', () => {
     expect(counts.command + counts.free).toBe(game.moves.length)
     expect(counts.free).toBe(game.moves.length)
     expect(counts.command).toBe(0)
+  })
+})
+
+describe('commandForPly', () => {
+  it('maps plies to match turns, offset by the wave activation turn', () => {
+    const knights = { tag: 'piece', roles: ['knight'] } as const
+    let match = initMatch(3, { gameCount: 2, whitePlayer: 1, firstPlacer: 1 })
+
+    // Turn 1: only game 0 is active; issue an order.
+    const first = beginResolution(match, {
+      text: 'move a knight',
+      predicate: knights,
+    })
+    if (first === null) {
+      throw new Error('expected resolution')
+    }
+    const afterFirst = completeResolution(
+      first,
+      first.pending.map((entry) => rankedFor(entry.fen)),
+    )
+    if (afterFirst === null) {
+      throw new Error('expected completed resolution')
+    }
+    // Turn 2: game 1 activates; play it unled.
+    match = autoResolve(afterFirst)
+
+    const early = match.games[0]
+    const late = match.games[1]
+    if (early === undefined || late === undefined) {
+      throw new Error('missing games')
+    }
+    expect(early.activationTurn).toBe(1)
+    expect(late.activationTurn).toBe(2)
+
+    // Game 0's first ply landed on turn 1 (the knight order).
+    expect(commandForPly(match, early, 1)?.text).toBe('move a knight')
+    // Game 1's first ply landed on turn 2, which had no order.
+    expect(commandForPly(match, late, 1)).toBeNull()
+    // Ply 0 (start position) never has an order.
+    expect(commandForPly(match, early, 0)).toBeNull()
   })
 })
 

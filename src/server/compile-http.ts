@@ -42,12 +42,6 @@ export async function handleCompileRequest(
   if (request.method !== 'POST') {
     return jsonResponse(405, { error: 'Use POST.' })
   }
-  if (config.apiKey === undefined || config.apiKey.length === 0) {
-    return jsonResponse(503, {
-      error: 'Command compiler is not configured (missing API key).',
-    })
-  }
-
   let body: unknown
   try {
     body = await request.json()

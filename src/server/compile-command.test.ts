@@ -102,6 +102,29 @@ describe('compileCommand', () => {
     })
   })
 
+  it('compiles literal notation without an API key', async () => {
+    const outcome = await compileCommand('e4', {
+      apiKey: undefined,
+      fetch: () => {
+        throw new Error('should not be called')
+      },
+    })
+    expect(outcome.tag).toBe('compiled')
+  })
+
+  it('fails non-literal commands with 503 when no API key is set', async () => {
+    const outcome = await compileCommand('all knights advance', {
+      apiKey: undefined,
+      fetch: () => {
+        throw new Error('should not be called')
+      },
+    })
+    expect(outcome.tag).toBe('failed')
+    if (outcome.tag === 'failed') {
+      expect(outcome.status).toBe(503)
+    }
+  })
+
   it('rejects over-limit commands without calling the API', async () => {
     const outcome = await compileCommand('x'.repeat(41), {
       apiKey: 'test-key',

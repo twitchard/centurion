@@ -1,3 +1,4 @@
+import { tryCompileLiteralNotation } from '../../core/command/parse-notation'
 import { validateCommandText } from '../../core/command/text'
 import {
   COMMAND_LAST_TURN,
@@ -453,6 +454,14 @@ export function updateCenturion(
             inputError: validated.diagnostics.join(' '),
           }),
         )
+      }
+      // Literal notation compiles locally: no network, no LLM round-trip.
+      const literal = tryCompileLiteralNotation(validated.value)
+      if (literal !== null) {
+        return issueTurn(session, {
+          text: validated.value,
+          predicate: literal,
+        })
       }
       return [
         withSession(model, {
