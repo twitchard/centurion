@@ -3,6 +3,7 @@ import 'chessground/assets/chessground.brown.css'
 import 'chessground/assets/chessground.cburnett.css'
 import './styles.css'
 
+import { FirebaseCommandLogAdapter } from './adapters/firebase-command-log'
 import {
   FirebaseMatchRoomAdapter,
   generateRoomCode,
@@ -30,6 +31,11 @@ import {
   connectionLogText,
   renderConnectionLog,
 } from './connection-log'
+import {
+  type CommandLogSource,
+  commandLogMatchContext,
+  commandLogOutcomeFromCompile,
+} from './core/command-log/model'
 import { describeCommandPredicate } from './core/command/describe'
 import {
   type ResolutionAnimationPlan,
@@ -93,6 +99,7 @@ import {
   type PieceDisplayMode,
   SuperpositionRenderer,
 } from './features/superposition-lab/render-superposition'
+import type { CommandCompileResult } from './ports/command-compiler'
 import {
   type AppRoute,
   inviteUrl,
@@ -278,6 +285,48 @@ function applyPieceDisplayMode(mode: PieceDisplayMode): void {
 const centurionRoom = new FirebaseMatchRoomAdapter()
 const centurionEngine = new StockfishEngineAdapter()
 const commandCompiler = new HttpCommandCompilerAdapter()
+const commandLog = new FirebaseCommandLogAdapter()
+
+/**
+ * Every natural-language compile — match or lab, success or failure —
+ * is appended to the shared command log so translation quality can be
+ * reviewed later (`bun run command:log`). Literal notation compiles
+ * locally and never reaches the compiler or the log.
+ */
+function recordCommandLog(
+  text: string,
+  result: CommandCompileResult,
+  context:
+    | { readonly source: CommandLogSource; readonly match?: MatchState }
+    | undefined = undefined,
+): void {
+  const outcome = commandLogOutcomeFromCompile(result)
+  commandLog.record({
+    text,
+    source: context?.source ?? 'lab',
+    outcome,
+    match:
+      context?.match === undefined
+        ? null
+        : commandLogMatchContext(
+            context.match,
+            outcome.tag === 'compiled' ? outcome.predicate : null,
+          ),
+    build: __MULTIPLAYER_BUILD_ID__,
+  })
+}
+
+/** The session a match compile response lands in, if it still exists. */
+function currentMatchLogContext(): {
+  readonly source: CommandLogSource
+  readonly match?: MatchState
+} {
+  if (state.tag === 'centurion-match' && state.model.tag === 'playing') {
+    const session = state.model.session
+    return { source: session.mode.tag, match: session.match }
+  }
+  return { source: 'match' }
+}
 
 let state: AppState = initAppState()
 
@@ -523,6 +572,10 @@ function runCommand(command: AppCmd): void {
       void commandCompiler
         .compile(defaultCommandCompilerEndpoint(), cmd.text)
         .then((result) => {
+          // Log before dispatching: the match context should reflect the
+          // positions the command was compiled against, not the turn it
+          // resolves.
+          recordCommandLog(cmd.text, result, currentMatchLogContext())
           dispatchCenturion({
             tag: 'command-compile-finished',
             text: cmd.text,
@@ -540,6 +593,7 @@ function runCommandLabCommand(
   cmd: Extract<AppCmd, { tag: 'command-lab' }>['cmd'],
 ): void {
   void commandCompiler.compile(cmd.endpoint, cmd.command).then((result) => {
+    recordCommandLog(cmd.command, result)
     dispatch({
       tag: 'command-lab-msg',
       msg: { tag: 'compile-finished', command: cmd.command, result },

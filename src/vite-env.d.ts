@@ -15,6 +15,13 @@ interface ImportMetaEnv {
    * http://localhost:8787/api/compile in dev and /api/compile in builds.
    */
   readonly VITE_COMMAND_COMPILER_URL?: string
+
+  /**
+   * Command-log control. Unset/empty appends every natural-language
+   * compile (command, predicate, outcome) to the multiplayer database
+   * for later review; set to `off` to disable logging.
+   */
+  readonly VITE_COMMAND_LOG?: string
 }
 
 declare const __MULTIPLAYER_BUILD_ID__: string

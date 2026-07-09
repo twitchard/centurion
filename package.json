@@ -15,6 +15,7 @@
     "board:cli": "bun run src/cli/render-board.ts",
     "command:server": "bun run src/cli/compile-server.ts",
     "command:eval": "bun run src/cli/compile-eval.ts",
+    "command:log": "bun run src/cli/command-log.ts",
     "screenshot": "bun run scripts/screenshot.ts",
     "ci:all": "bun run check && bun run typecheck && bun run test && bun run build"
   },

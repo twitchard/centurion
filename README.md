@@ -27,6 +27,14 @@ The pieces:
 - **Command Compiler Lab** at `/labs` — type a command, compile it against any endpoint, and see the predicate, its English reading, and the matching moves for a list of FEN positions.
 - `bun run command:eval` — a phrase battery run against the live API; use it to judge whether a cheaper model is good enough before changing `COMMAND_COMPILE_MODEL`.
 
+## The command log
+
+Every natural-language command sent to the compiler — from a match or the Command Compiler Lab, success or failure — is also appended (client-side, fire-and-forget) to the shared Firebase database under `__trystero__/centurion-command-log`. Each entry records the command as typed, the compiled predicate and its English reading (or the failure message), and for match compiles the turn plus how many active games the predicate touched. The point is a feedback loop on translation quality: play normally, then review what real orders compiled to and judge whether each was the best possible reading.
+
+- `bun run command:log` — print the newest entries, one line each (`--limit 0` for everything, `--json` for machine-readable output, `--clear` to delete the log). `COMMAND_LOG_DATABASE_URL` overrides the database.
+- The log goes to the same database as multiplayer (`VITE_FIREBASE_DATABASE_URL` or the built-in default). Set the build variable `VITE_COMMAND_LOG=off` to disable logging without touching multiplayer; disabling multiplayer disables the log too.
+- Like the match rooms, the log node is world-readable and world-writable, so entries read back are untrusted and pass through a validating codec. Commands are at most 40 characters of chess orders; nothing else is captured — no identifiers, no positions, no device data.
+
 ## Multiplayer
 
 Multiplayer syncs match state through **Firebase Realtime Database** — no WebRTC, no NAT traversal, no peer-to-peer connection. A match room is a small database record: the match seed, a presence flag per player, and the latest match snapshot. The host creates a room and shares the 6-digit code; when the guest joins, the host publishes the initial snapshot, and from then on whoever resolves a turn publishes the new state while the other player's client mirrors it. Because the room always holds the full authoritative snapshot, the two clients cannot diverge, and either player can reload or reconnect mid-match and pick up exactly where the room says the match is.
@@ -84,7 +92,7 @@ The app follows a strict Elm-style architecture under maximum practical TypeScri
 
 - `src/core/` — pure domain logic: chess rules ([chessops](https://github.com/niklasf/chessops)), the command predicate DSL (`core/command`), match state and soldier resolution (`core/match`), seeded RNG, parsers, codecs. Everything deterministic and testable without a browser.
 - `src/features/` — feature reducers (`centurion-match`, `command-lab`, `superposition-lab`) plus the canvas superposition renderer.
-- `src/ports/` + `src/adapters/` — effect interfaces and their implementations: the Firebase match room, Stockfish (WASM in a web worker, speaking UCI), and the command compiler endpoint.
+- `src/ports/` + `src/adapters/` — effect interfaces and their implementations: the Firebase match room, Stockfish (WASM in a web worker, speaking UCI), the command compiler endpoint, and the command log sink.
 - `src/app/` + `src/main.ts` — top-level state machine and the imperative shell that interprets commands.
 
 Each turn resolves in three steps: the LLM compiles words to a predicate once (async, at the edge); Stockfish ranks every distinct position (async, in the worker); and the soldier sampling is pure and deterministic, driven by a seeded RNG. The resolving client publishes the settled snapshot, so engine and sampling nondeterminism never has to agree across peers.

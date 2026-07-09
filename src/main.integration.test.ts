@@ -5,6 +5,17 @@ import {
   DEFAULT_SUPERPOSITION_FEN_INPUT,
 } from './features/superposition-lab/model'
 
+const recordedCommandLog = vi.hoisted(() => [] as unknown[])
+
+vi.mock('./adapters/firebase-command-log', () => {
+  class MockCommandLogAdapter {
+    record(entry: unknown): void {
+      recordedCommandLog.push(entry)
+    }
+  }
+  return { FirebaseCommandLogAdapter: MockCommandLogAdapter }
+})
+
 vi.mock('./adapters/firebase-match-room', () => {
   interface MockRoomCallbacks {
     readonly onOpened: () => void
@@ -952,6 +963,17 @@ describe('main app wiring', () => {
       expect(metaLine.textContent).toContain('Turn 2')
     })
     expect(history.textContent).toContain('game')
+
+    // The natural-language compile landed in the command log with the
+    // match context it was compiled against.
+    expect(recordedCommandLog).toContainEqual(
+      expect.objectContaining({
+        text: 'move a knight',
+        source: 'local',
+        outcome: expect.objectContaining({ tag: 'compiled' }),
+        match: { turn: 1, matches: { matchedGames: 1, activeGames: 1 } },
+      }),
+    )
 
     const summary = documentRef.getElementById(
       'centurion-resolution-summary',
