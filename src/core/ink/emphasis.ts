@@ -9,8 +9,8 @@ export function squareCenter(square: number): BoardPoint {
 
 /**
  * Signed emphasis in [-1, 1]. Positive raises the move's weight in the
- * soldier's draw; negative (a scribble) lowers it. Several strokes stack
- * with diminishing return, and nothing is ever removed.
+ * soldier's draw; negative (a scribble or an X) lowers it. Several strokes
+ * stack with diminishing return, and nothing is ever removed.
  */
 export function emphasisPull(
   marks: readonly InkMark[],
@@ -25,10 +25,13 @@ export function emphasisPull(
         positive += arrowScore(mark.tail, mark.head, from, to)
         break
       case 'circle':
-        positive += circleScore(mark.center, mark.radius, to)
+        positive += circleScore(mark.outline, to)
         break
       case 'scribble':
-        negative += scribbleScore(mark.points, to)
+        negative += coveredScore(mark.points, to)
+        break
+      case 'x':
+        negative += coveredScore(mark.strokes.flat(), to)
         break
     }
   }
@@ -75,31 +78,114 @@ function arrowScore(
   return cos * proximity
 }
 
-function circleScore(center: BoardPoint, radius: number, to: number): number {
-  if (radius <= 0) {
+/** 1 when the destination square's center sits inside the drawn outline. */
+function circleScore(outline: readonly BoardPoint[], to: number): number {
+  if (outline.length < 3) {
     return 0
   }
-  const dist = distance(squareCenter(to), center)
-  if (dist >= radius) {
-    return 0
-  }
-  return 1 - dist / radius
+  return pointInPolygon(squareCenter(to), outline) ? 1 : 0
 }
 
-function scribbleScore(points: readonly BoardPoint[], to: number): number {
-  const reach = 0.75
-  const dest = squareCenter(to)
-  let nearest = Number.POSITIVE_INFINITY
-  for (const point of points) {
-    const dist = distance(dest, point)
-    if (dist < nearest) {
-      nearest = dist
+/** 1 when the ink actually enters the destination square. */
+function coveredScore(points: readonly BoardPoint[], to: number): number {
+  return coversSquare(points, to) ? 1 : 0
+}
+
+function coversSquare(points: readonly BoardPoint[], square: number): boolean {
+  const file = square & 7
+  const rank = square >> 3
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index]
+    if (point === undefined) {
+      continue
+    }
+    if (pointInSquare(point, file, rank)) {
+      return true
+    }
+    const previous = points[index - 1]
+    if (
+      previous !== undefined &&
+      segmentHitsSquare(previous, point, file, rank)
+    ) {
+      return true
     }
   }
-  if (nearest >= reach) {
-    return 0
+  return false
+}
+
+function pointInSquare(point: BoardPoint, file: number, rank: number): boolean {
+  const x1 = file === 7 ? 8.001 : file + 1
+  const y1 = rank === 7 ? 8.001 : rank + 1
+  return point.x >= file && point.x < x1 && point.y >= rank && point.y < y1
+}
+
+function segmentHitsSquare(
+  a: BoardPoint,
+  b: BoardPoint,
+  file: number,
+  rank: number,
+): boolean {
+  const x0 = file
+  const y0 = rank
+  const x1 = file + 1
+  const y1 = rank + 1
+  return (
+    segmentsCross(a, b, { x: x0, y: y0 }, { x: x1, y: y0 }) ||
+    segmentsCross(a, b, { x: x1, y: y0 }, { x: x1, y: y1 }) ||
+    segmentsCross(a, b, { x: x1, y: y1 }, { x: x0, y: y1 }) ||
+    segmentsCross(a, b, { x: x0, y: y1 }, { x: x0, y: y0 })
+  )
+}
+
+function segmentsCross(
+  a: BoardPoint,
+  b: BoardPoint,
+  c: BoardPoint,
+  d: BoardPoint,
+): boolean {
+  const d1 = cross(c, d, a)
+  const d2 = cross(c, d, b)
+  const d3 = cross(a, b, c)
+  const d4 = cross(a, b, d)
+  return (
+    ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+    ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+  )
+}
+
+function cross(origin: BoardPoint, end: BoardPoint, point: BoardPoint): number {
+  return (
+    (end.x - origin.x) * (point.y - origin.y) -
+    (end.y - origin.y) * (point.x - origin.x)
+  )
+}
+
+function pointInPolygon(
+  point: BoardPoint,
+  polygon: readonly BoardPoint[],
+): boolean {
+  let inside = false
+  for (
+    let index = 0, previous = polygon.length - 1;
+    index < polygon.length;
+    previous = index++
+  ) {
+    const current = polygon[index]
+    const prior = polygon[previous]
+    if (current === undefined || prior === undefined) {
+      continue
+    }
+    const crosses =
+      current.y > point.y !== prior.y > point.y &&
+      point.x <
+        ((prior.x - current.x) * (point.y - current.y)) /
+          (prior.y - current.y) +
+          current.x
+    if (crosses) {
+      inside = !inside
+    }
   }
-  return 1 - nearest / reach
+  return inside
 }
 
 function pointSegmentDistance(

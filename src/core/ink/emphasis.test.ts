@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { emphasisFactor, emphasisPull } from './emphasis'
-import type { InkMark } from './gesture'
+import type { BoardPoint, InkMark } from './gesture'
 import type { Candidate } from './sample'
 import { soldierDraw } from './sample'
 
@@ -18,8 +18,31 @@ const forwardArrow: InkMark = {
 
 const circleOnE4: InkMark = {
   tag: 'circle',
-  center: { x: 4.5, y: 3.5 },
-  radius: 0.7,
+  outline: loop(4.5, 3.5, 0.7),
+}
+
+const fence: InkMark = {
+  tag: 'circle',
+  outline: [
+    { x: 2, y: 2 },
+    { x: 6, y: 2 },
+    { x: 6, y: 3 },
+    { x: 3, y: 3 },
+    { x: 3, y: 6 },
+    { x: 2, y: 6 },
+  ],
+}
+
+function loop(cx: number, cy: number, radius: number): BoardPoint[] {
+  const points: BoardPoint[] = []
+  for (let index = 0; index < 24; index++) {
+    const angle = (index / 24) * Math.PI * 2
+    points.push({
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius,
+    })
+  }
+  return points
 }
 
 const scribbleOnE4: InkMark = {
@@ -57,6 +80,32 @@ describe('emphasis', () => {
     expect(emphasisPull([circleOnE4], e2, e4)).toBeGreaterThan(0.8)
     expect(emphasisPull([circleOnE4], a2, b2)).toBe(0)
     expect(emphasisPull([scribbleOnE4], e2, e4)).toBeLessThan(-0.5)
+    expect(emphasisPull([scribbleOnE4], e2, e4 - 1)).toBe(0)
+  })
+
+  it('emphasizes the squares inside a fence, not the empty corner of its box', () => {
+    const insideBottomArm = 4 + 2 * 8
+    const emptyCorner = 4 + 4 * 8
+    expect(emphasisPull([fence], e2, insideBottomArm)).toBeGreaterThan(0)
+    expect(emphasisPull([fence], e2, emptyCorner)).toBe(0)
+  })
+
+  it('de-emphasizes the squares under an X', () => {
+    const cross: InkMark = {
+      tag: 'x',
+      strokes: [
+        [
+          { x: 4.1, y: 3.1 },
+          { x: 4.9, y: 3.9 },
+        ],
+        [
+          { x: 4.1, y: 3.9 },
+          { x: 4.9, y: 3.1 },
+        ],
+      ],
+    }
+    expect(emphasisPull([cross], e2, e4)).toBeLessThan(-0.5)
+    expect(emphasisPull([cross], e2, a2)).toBe(0)
   })
 
   it('never hard-filters: every factor stays positive and finite', () => {

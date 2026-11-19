@@ -74,11 +74,30 @@ describe('structural drawing recognition', () => {
     expect(names).toEqual(['arrow', 'circle'])
   })
 
-  it('reads a cross as a scribble', () => {
+  it('reads a loop about one square across as a circle, and a dot as a scribble', () => {
+    const loop: BoardPoint[] = []
+    const dot: BoardPoint[] = []
+    for (let index = 0; index <= 24; index++) {
+      const angle = (index / 24) * Math.PI * 2
+      loop.push({
+        x: 3 + Math.cos(angle) * 0.55,
+        y: 3 + Math.sin(angle) * 0.55,
+      })
+      dot.push({
+        x: 6 + Math.cos(angle) * 0.12,
+        y: 6 + Math.sin(angle) * 0.12,
+      })
+    }
+    expect(recognizeDrawing([loop])[0]?.name).toBe('circle')
+    expect(recognizeDrawing([dot])[0]?.name).toBe('scribble')
+  })
+
+  it('reads two crossing strokes as an X', () => {
     const cross = recognizeDrawing([
       line({ x: 1, y: 1 }, { x: 3, y: 3 }),
       line({ x: 1, y: 3 }, { x: 3, y: 1 }),
     ])
-    expect(cross[0]?.name).toBe('scribble')
+    expect(cross).toHaveLength(1)
+    expect(cross[0]?.name).toBe('x')
   })
 })

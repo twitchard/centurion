@@ -270,8 +270,8 @@ function renderTemperaments(
   }
   view.family.textContent =
     difficulty === 'hard'
-      ? 'Your soldiers: 25 of each curve. The computer deck is half strong and has no weak soldiers. Ink makes matching moves more likely; a scribble makes them less likely.'
-      : 'Each soldier draws from a curve over the top ten: strong leans best, weak leans worst, steady sits in the middle, swingy lives at both ends. 25 of each. Ink makes matching moves more likely; a scribble makes them less likely.'
+      ? 'Your soldiers: 25 of each curve. The computer deck is half strong and has no weak soldiers. Ink makes matching moves more likely; a scribble or an X makes them less likely.'
+      : 'Each soldier draws from a curve over the top ten: strong leans best, weak leans worst, steady sits in the middle, swingy lives at both ends. 25 of each. Ink makes matching moves more likely; a scribble or an X makes them less likely.'
 }
 
 function renderStats(view: InkView, match: InkModel['session']['match']): void {

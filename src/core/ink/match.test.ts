@@ -97,8 +97,13 @@ describe('ink match', () => {
     })
     const circle: InkMark = {
       tag: 'circle',
-      center: { x: 4.5, y: 3.5 },
-      radius: 0.6,
+      outline: Array.from({ length: 24 }, (_, index) => {
+        const angle = (index / 24) * Math.PI * 2
+        return {
+          x: 4.5 + Math.cos(angle) * 0.6,
+          y: 3.5 + Math.sin(angle) * 0.6,
+        }
+      }),
     }
     const targets = inkSearchTargets(match)
     const ranked = targets.gameIds.map(() => OPENING)

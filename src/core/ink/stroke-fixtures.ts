@@ -1,61 +1,84 @@
 import type { BoardPoint } from './gesture'
+import { OWNER_RECORDING_DATA } from './owner-recordings'
 
 export type StrokeAuthor = 'agent' | 'owner'
-export type StrokeLabel = 'arrow' | 'circle' | 'scribble'
+export type StrokeLabel = 'arrow' | 'circle' | 'scribble' | 'x'
 
 export interface StrokeRecording {
   readonly id: string
   readonly author: StrokeAuthor
-  readonly expect: StrokeLabel | null
+  readonly expect: readonly StrokeLabel[] | null
   readonly strokes: readonly (readonly BoardPoint[])[]
 }
 
 /**
  * Recordings made while building the structural reader. None of these
- * were drawn by the owner; his exports are the acceptance set once he
- * drops them in beside these.
+ * were drawn by the owner. A closed loop counts as a circle down to well
+ * under a square; only a dot does not. An open curve stays a scribble.
  */
 export const AGENT_RECORDINGS: readonly StrokeRecording[] = [
-  recording('agent-shaft-then-v', 'arrow', [
-    wobble(line(1.4, 2, 5.2, 2.15), 3),
-    vHead(5.2, 2.15, 4.55, 2.05),
-  ]),
-  recording('agent-v-then-shaft', 'arrow', [
-    vHead(3.1, 6.4, 3.05, 5.7),
-    wobble(line(3.05, 2.2, 3.1, 6.4), 5),
-  ]),
-  recording('agent-single-line-head', 'arrow', [
-    wobble(line(1.2, 5.1, 4.8, 5.3), 7),
-    line(4.75, 5.25, 4.15, 5.7),
-  ]),
-  recording('agent-curved-shaft', 'arrow', [
-    bow(1.3, 1.2, 4.6, 1.5, 0.35),
-    vHead(4.6, 1.5, 4.05, 1.35),
-  ]),
-  recording('agent-short-arrow', 'arrow', [
-    line(2, 3, 3.15, 3.15),
-    vHead(3.15, 3.15, 2.7, 3.05),
-  ]),
-  recording('agent-two-square-arrow', 'arrow', [
-    wobble(line(4, 4, 6.1, 4.2), 9),
-    line(6.05, 4.15, 5.45, 4.65),
-  ]),
-  recording('agent-hooked-shaft', 'arrow', [hooked(1.5, 4, 4.4, 4.2)]),
-  recording('agent-real-circle', 'circle', [loop(4, 4, 1.35, 0, Math.PI * 2)]),
-  recording('agent-two-semicircles', 'circle', [
-    loop(4.2, 3.8, 1.2, 0.15, Math.PI),
-    loop(4.2, 3.8, 1.2, Math.PI, Math.PI * 2.05),
-  ]),
-  recording('agent-small-curve', 'scribble', [loop(2, 6, 0.45, 0.2, 1.5)]),
-  recording('agent-tiny-loop', 'scribble', [loop(6, 2, 0.35, 0, Math.PI * 2)]),
-  recording('agent-cross', 'scribble', [
-    line(1, 1, 2.4, 2.5),
-    line(1.1, 2.4, 2.5, 1),
-  ]),
+  recording(
+    'agent-shaft-then-v',
+    ['arrow'],
+    [wobble(line(1.4, 2, 5.2, 2.15), 3), vHead(5.2, 2.15, 4.55, 2.05)],
+  ),
+  recording(
+    'agent-v-then-shaft',
+    ['arrow'],
+    [vHead(3.1, 6.4, 3.05, 5.7), wobble(line(3.05, 2.2, 3.1, 6.4), 5)],
+  ),
+  recording(
+    'agent-single-line-head',
+    ['arrow'],
+    [wobble(line(1.2, 5.1, 4.8, 5.3), 7), line(4.75, 5.25, 4.15, 5.7)],
+  ),
+  recording(
+    'agent-curved-shaft',
+    ['arrow'],
+    [bow(1.3, 1.2, 4.6, 1.5, 0.35), vHead(4.6, 1.5, 4.05, 1.35)],
+  ),
+  recording(
+    'agent-short-arrow',
+    ['arrow'],
+    [line(2, 3, 3.15, 3.15), vHead(3.15, 3.15, 2.7, 3.05)],
+  ),
+  recording(
+    'agent-two-square-arrow',
+    ['arrow'],
+    [wobble(line(4, 4, 6.1, 4.2), 9), line(6.05, 4.15, 5.45, 4.65)],
+  ),
+  recording('agent-hooked-shaft', ['arrow'], [hooked(1.5, 4, 4.4, 4.2)]),
+  recording(
+    'agent-real-circle',
+    ['circle'],
+    [loop(4, 4, 1.35, 0, Math.PI * 2)],
+  ),
+  recording(
+    'agent-two-semicircles',
+    ['circle'],
+    [
+      loop(4.2, 3.8, 1.2, 0.15, Math.PI),
+      loop(4.2, 3.8, 1.2, Math.PI, Math.PI * 2.05),
+    ],
+  ),
+  recording('agent-small-curve', ['scribble'], [loop(2, 6, 0.45, 0.2, 1.5)]),
+  recording('agent-tiny-loop', ['circle'], [loop(6, 2, 0.35, 0, Math.PI * 2)]),
+  recording('agent-dot', ['scribble'], [loop(6.4, 1.2, 0.12, 0, Math.PI * 2)]),
+  recording(
+    'agent-cross',
+    ['x'],
+    [line(1, 1, 2.4, 2.5), line(1.1, 2.4, 2.5, 1)],
+  ),
 ]
 
-/** Owner exports belong here once he records them. None yet. */
-export const OWNER_RECORDINGS: readonly StrokeRecording[] = []
+/** The owner's recorded drawings, with the labels he described. */
+export const OWNER_RECORDINGS: readonly StrokeRecording[] =
+  OWNER_RECORDING_DATA.map((row) => ({
+    id: row.id,
+    author: 'owner' as const,
+    expect: row.expect,
+    strokes: row.strokes,
+  }))
 
 export function parseStrokeExport(raw: string): readonly StrokeRecording[] {
   const parsed: unknown = JSON.parse(raw)
@@ -73,7 +96,7 @@ export function parseStrokeExport(raw: string): readonly StrokeRecording[] {
 
 function recording(
   id: string,
-  expect: StrokeLabel,
+  expect: readonly StrokeLabel[],
   strokes: readonly (readonly BoardPoint[])[],
 ): StrokeRecording {
   return { id, author: 'agent', expect, strokes }
@@ -87,7 +110,7 @@ function recordingFromUnknown(row: unknown, index: number): StrokeRecording {
   const authorValue = prop(row, 'author')
   const author = authorValue === 'owner' ? 'owner' : 'agent'
   const expectValue = prop(row, 'expect')
-  const expect = isLabel(expectValue) ? expectValue : null
+  const expect = labelsFrom(expectValue)
   const idValue = prop(row, 'id')
   const id = typeof idValue === 'string' ? idValue : `recording-${index + 1}`
   const strokes = strokesRaw.map((stroke, strokeIndex) => {
@@ -113,8 +136,23 @@ function prop(value: unknown, key: string): unknown {
   return (value as { readonly [key: string]: unknown })[key]
 }
 
+function labelsFrom(value: unknown): readonly StrokeLabel[] | null {
+  if (isLabel(value)) {
+    return [value]
+  }
+  if (!Array.isArray(value) || value.length === 0 || !value.every(isLabel)) {
+    return null
+  }
+  return value
+}
+
 function isLabel(value: unknown): value is StrokeLabel {
-  return value === 'arrow' || value === 'circle' || value === 'scribble'
+  return (
+    value === 'arrow' ||
+    value === 'circle' ||
+    value === 'scribble' ||
+    value === 'x'
+  )
 }
 
 function line(x0: number, y0: number, x1: number, y1: number): BoardPoint[] {

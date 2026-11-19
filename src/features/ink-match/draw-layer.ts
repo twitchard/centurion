@@ -161,62 +161,64 @@ export class InkDrawLayer {
         this.stroke(context, [mark.tail, mark.head], '#1d4ed8', 3, true)
         return
       case 'circle':
-        this.paintCircle(context, mark.center, mark.radius)
+        this.paintOutline(context, mark.outline)
         return
       case 'scribble':
-        this.paintScribble(context, mark.points)
+        this.paintCovered(context, mark.points)
+        this.stroke(context, mark.points, '#b91c1c', 2.5, false)
+        return
+      case 'x':
+        this.paintCovered(context, mark.strokes.flat())
+        for (const stroke of mark.strokes) {
+          this.stroke(context, stroke, '#b91c1c', 3, false)
+        }
         return
     }
   }
 
-  private paintScribble(
+  private paintOutline(
     context: CanvasRenderingContext2D,
-    points: readonly BoardPoint[],
+    outline: readonly BoardPoint[],
   ): void {
-    if (points.length === 0) {
+    if (outline.length < 3) {
       return
     }
-    let minX = Number.POSITIVE_INFINITY
-    let minY = Number.POSITIVE_INFINITY
-    let maxX = Number.NEGATIVE_INFINITY
-    let maxY = Number.NEGATIVE_INFINITY
-    for (const point of points) {
-      minX = Math.min(minX, point.x)
-      minY = Math.min(minY, point.y)
-      maxX = Math.max(maxX, point.x)
-      maxY = Math.max(maxY, point.y)
+    const scale = this.boardWidth / 8
+    const toX = (point: BoardPoint) => point.x * scale
+    const toY = (point: BoardPoint) => (8 - point.y) * scale
+    context.beginPath()
+    context.moveTo(toX(outline[0]!), toY(outline[0]!))
+    for (let index = 1; index < outline.length; index++) {
+      context.lineTo(toX(outline[index]!), toY(outline[index]!))
     }
-    const scale = this.boardWidth / 8
-    const cx = ((minX + maxX) / 2) * scale
-    const cy = (8 - (minY + maxY) / 2) * scale
-    const rx = Math.max(0.35, (maxX - minX) / 2 + 0.25) * scale
-    const ry = Math.max(0.35, (maxY - minY) / 2 + 0.25) * scale
-    context.beginPath()
-    context.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
-    context.fillStyle = 'rgba(185, 28, 28, 0.18)'
+    context.closePath()
+    context.fillStyle = 'rgba(29, 78, 216, 0.16)'
     context.fill()
-    context.strokeStyle = '#b91c1c'
-    context.lineWidth = 2
-    context.stroke()
-  }
-
-  private paintCircle(
-    context: CanvasRenderingContext2D,
-    center: BoardPoint,
-    radius: number,
-  ): void {
-    const scale = this.boardWidth / 8
-    context.beginPath()
-    context.arc(
-      center.x * scale,
-      (8 - center.y) * scale,
-      radius * scale,
-      0,
-      Math.PI * 2,
-    )
     context.strokeStyle = '#1d4ed8'
     context.lineWidth = 3
     context.stroke()
+  }
+
+  private paintCovered(
+    context: CanvasRenderingContext2D,
+    points: readonly BoardPoint[],
+  ): void {
+    const scale = this.boardWidth / 8
+    const seen = new Set<number>()
+    context.fillStyle = 'rgba(185, 28, 28, 0.18)'
+    for (const point of points) {
+      if (point.x < 0 || point.y < 0 || point.x > 8 || point.y > 8) {
+        continue
+      }
+      const file = Math.min(7, Math.floor(point.x))
+      const rank = Math.min(7, Math.floor(point.y))
+      const key = file + rank * 8
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      context.fillRect(file * scale, (7 - rank) * scale, scale, scale)
+    }
   }
 
   private stroke(
