@@ -273,13 +273,12 @@
       <div class="panel controls-panel ink-controls">
         <p id="ink-result" class="ink-result" hidden></p>
         <p id="ink-preview" class="ink-preview" aria-live="polite"></p>
-        <div class="ink-budget">
-          <span id="ink-budget-label">Ink 8.0 / 8</span>
-          <div class="ink-budget-track"><div id="ink-budget-fill"></div></div>
+        <div id="ink-commit-meter" class="ink-commit-meter" hidden>
+          <div id="ink-commit-fill"></div>
         </div>
+        <p id="ink-commit-label" class="ink-commit-label" hidden></p>
         <ul id="ink-mark-list" class="ink-mark-list"></ul>
         <div class="ink-actions">
-          <button class="btn btn-primary" id="ink-commit-btn" type="button">Commit ink</button>
           <button class="btn btn-outline" id="ink-pass-btn" type="button">Let them play</button>
         </div>
         <div class="ink-actions">

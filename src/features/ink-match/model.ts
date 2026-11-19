@@ -1,10 +1,7 @@
 import {
   type BoardPoint,
-  INK_BUDGET,
   type InkMark,
-  classifyStroke,
-  inkUsed,
-  integrateMark,
+  interpretDrawing,
 } from '../../core/ink/gesture'
 import {
   INK_GAME_COUNT,
@@ -21,9 +18,8 @@ import type { UpdateResult } from '../../core/update'
 
 export interface InkSession {
   readonly match: InkMatch
+  readonly strokes: readonly (readonly BoardPoint[])[]
   readonly marks: readonly InkMark[]
-  /** Previous mark lists, newest last, so undo can restore a merged cross. */
-  readonly markPast: readonly (readonly InkMark[])[]
   readonly ranks: readonly (readonly RankedMove[])[] | null
   readonly searchId: number | null
   readonly searchSide: 'player' | 'computer' | null
@@ -74,8 +70,8 @@ export function bootInkSession(
       tag: 'playing',
       session: {
         match,
+        strokes: [],
         marks: [],
-        markPast: [],
         ranks: null,
         searchId: null,
         searchSide: null,
@@ -117,56 +113,35 @@ export function updateInk(
 }
 
 function withStroke(model: InkModel, points: readonly BoardPoint[]): InkModel {
-  if (!canDraw(model)) {
+  if (!canDraw(model) || points.length < 2) {
     return model
   }
-  const remaining = INK_BUDGET - inkUsed(model.session.marks)
-  const result = classifyStroke(points, remaining)
-  if (result.tag === 'reject') {
-    return setNotice(model, result.reason)
-  }
-  const marks = integrateMark(model.session.marks, result.mark)
-  return {
-    tag: 'playing',
-    session: {
-      ...model.session,
-      markPast: [...model.session.markPast, model.session.marks].slice(-20),
-      marks,
-      notice: null,
-    },
-  }
+  return withStrokes(model, [...model.session.strokes, points])
 }
 
 function undoMarks(model: InkModel): InkModel {
-  const past = model.session.markPast
-  if (!canDraw(model) || past.length === 0) {
+  if (!canDraw(model) || model.session.strokes.length === 0) {
     return model
   }
-  const marks = past[past.length - 1] ?? []
-  return {
-    tag: 'playing',
-    session: {
-      ...model.session,
-      marks,
-      markPast: past.slice(0, -1),
-      notice: null,
-    },
-  }
+  return withStrokes(model, model.session.strokes.slice(0, -1))
 }
 
 function clearMarks(model: InkModel): InkModel {
-  if (!canDraw(model) || model.session.marks.length === 0) {
+  if (!canDraw(model) || model.session.strokes.length === 0) {
     return model
   }
-  return {
-    tag: 'playing',
-    session: {
-      ...model.session,
-      markPast: [...model.session.markPast, model.session.marks].slice(-20),
-      marks: [],
-      notice: null,
-    },
-  }
+  return withStrokes(model, [])
+}
+
+function withStrokes(
+  model: InkModel,
+  strokes: readonly (readonly BoardPoint[])[],
+): InkModel {
+  return setSession(model, {
+    strokes,
+    marks: interpretDrawing(strokes),
+    notice: null,
+  })
 }
 
 function commit(
@@ -189,8 +164,8 @@ function commit(
   }
   const played = setSession(model, {
     match: next,
+    strokes: [],
     marks: [],
-    markPast: [],
     ranks: null,
     notice: null,
   })

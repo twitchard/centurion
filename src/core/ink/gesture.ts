@@ -1,3 +1,6 @@
+import { type CloudPoint, pdollarRecognize } from './pdollar'
+import { GESTURE_TEMPLATES, type GestureName } from './templates'
+
 /** A point on the board in square units. (0, 0) is the a1 corner; (8, 8) is h8. */
 export interface BoardPoint {
   readonly x: number
@@ -9,125 +12,71 @@ export type InkMark =
       readonly tag: 'arrow'
       readonly tail: BoardPoint
       readonly head: BoardPoint
-      readonly ink: number
     }
   | {
       readonly tag: 'circle'
       readonly center: BoardPoint
       readonly radius: number
-      readonly ink: number
     }
   | {
       readonly tag: 'scribble'
       readonly points: readonly BoardPoint[]
-      readonly ink: number
     }
 
-export type StrokeResult =
-  | { readonly tag: 'mark'; readonly mark: InkMark }
-  | { readonly tag: 'reject'; readonly reason: string }
+/**
+ * After the last stroke, wait this long with no new stroke, then send
+ * the drawing. Long enough to add a head or hit undo, short enough that
+ * the turn still feels immediate.
+ */
+export const COMMIT_IDLE_MS = 800
 
-/** One board-width of stroke per turn. Emphasis is a budget, not a brush. */
-export const INK_BUDGET = 8
+/**
+ * Below this $P score the cloud is not a confident arrow or circle,
+ * so the strokes de-emphasize the area they cover.
+ */
+export const RECOGNITION_MIN_SCORE = 0.7
 
-const MIN_LENGTH = 0.45
+/** Strokes whose closest points are nearer than this belong to one gesture. */
+const GROUP_DISTANCE = 0.85
 
-export function inkUsed(marks: readonly InkMark[]): number {
-  let total = 0
-  for (const mark of marks) {
-    total += mark.ink
-  }
-  return total
-}
+const MIN_STROKE_LENGTH = 0.18
 
-export function classifyStroke(
-  points: readonly BoardPoint[],
-  inkRemaining: number,
-): StrokeResult {
-  const path = downsample(points, 48)
-  if (path.length < 2) {
-    return { tag: 'reject', reason: 'Stroke too short' }
-  }
-  const length = pathLength(path)
-  if (length < MIN_LENGTH) {
-    return { tag: 'reject', reason: 'Stroke too short' }
-  }
-  if (length > inkRemaining + 1e-9) {
-    return { tag: 'reject', reason: 'Not enough ink' }
-  }
-
-  const start = path[0]!
-  const end = path[path.length - 1]!
-  const chord = distance(start, end)
-  const straightness = chord / length
-  const closed = chord < Math.max(0.55, length * 0.22)
-  const centroid = averagePoint(path)
-  const area = Math.abs(shoelace(path))
-  const radii = path.map((point) => distance(point, centroid))
-  const meanR = average(radii)
-  const variance = average(radii.map((radius) => (radius - meanR) ** 2))
-  const spread = meanR > 1e-6 ? Math.sqrt(variance) / meanR : 1
-  const crosses = selfIntersects(path)
-
-  if (
-    closed &&
-    !crosses &&
-    area > 0.45 &&
-    meanR >= 0.45 &&
-    meanR <= 3.6 &&
-    spread < 0.42 &&
-    length >= 1.6
-  ) {
-    return {
-      tag: 'mark',
-      mark: { tag: 'circle', center: centroid, radius: meanR, ink: length },
-    }
-  }
-  if (!crosses && straightness >= 0.72 && chord >= 0.6) {
-    return {
-      tag: 'mark',
-      mark: { tag: 'arrow', tail: start, head: end, ink: length },
-    }
-  }
-  return { tag: 'mark', mark: { tag: 'scribble', points: path, ink: length } }
+export interface RecognizedGesture {
+  readonly name: GestureName
+  readonly score: number
+  readonly mark: InkMark
 }
 
 /**
- * A stroke that crosses an existing arrow is a cross: drop those arrows
- * and keep one scribble covering the ink already spent plus the new stroke.
+ * Group every stroke in the drawing by proximity, then classify each
+ * group with $P. A shaft and a separate arrowhead become one arrow
+ * because they are one point cloud, whatever order they were drawn in.
  */
-export function integrateMark(
-  marks: readonly InkMark[],
-  mark: InkMark,
+export function recognizeDrawing(
+  strokes: readonly (readonly BoardPoint[])[],
+): readonly RecognizedGesture[] {
+  const usable = strokes.filter(
+    (stroke) => pathLength(stroke) >= MIN_STROKE_LENGTH,
+  )
+  const groups = groupStrokes(usable)
+  const recognized: RecognizedGesture[] = []
+  for (const group of groups) {
+    const cloud = toCloud(group)
+    const match = pdollarRecognize(cloud, GESTURE_TEMPLATES)
+    const name = gestureName(match?.name, match?.score ?? 0)
+    recognized.push({
+      name,
+      score: match?.score ?? 0,
+      mark: snapMark(name, group),
+    })
+  }
+  return recognized
+}
+
+export function interpretDrawing(
+  strokes: readonly (readonly BoardPoint[])[],
 ): readonly InkMark[] {
-  if (mark.tag === 'circle') {
-    return [...marks, mark]
-  }
-  const stroke = mark.tag === 'arrow' ? [mark.tail, mark.head] : mark.points
-  const crossed: InkMark[] = []
-  for (const existing of marks) {
-    if (existing.tag !== 'arrow') {
-      continue
-    }
-    if (polylinesIntersect(stroke, [existing.tail, existing.head])) {
-      crossed.push(existing)
-    }
-  }
-  if (crossed.length === 0) {
-    return [...marks, mark]
-  }
-  const points: BoardPoint[] = [...stroke]
-  let ink = mark.ink
-  for (const arrow of crossed) {
-    if (arrow.tag !== 'arrow') {
-      continue
-    }
-    points.push(arrow.tail, arrow.head)
-    ink += arrow.ink
-  }
-  const scribble: InkMark = { tag: 'scribble', points, ink }
-  const drop = new Set(crossed)
-  return [...marks.filter((existing) => !drop.has(existing)), scribble]
+  return recognizeDrawing(strokes).map((gesture) => gesture.mark)
 }
 
 export function describeMark(mark: InkMark): string {
@@ -153,23 +102,150 @@ export function squareNameAt(point: BoardPoint): string {
 }
 
 export function distance(a: BoardPoint, b: BoardPoint): number {
-  const dx = a.x - b.x
-  const dy = a.y - b.y
-  return Math.hypot(dx, dy)
+  return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
-function average(values: readonly number[]): number {
-  if (values.length === 0) {
-    return 0
+function gestureName(name: string | undefined, score: number): GestureName {
+  if (score < RECOGNITION_MIN_SCORE) {
+    return 'scribble'
   }
-  let total = 0
-  for (const value of values) {
-    total += value
+  if (name === 'arrow' || name === 'circle' || name === 'scribble') {
+    return name
   }
-  return total / values.length
+  return 'scribble'
+}
+
+function snapMark(
+  name: GestureName,
+  strokes: readonly (readonly BoardPoint[])[],
+): InkMark {
+  if (name === 'arrow') {
+    return snapArrow(strokes)
+  }
+  if (name === 'circle') {
+    return snapCircle(strokes)
+  }
+  return { tag: 'scribble', points: strokes.flat() }
+}
+
+function snapArrow(strokes: readonly (readonly BoardPoint[])[]): InkMark {
+  if (strokes.length === 1) {
+    const stroke = strokes[0] ?? []
+    const tail = stroke[0] ?? { x: 0, y: 0 }
+    const head = stroke[stroke.length - 1] ?? tail
+    return { tag: 'arrow', tail, head }
+  }
+  let shaft = strokes[0] ?? []
+  let shaftLength = pathLength(shaft)
+  for (const stroke of strokes) {
+    const length = pathLength(stroke)
+    if (length > shaftLength) {
+      shaft = stroke
+      shaftLength = length
+    }
+  }
+  const headPoints = strokes.filter((stroke) => stroke !== shaft).flat()
+  const headCenter = averagePoint(headPoints)
+  const start = shaft[0] ?? headCenter
+  const end = shaft[shaft.length - 1] ?? start
+  if (distance(end, headCenter) <= distance(start, headCenter)) {
+    return { tag: 'arrow', tail: start, head: end }
+  }
+  return { tag: 'arrow', tail: end, head: start }
+}
+
+function snapCircle(strokes: readonly (readonly BoardPoint[])[]): InkMark {
+  const points = strokes.flat()
+  const center = averagePoint(points)
+  let radius = 0
+  for (const point of points) {
+    radius += distance(point, center)
+  }
+  radius = points.length === 0 ? 0 : radius / points.length
+  return { tag: 'circle', center, radius: Math.max(radius, 0.35) }
+}
+
+function groupStrokes(
+  strokes: readonly (readonly BoardPoint[])[],
+): (readonly BoardPoint[])[][] {
+  const parent = strokes.map((_, index) => index)
+  const find = (index: number): number => {
+    let cursor = index
+    while (parent[cursor] !== cursor) {
+      cursor = parent[cursor] ?? cursor
+    }
+    return cursor
+  }
+  const unite = (left: number, right: number): void => {
+    const a = find(left)
+    const b = find(right)
+    if (a !== b) {
+      parent[b] = a
+    }
+  }
+  for (let left = 0; left < strokes.length; left++) {
+    for (let right = left + 1; right < strokes.length; right++) {
+      if (strokesAreClose(strokes[left] ?? [], strokes[right] ?? [])) {
+        unite(left, right)
+      }
+    }
+  }
+  const groups = new Map<number, BoardPoint[][]>()
+  for (let index = 0; index < strokes.length; index++) {
+    const root = find(index)
+    const group = groups.get(root) ?? []
+    group.push([...(strokes[index] ?? [])])
+    groups.set(root, group)
+  }
+  return [...groups.values()]
+}
+
+function strokesAreClose(
+  left: readonly BoardPoint[],
+  right: readonly BoardPoint[],
+): boolean {
+  let best = Number.POSITIVE_INFINITY
+  for (const a of left) {
+    for (const b of right) {
+      const gap = distance(a, b)
+      if (gap < best) {
+        best = gap
+      }
+      if (best <= GROUP_DISTANCE) {
+        return true
+      }
+    }
+  }
+  return best <= GROUP_DISTANCE
+}
+
+function toCloud(strokes: readonly (readonly BoardPoint[])[]): CloudPoint[] {
+  const points: CloudPoint[] = []
+  for (let strokeId = 0; strokeId < strokes.length; strokeId++) {
+    for (const point of strokes[strokeId] ?? []) {
+      points.push({ x: point.x, y: point.y, strokeId })
+    }
+  }
+  return points
+}
+
+function pathLength(points: readonly BoardPoint[]): number {
+  let length = 0
+  for (let index = 1; index < points.length; index++) {
+    const previous = points[index - 1]
+    const current = points[index]
+    if (previous === undefined || current === undefined) {
+      continue
+    }
+    length += distance(previous, current)
+  }
+  return length
 }
 
 function averagePoint(points: readonly BoardPoint[]): BoardPoint {
+  if (points.length === 0) {
+    return { x: 0, y: 0 }
+  }
   let x = 0
   let y = 0
   for (const point of points) {
@@ -177,79 +253,4 @@ function averagePoint(points: readonly BoardPoint[]): BoardPoint {
     y += point.y
   }
   return { x: x / points.length, y: y / points.length }
-}
-
-function pathLength(points: readonly BoardPoint[]): number {
-  let total = 0
-  for (let index = 1; index < points.length; index++) {
-    total += distance(points[index - 1]!, points[index]!)
-  }
-  return total
-}
-
-function shoelace(points: readonly BoardPoint[]): number {
-  let sum = 0
-  for (let index = 0; index < points.length; index++) {
-    const next = points[(index + 1) % points.length]!
-    const current = points[index]!
-    sum += current.x * next.y - next.x * current.y
-  }
-  return sum / 2
-}
-
-function downsample(points: readonly BoardPoint[], max: number): BoardPoint[] {
-  if (points.length <= max) {
-    return [...points]
-  }
-  const sampled: BoardPoint[] = []
-  const last = points.length - 1
-  for (let index = 0; index < max; index++) {
-    const source = Math.round((index / (max - 1)) * last)
-    sampled.push(points[source]!)
-  }
-  return sampled
-}
-
-function selfIntersects(points: readonly BoardPoint[]): boolean {
-  return polylinesIntersect(points, points, true)
-}
-
-function polylinesIntersect(
-  left: readonly BoardPoint[],
-  right: readonly BoardPoint[],
-  skipNear = false,
-): boolean {
-  for (let i = 1; i < left.length; i++) {
-    for (let j = 1; j < right.length; j++) {
-      if (skipNear && Math.abs(i - j) <= 1) {
-        continue
-      }
-      if (segmentsIntersect(left[i - 1]!, left[i]!, right[j - 1]!, right[j]!)) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
-function segmentsIntersect(
-  a: BoardPoint,
-  b: BoardPoint,
-  c: BoardPoint,
-  d: BoardPoint,
-): boolean {
-  const abx = b.x - a.x
-  const aby = b.y - a.y
-  const cdx = d.x - c.x
-  const cdy = d.y - c.y
-  const denom = abx * cdy - aby * cdx
-  if (Math.abs(denom) < 1e-9) {
-    return false
-  }
-  const acx = c.x - a.x
-  const acy = c.y - a.y
-  const t = (acx * cdy - acy * cdx) / denom
-  const u = (acx * aby - acy * abx) / denom
-  const eps = 1e-6
-  return t > eps && t < 1 - eps && u > eps && u < 1 - eps
 }

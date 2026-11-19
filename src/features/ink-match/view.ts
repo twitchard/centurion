@@ -1,4 +1,4 @@
-import { INK_BUDGET, describeMark, inkUsed } from '../../core/ink/gesture'
+import { describeMark } from '../../core/ink/gesture'
 import { inkMover } from '../../core/ink/match'
 import { previewShiftLine } from '../../core/ink/preview'
 import { inkToMatchState } from '../../core/ink/project'
@@ -29,10 +29,9 @@ export interface InkView {
   readonly baseline: HTMLElement
   readonly hint: HTMLElement
   readonly preview: HTMLElement
-  readonly budgetLabel: HTMLElement
-  readonly budgetFill: HTMLElement
+  readonly commitMeter: HTMLElement
+  readonly commitLabel: HTMLElement
   readonly markList: HTMLElement
-  readonly commit: HTMLButtonElement
   readonly pass: HTMLButtonElement
   readonly undo: HTMLButtonElement
   readonly clear: HTMLButtonElement
@@ -102,7 +101,7 @@ export function renderInk(
   renderBaseline(view, match.inkValueCp, match.gameCount)
   renderHistogram(view, match)
   renderPreview(view, model, reading)
-  renderBudget(view, session.marks)
+  renderCommitCue(view, session.strokes.length > 0 && drawing, session.marks)
   renderTemperaments(view, match.difficulty)
   renderStats(view, match)
   view.notice.textContent = session.notice ?? ''
@@ -111,23 +110,23 @@ export function renderInk(
 
   const ready =
     drawing && session.ranks !== null && session.searchId === null && !finished
-  view.commit.disabled = !ready || session.marks.length === 0
-  view.pass.disabled = !ready
-  view.undo.disabled = !drawing || session.markPast.length === 0
-  view.clear.disabled = !drawing || session.marks.length === 0
-  view.commit.textContent =
-    session.marks.length > 0 ? 'Commit ink' : 'Commit ink'
+  view.pass.disabled = !ready || session.strokes.length > 0
+  view.pass.hidden = session.strokes.length > 0
+  view.undo.disabled = !drawing || session.strokes.length === 0
+  view.clear.disabled = !drawing || session.strokes.length === 0
   view.hard.textContent =
     match.difficulty === 'hard' ? 'Fair opponent' : 'Hard opponent'
 
   const hint = session.notice
   view.hint.textContent =
     hint ??
-    (drawing
-      ? 'Draw an arrow, a circle, or a scribble.'
-      : computerThinking
-        ? 'Watch the reply, then draw again.'
-        : '')
+    (session.strokes.length > 0 && drawing
+      ? 'Pause sends this drawing. Undo or clear before the bar empties.'
+      : drawing
+        ? 'Draw an arrow, a circle, or a scribble. A short pause sends it.'
+        : computerThinking
+          ? 'Watch the reply, then draw again.'
+          : '')
 
   options.draw.setEnabled(drawing)
   if (!options.animating) {
@@ -217,14 +216,16 @@ function renderPreview(view: InkView, model: InkModel, reading: boolean): void {
   view.preview.textContent = `${previewShiftLine(preview)}${value}${marks}`
 }
 
-function renderBudget(
+function renderCommitCue(
   view: InkView,
+  pending: boolean,
   marks: InkModel['session']['marks'],
 ): void {
-  const used = inkUsed(marks)
-  const remaining = Math.max(0, INK_BUDGET - used)
-  view.budgetLabel.textContent = `Ink ${remaining.toFixed(1)} / ${INK_BUDGET}`
-  view.budgetFill.style.width = `${Math.min(100, (used / INK_BUDGET) * 100)}%`
+  view.commitMeter.hidden = !pending
+  view.commitLabel.hidden = !pending
+  if (!pending) {
+    view.commitLabel.textContent = ''
+  }
   view.markList.innerHTML = ''
   for (const mark of marks) {
     const item = document.createElement('li')

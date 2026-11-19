@@ -14,14 +14,12 @@ const forwardArrow: InkMark = {
   tag: 'arrow',
   tail: { x: 4.5, y: 1.5 },
   head: { x: 4.5, y: 3.5 },
-  ink: 2,
 }
 
 const circleOnE4: InkMark = {
   tag: 'circle',
   center: { x: 4.5, y: 3.5 },
   radius: 0.7,
-  ink: 4,
 }
 
 const scribbleOnE4: InkMark = {
@@ -32,7 +30,6 @@ const scribbleOnE4: InkMark = {
     { x: 4.3, y: 3.8 },
     { x: 4.7, y: 3.2 },
   ],
-  ink: 2,
 }
 
 function candidate(

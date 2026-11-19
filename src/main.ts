@@ -38,6 +38,7 @@ import {
   commandLogOutcomeFromCompile,
 } from './core/command-log/model'
 import { describeCommandPredicate } from './core/command/describe'
+import { COMMIT_IDLE_MS } from './core/ink/gesture'
 import { type InkMatch, inkSearchTargets } from './core/ink/match'
 import { inkToMatchState } from './core/ink/project'
 import { TOP_MOVE_COUNT } from './core/ink/temperament'
@@ -251,10 +252,10 @@ const inkBarBottom = element('ink-bar-bottom')
 const inkBaseline = element('ink-baseline')
 const inkBoardHint = element('ink-board-hint')
 const inkPreview = element('ink-preview')
-const inkBudgetLabel = element('ink-budget-label')
-const inkBudgetFill = element('ink-budget-fill')
+const inkCommitMeter = element('ink-commit-meter')
+const inkCommitFill = element('ink-commit-fill')
+const inkCommitLabel = element('ink-commit-label')
 const inkMarkList = element('ink-mark-list')
-const inkCommitButton = button('ink-commit-btn')
 const inkPassButton = button('ink-pass-btn')
 const inkUndoButton = button('ink-undo-btn')
 const inkClearButton = button('ink-clear-btn')
@@ -420,6 +421,86 @@ function dispatch(msg: AppMsg): void {
   for (const command of commands) {
     runCommand(command)
   }
+  tryCommitDrawing()
+}
+
+let inkCommitTimer: ReturnType<typeof setTimeout> | null = null
+let inkCommitFrame: number | null = null
+let inkCommitStarted = 0
+let inkWatchedStrokes = -1
+let inkCommitPending = false
+
+function clearInkCommitClock(): void {
+  if (inkCommitTimer !== null) {
+    clearTimeout(inkCommitTimer)
+    inkCommitTimer = null
+  }
+  if (inkCommitFrame !== null && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(inkCommitFrame)
+    inkCommitFrame = null
+  }
+}
+
+function syncInkCommit(model: InkModel): void {
+  const count = model.session.strokes.length
+  const pending =
+    model.session.match.phase.tag === 'active' &&
+    model.session.searchSide !== 'computer' &&
+    count > 0 &&
+    model.session.marks.length > 0
+  if (count === inkWatchedStrokes) {
+    return
+  }
+  inkWatchedStrokes = count
+  inkCommitPending = false
+  clearInkCommitClock()
+  if (!pending || typeof setTimeout !== 'function') {
+    return
+  }
+  inkCommitStarted = typeof performance !== 'undefined' ? performance.now() : 0
+  inkCommitLabel.textContent = 'Sending the drawing'
+  paintInkCommitMeter()
+  inkCommitTimer = setTimeout(() => {
+    inkCommitTimer = null
+    inkCommitPending = true
+    tryCommitDrawing()
+  }, COMMIT_IDLE_MS)
+}
+
+function paintInkCommitMeter(): void {
+  const now = typeof performance !== 'undefined' ? performance.now() : 0
+  const remain = Math.max(0, 1 - (now - inkCommitStarted) / COMMIT_IDLE_MS)
+  inkCommitFill.style.transform = `scaleX(${remain})`
+  if (inkCommitTimer === null || typeof requestAnimationFrame !== 'function') {
+    return
+  }
+  inkCommitFrame = requestAnimationFrame(() => {
+    inkCommitFrame = null
+    paintInkCommitMeter()
+  })
+}
+
+function tryCommitDrawing(): void {
+  if (!inkCommitPending || state.tag !== 'ink-match') {
+    return
+  }
+  const session = state.model.session
+  if (session.strokes.length === 0 || session.marks.length === 0) {
+    inkCommitPending = false
+    return
+  }
+  if (
+    session.ranks === null ||
+    session.searchId !== null ||
+    session.searchSide === 'computer' ||
+    session.match.phase.tag !== 'active'
+  ) {
+    inkCommitLabel.textContent = 'Reading the board, then sending'
+    return
+  }
+  inkCommitPending = false
+  clearInkCommitClock()
+  dispatchInk({ tag: 'commit' })
 }
 
 function dispatchCenturion(msg: CenturionMsg): void {
@@ -1505,10 +1586,9 @@ function renderInkScreen(model: InkModel): void {
       baseline: inkBaseline,
       hint: inkBoardHint,
       preview: inkPreview,
-      budgetLabel: inkBudgetLabel,
-      budgetFill: inkBudgetFill,
+      commitMeter: inkCommitMeter,
+      commitLabel: inkCommitLabel,
       markList: inkMarkList,
-      commit: inkCommitButton,
       pass: inkPassButton,
       undo: inkUndoButton,
       clear: inkClearButton,
@@ -1532,6 +1612,7 @@ function renderInkScreen(model: InkModel): void {
       boardPanel: inkBoardPanel,
     },
   )
+  syncInkCommit(model)
 }
 
 function kickInkSearch(): void {
@@ -1838,9 +1919,6 @@ function bindEvents(): void {
       difficulty:
         state.model.session.match.difficulty === 'hard' ? 'fair' : 'hard',
     })
-  })
-  inkCommitButton.addEventListener('click', () => {
-    dispatchInk({ tag: 'commit' })
   })
   inkPassButton.addEventListener('click', () => {
     dispatchInk({ tag: 'pass' })

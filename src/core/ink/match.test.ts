@@ -99,7 +99,6 @@ describe('ink match', () => {
       tag: 'circle',
       center: { x: 4.5, y: 3.5 },
       radius: 0.6,
-      ink: 3,
     }
     const targets = inkSearchTargets(match)
     const ranked = targets.gameIds.map(() => OPENING)

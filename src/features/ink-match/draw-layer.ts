@@ -153,9 +153,40 @@ export class InkDrawLayer {
         this.paintCircle(context, mark.center, mark.radius)
         return
       case 'scribble':
-        this.stroke(context, mark.points, '#b91c1c', 3, false)
+        this.paintScribble(context, mark.points)
         return
     }
+  }
+
+  private paintScribble(
+    context: CanvasRenderingContext2D,
+    points: readonly BoardPoint[],
+  ): void {
+    if (points.length === 0) {
+      return
+    }
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    for (const point of points) {
+      minX = Math.min(minX, point.x)
+      minY = Math.min(minY, point.y)
+      maxX = Math.max(maxX, point.x)
+      maxY = Math.max(maxY, point.y)
+    }
+    const scale = this.boardWidth / 8
+    const cx = ((minX + maxX) / 2) * scale
+    const cy = (8 - (minY + maxY) / 2) * scale
+    const rx = Math.max(0.35, (maxX - minX) / 2 + 0.25) * scale
+    const ry = Math.max(0.35, (maxY - minY) / 2 + 0.25) * scale
+    context.beginPath()
+    context.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+    context.fillStyle = 'rgba(185, 28, 28, 0.18)'
+    context.fill()
+    context.strokeStyle = '#b91c1c'
+    context.lineWidth = 2
+    context.stroke()
   }
 
   private paintCircle(

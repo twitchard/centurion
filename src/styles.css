@@ -1219,25 +1219,24 @@ canvas {
   font-weight: 700;
 }
 
-.ink-budget {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.82rem;
-  color: var(--ink-dim);
-}
-
-.ink-budget-track {
-  height: 8px;
+.ink-commit-meter {
+  height: 6px;
   background: #e7e5e4;
   border-radius: 99px;
   overflow: hidden;
 }
 
-#ink-budget-fill {
+#ink-commit-fill {
   height: 100%;
-  width: 0;
-  background: var(--ink);
+  width: 100%;
+  background: #1d4ed8;
+  transform-origin: left center;
+}
+
+.ink-commit-label {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-dim);
 }
 
 .ink-mark-list {
