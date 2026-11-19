@@ -3,6 +3,7 @@ import { initCenturionModel } from '../features/centurion-match/model'
 import { updateCenturion } from '../features/centurion-match/update'
 import { initCommandLabModel } from '../features/command-lab/model'
 import { updateCommandLab } from '../features/command-lab/update'
+import { bootInkSession, updateInk } from '../features/ink-match/model'
 import { initSuperpositionLabModel } from '../features/superposition-lab/model'
 import { updateSuperpositionLab } from '../features/superposition-lab/update'
 import type { AppCmd, AppMsg, AppState } from './model'
@@ -26,13 +27,19 @@ export function updateApp(
         }
         return [{ tag: 'labs-menu' }, cleanupCommandsFor(state)]
       }
-      if (state.tag === 'centurion-match') {
+      if (msg.route === 'play') {
+        if (state.tag === 'centurion-match') {
+          return [state, []]
+        }
+        return [
+          { tag: 'centurion-match', model: initCenturionModel() },
+          cleanupCommandsFor(state),
+        ]
+      }
+      if (state.tag === 'ink-match') {
         return [state, []]
       }
-      return [
-        { tag: 'centurion-match', model: initCenturionModel() },
-        cleanupCommandsFor(state),
-      ]
+      return bootDrawingMatch(msg.seed ?? 1, cleanupCommandsFor(state))
     }
 
     case 'open-superposition-lab':
@@ -89,7 +96,29 @@ export function updateApp(
       ]
     }
 
+    case 'ink-msg': {
+      if (state.tag !== 'ink-match') {
+        return [state, []]
+      }
+      const [nextModel, commands] = updateInk(state.model, msg.msg)
+      return [
+        { tag: 'ink-match', model: nextModel },
+        commands.map((cmd): AppCmd => ({ tag: 'ink', cmd })),
+      ]
+    }
+
     default:
       return assertNever(msg)
   }
+}
+
+function bootDrawingMatch(
+  seed: number,
+  cleanup: readonly AppCmd[],
+): UpdateResult<AppState, AppCmd> {
+  const [model, commands] = bootInkSession(seed, 'fair')
+  return [
+    { tag: 'ink-match', model },
+    [...cleanup, ...commands.map((cmd): AppCmd => ({ tag: 'ink', cmd }))],
+  ]
 }

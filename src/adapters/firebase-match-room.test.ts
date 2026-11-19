@@ -128,13 +128,25 @@ function recordingCallbacks(): RecordedCallbacks {
 }
 
 /**
- * Let the adapter's async open/publish chains settle. Dynamic imports
- * resolve on macrotasks, so plain microtask flushing is not enough.
+ * Let the adapter's async open/publish chains settle. The Firebase SDK
+ * is imported dynamically, and that can take more than a few macrotasks
+ * on a busy CI runner, so wait until `settled` is true when the caller
+ * knows what "done" looks like.
  */
-async function flushAsyncWork(): Promise<void> {
-  for (let index = 0; index < 5; index += 1) {
+async function flushAsyncWork(settled?: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2_000
+  do {
     await new Promise((resolve) => setTimeout(resolve, 0))
-  }
+    if (settled === undefined) {
+      for (let index = 0; index < 4; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      return
+    }
+    if (settled()) {
+      return
+    }
+  } while (Date.now() < deadline)
 }
 
 describe('configuration', () => {
@@ -181,7 +193,7 @@ describe('FirebaseMatchRoomAdapter', () => {
     adapter.setCallbacks(callbacks)
 
     adapter.open('123456', 'host', 42)
-    await flushAsyncWork()
+    await flushAsyncWork(() => callbacks.errors().length > 0)
 
     expect(callbacks.opened()).toBe(0)
     expect(callbacks.errors()).toHaveLength(1)
@@ -193,7 +205,7 @@ describe('FirebaseMatchRoomAdapter', () => {
     adapter.setCallbacks(callbacks)
 
     adapter.open('123456', 'host', 42)
-    await flushAsyncWork()
+    await flushAsyncWork(() => callbacks.opened() === 1)
 
     expect(callbacks.opened()).toBe(1)
     expect(callbacks.errors()).toEqual([])
@@ -207,7 +219,7 @@ describe('FirebaseMatchRoomAdapter', () => {
     adapter.setCallbacks(callbacks)
 
     adapter.open('999999', 'guest')
-    await flushAsyncWork()
+    await flushAsyncWork(() => callbacks.errors().length > 0)
 
     expect(callbacks.opened()).toBe(0)
     expect(callbacks.errors()).toHaveLength(1)
@@ -219,20 +231,20 @@ describe('FirebaseMatchRoomAdapter', () => {
     const hostCallbacks = recordingCallbacks()
     host.setCallbacks(hostCallbacks)
     host.open('123456', 'host', 42)
-    await flushAsyncWork()
+    await flushAsyncWork(() => hostCallbacks.opened() === 1)
 
     const guest = new FirebaseMatchRoomAdapter('https://test.firebaseio.com')
     const guestCallbacks = recordingCallbacks()
     guest.setCallbacks(guestCallbacks)
     guest.open('123456', 'guest')
-    await flushAsyncWork()
+    await flushAsyncWork(() => guestCallbacks.opened() === 1)
 
     expect(guestCallbacks.opened()).toBe(1)
     expect(hostCallbacks.presence()).toContain(true)
     expect(guestCallbacks.presence()).toContain(true)
 
     host.publishState({ turn: 1, games: [] })
-    await flushAsyncWork()
+    await flushAsyncWork(() => guestCallbacks.states().length > 0)
 
     expect(guestCallbacks.states()).toContainEqual({ turn: 1, games: [] })
   })
@@ -242,16 +254,19 @@ describe('FirebaseMatchRoomAdapter', () => {
     const hostCallbacks = recordingCallbacks()
     host.setCallbacks(hostCallbacks)
     host.open('123456', 'host', 42)
-    await flushAsyncWork()
+    await flushAsyncWork(() => hostCallbacks.opened() === 1)
 
     const guest = new FirebaseMatchRoomAdapter('https://test.firebaseio.com')
-    guest.setCallbacks(recordingCallbacks())
+    const guestCallbacks = recordingCallbacks()
+    guest.setCallbacks(guestCallbacks)
     guest.open('123456', 'guest')
-    await flushAsyncWork()
+    await flushAsyncWork(() => guestCallbacks.opened() === 1)
 
     const statesBefore = hostCallbacks.states().length
     host.leave()
-    await flushAsyncWork()
+    await flushAsyncWork(
+      () => !values.has(`${roomPath('123456')}/presence/host`),
+    )
 
     expect(values.has(`${roomPath('123456')}/presence/host`)).toBe(false)
     guest.publishState({ turn: 2, games: [] })

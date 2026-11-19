@@ -1,6 +1,7 @@
 import 'chessground/assets/chessground.base.css'
 import 'chessground/assets/chessground.brown.css'
 import 'chessground/assets/chessground.cburnett.css'
+// Roman theme is disabled. Restore by also importing './theme-roman.css'.
 import './styles.css'
 
 import { FirebaseCommandLogAdapter } from './adapters/firebase-command-log'
@@ -37,6 +38,10 @@ import {
   commandLogOutcomeFromCompile,
 } from './core/command-log/model'
 import { describeCommandPredicate } from './core/command/describe'
+import { COMMIT_IDLE_MS, REVEAL_MS } from './core/ink/gesture'
+import { type InkMatch, inkSearchTargets } from './core/ink/match'
+import { inkToMatchState } from './core/ink/project'
+import { TOP_MOVE_COUNT } from './core/ink/temperament'
 import {
   type ResolutionAnimationPlan,
   planResolutionAnimation,
@@ -94,6 +99,10 @@ import {
   type CommandLabModel,
   commandLabMatches,
 } from './features/command-lab/model'
+import { InkDrawLayer } from './features/ink-match/draw-layer'
+import type { InkModel } from './features/ink-match/model'
+import type { InkCmd, InkMsg } from './features/ink-match/model'
+import { renderInk } from './features/ink-match/view'
 import type { SuperpositionLabModel } from './features/superposition-lab/model'
 import {
   type PieceDisplayMode,
@@ -230,6 +239,50 @@ const centurionBoardPanel = element('centurion-board-panel')
 const centurionCanvas = canvas('centurion-canvas')
 const centurionRenderer = new SuperpositionRenderer(centurionCanvas)
 
+const screenInk = element('screen-ink-match')
+const inkTurnLabel = element('ink-turn-label')
+const inkNewButton = button('ink-new-btn')
+const inkFriendButton = button('ink-friend-btn')
+const inkScoreTop = element('ink-score-top')
+const inkScoreBottom = element('ink-score-bottom')
+const inkStatusTop = element('ink-status-top')
+const inkStatusBottom = element('ink-status-bottom')
+const inkBarTop = element('ink-bar-top')
+const inkBarBottom = element('ink-bar-bottom')
+const inkBaseline = element('ink-baseline')
+const inkBoardHint = element('ink-board-hint')
+const inkPreview = element('ink-preview')
+const inkCommitMeter = element('ink-commit-meter')
+const inkCommitFill = element('ink-commit-fill')
+const inkCommitLabel = element('ink-commit-label')
+const inkMarkList = element('ink-mark-list')
+const inkPassButton = button('ink-pass-btn')
+const inkUndoButton = button('ink-undo-btn')
+const inkClearButton = button('ink-clear-btn')
+const inkHardButton = button('ink-hard-btn')
+const inkLabsButton = button('ink-labs-btn')
+const inkRecordToggle = input('ink-record-toggle')
+const inkRecordCopy = button('ink-record-copy')
+const inkRecordDownload = button('ink-record-download')
+const inkRecordCount = element('ink-record-count')
+const inkTemperaments = element('ink-temperaments')
+const inkFamily = element('ink-family')
+const inkNotice = element('ink-notice')
+const inkStatsPanel = element('ink-stats-panel')
+const inkStatsContent = element('ink-stats-content')
+const inkHistogram = element('ink-micro-pawn-histogram')
+const inkHistogramAvg = element('ink-micro-pawn-avg')
+const inkEvalWrap = element('ink-micro-pawn-eval')
+const inkResult = element('ink-result')
+const inkBoardPanel = element('ink-board-panel')
+const inkCanvas = canvas('ink-canvas')
+const inkDrawCanvas = canvas('ink-draw-canvas')
+const inkRenderer = new SuperpositionRenderer(inkCanvas)
+const inkDrawLayer = new InkDrawLayer(inkDrawCanvas, (points) => {
+  dispatchInk({ tag: 'stroke', points })
+})
+let inkStatsTipCard: HTMLButtonElement | null = null
+
 function centurionLiveRenderModel(
   session: MatchSession,
 ): SuperpositionRenderModel {
@@ -328,7 +381,7 @@ function currentMatchLogContext(): {
   return { source: 'match' }
 }
 
-let state: AppState = initAppState()
+let state: AppState = initAppState(newSeed())
 
 function logConnection(message: string): void {
   appendConnectionLog(message)
@@ -372,6 +425,128 @@ function dispatch(msg: AppMsg): void {
   for (const command of commands) {
     runCommand(command)
   }
+  tryCommitDrawing()
+}
+
+let inkCommitTimer: ReturnType<typeof setTimeout> | null = null
+let inkRevealTimer: ReturnType<typeof setTimeout> | null = null
+let inkCommitFrame: number | null = null
+let inkCommitStarted = 0
+let inkWatchedStrokes = -1
+let inkCommitPending = false
+const inkRecordings: {
+  id: string
+  author: 'owner'
+  expect: null
+  strokes: readonly (readonly { x: number; y: number }[])[]
+}[] = []
+
+function clearInkCommitClock(): void {
+  if (inkCommitTimer !== null) {
+    clearTimeout(inkCommitTimer)
+    inkCommitTimer = null
+  }
+  if (inkRevealTimer !== null) {
+    clearTimeout(inkRevealTimer)
+    inkRevealTimer = null
+  }
+  if (inkCommitFrame !== null && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(inkCommitFrame)
+    inkCommitFrame = null
+  }
+}
+
+function syncInkCommit(model: InkModel): void {
+  const count = model.session.strokes.length
+  const pending =
+    model.session.match.phase.tag === 'active' &&
+    model.session.searchSide !== 'computer' &&
+    count > 0 &&
+    model.session.marks.length === 0
+  if (count === inkWatchedStrokes) {
+    return
+  }
+  inkWatchedStrokes = count
+  inkCommitPending = false
+  clearInkCommitClock()
+  if (!pending || typeof setTimeout !== 'function') {
+    return
+  }
+  inkCommitStarted = typeof performance !== 'undefined' ? performance.now() : 0
+  inkCommitLabel.textContent = 'Pause to send'
+  paintInkCommitMeter()
+  inkCommitTimer = setTimeout(() => {
+    inkCommitTimer = null
+    inkCommitPending = true
+    inkRevealTimer = setTimeout(() => {
+      inkRevealTimer = null
+      tryCommitDrawing()
+    }, REVEAL_MS)
+    dispatchInk({ tag: 'recognize' })
+    inkCommitLabel.textContent = 'Sending the drawing'
+  }, COMMIT_IDLE_MS)
+}
+
+function paintInkCommitMeter(): void {
+  const now = typeof performance !== 'undefined' ? performance.now() : 0
+  const remain = Math.max(0, 1 - (now - inkCommitStarted) / COMMIT_IDLE_MS)
+  inkCommitFill.style.transform = `scaleX(${remain})`
+  if (inkCommitTimer === null || typeof requestAnimationFrame !== 'function') {
+    return
+  }
+  inkCommitFrame = requestAnimationFrame(() => {
+    inkCommitFrame = null
+    paintInkCommitMeter()
+  })
+}
+
+function rememberRecording(): void {
+  if (!inkRecordToggle.checked || state.tag !== 'ink-match') {
+    return
+  }
+  const strokes = state.model.session.strokes
+  if (strokes.length === 0) {
+    return
+  }
+  inkRecordings.push({
+    id: `recording-${inkRecordings.length + 1}`,
+    author: 'owner',
+    expect: null,
+    strokes: strokes.map((stroke) => stroke.map((point) => ({ ...point }))),
+  })
+  inkRecordCount.textContent = `${inkRecordings.length} recording${inkRecordings.length === 1 ? '' : 's'}`
+}
+
+function strokeExportJson(): string {
+  return JSON.stringify({ recordings: inkRecordings }, null, 2)
+}
+
+function tryCommitDrawing(): void {
+  if (
+    !inkCommitPending ||
+    inkRevealTimer !== null ||
+    state.tag !== 'ink-match'
+  ) {
+    return
+  }
+  const session = state.model.session
+  if (session.strokes.length === 0 || session.marks.length === 0) {
+    inkCommitPending = false
+    return
+  }
+  if (
+    session.ranks === null ||
+    session.searchId !== null ||
+    session.searchSide === 'computer' ||
+    session.match.phase.tag !== 'active'
+  ) {
+    inkCommitLabel.textContent = 'Reading the board, then sending'
+    return
+  }
+  rememberRecording()
+  inkCommitPending = false
+  clearInkCommitClock()
+  dispatchInk({ tag: 'commit' })
 }
 
 function dispatchCenturion(msg: CenturionMsg): void {
@@ -405,7 +580,11 @@ function navigate(route: AppRoute, pushState = true): void {
   if (pushState) {
     window.history.pushState({}, '', path)
   }
-  dispatch({ tag: 'navigate', route })
+  dispatch({ tag: 'navigate', route, seed: newSeed() })
+}
+
+function dispatchInk(msg: InkMsg): void {
+  dispatch({ tag: 'ink-msg', msg })
 }
 
 function newSeed(): number {
@@ -535,6 +714,10 @@ function runCommand(command: AppCmd): void {
     runCommandLabCommand(command.cmd)
     return
   }
+  if (command.tag === 'ink') {
+    runInkCommand(command.cmd)
+    return
+  }
   const cmd = command.cmd
   switch (cmd.tag) {
     case 'room-open':
@@ -607,6 +790,7 @@ function setScreenVisibility(screen: AppState['tag']): void {
     screen === 'superposition-lab' ? 'flex' : 'none'
   screenCommandLab.style.display = screen === 'command-lab' ? 'flex' : 'none'
   screenCenturion.style.display = screen === 'centurion-match' ? 'flex' : 'none'
+  screenInk.style.display = screen === 'ink-match' ? 'flex' : 'none'
 }
 
 function renderDiagnostics(
@@ -1292,7 +1476,8 @@ function confirmReturnToLobby(model: CenturionModel): boolean {
 
 function renderCenturionChrome(model: CenturionModel): void {
   const inLobby = model.tag === 'lobby'
-  centurionBackButton.style.display = inLobby ? 'none' : ''
+  centurionBackButton.style.display = ''
+  centurionBackButton.textContent = inLobby ? '← Your game' : '← Lobby'
   centurionLabsFoot.style.display = inLobby ? 'block' : 'none'
 }
 
@@ -1347,6 +1532,177 @@ function renderCenturion(model: CenturionModel): void {
   }
 }
 
+function runInkCommand(cmd: InkCmd): void {
+  centurionEngine.rankedMoves(cmd.fens, ENGINE_DEPTH, TOP_MOVE_COUNT).then(
+    (ranked) => {
+      dispatchInk({ tag: 'ranks', requestId: cmd.requestId, ranked })
+    },
+    (error: unknown) => {
+      dispatchInk({
+        tag: 'ranks-failed',
+        requestId: cmd.requestId,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    },
+  )
+}
+
+const INK_ANIMATION_MS = 1200
+let inkAnimationQueue: ResolutionAnimationPlan[] = []
+let inkAnimationStart: number | null = null
+let inkLastMatch: InkMatch | null = null
+let inkAnimationRaf: number | null = null
+
+function resetInkAnimation(): void {
+  inkAnimationQueue = []
+  inkAnimationStart = null
+  inkLastMatch = null
+}
+
+function maybeQueueInkAnimation(match: InkMatch): void {
+  const previous = inkLastMatch
+  inkLastMatch = match
+  if (previous === null || previous === match) {
+    return
+  }
+  if (!centurionAnimationsEnabled()) {
+    return
+  }
+  const plan = planResolutionAnimation(
+    inkToMatchState(previous),
+    inkToMatchState(match),
+    1,
+    INK_ANIMATION_MS,
+  )
+  if (plan === null) {
+    inkAnimationQueue = []
+    inkAnimationStart = null
+    return
+  }
+  inkAnimationQueue.push(plan)
+  while (inkAnimationQueue.length > 2) {
+    inkAnimationQueue.shift()
+    inkAnimationStart = null
+  }
+}
+
+function paintInkAnimation(): boolean {
+  for (;;) {
+    const head = inkAnimationQueue[0]
+    if (head === undefined) {
+      return false
+    }
+    const now = performance.now()
+    if (inkAnimationStart === null) {
+      inkAnimationStart = now
+    }
+    const elapsed = now - inkAnimationStart
+    if (elapsed >= head.totalMs) {
+      inkAnimationQueue.shift()
+      inkAnimationStart = null
+      continue
+    }
+    const frame = resolutionAnimationFrame(head, elapsed)
+    inkRenderer.render(frame.model, frame.overlays)
+    if (inkAnimationRaf === null) {
+      inkAnimationRaf = requestAnimationFrame(() => {
+        inkAnimationRaf = null
+        if (state.tag !== 'ink-match') {
+          resetInkAnimation()
+          return
+        }
+        render()
+      })
+    }
+    return true
+  }
+}
+
+function renderInkScreen(model: InkModel): void {
+  maybeQueueInkAnimation(model.session.match)
+  const animating = paintInkAnimation()
+  renderInk(
+    {
+      scoreTop: inkScoreTop,
+      scoreBottom: inkScoreBottom,
+      statusTop: inkStatusTop,
+      statusBottom: inkStatusBottom,
+      barTop: inkBarTop,
+      barBottom: inkBarBottom,
+      baseline: inkBaseline,
+      hint: inkBoardHint,
+      preview: inkPreview,
+      commitMeter: inkCommitMeter,
+      commitLabel: inkCommitLabel,
+      markList: inkMarkList,
+      pass: inkPassButton,
+      undo: inkUndoButton,
+      clear: inkClearButton,
+      hard: inkHardButton,
+      temperaments: inkTemperaments,
+      family: inkFamily,
+      notice: inkNotice,
+      statsPanel: inkStatsPanel,
+      statsContent: inkStatsContent,
+      histogram: inkHistogram,
+      histogramAvg: inkHistogramAvg,
+      evalWrap: inkEvalWrap,
+      result: inkResult,
+      turnLabel: inkTurnLabel,
+    },
+    model,
+    {
+      animating,
+      renderer: inkRenderer,
+      draw: inkDrawLayer,
+      boardPanel: inkBoardPanel,
+    },
+  )
+  syncInkCommit(model)
+}
+
+function kickInkSearch(): void {
+  if (state.tag !== 'ink-match') {
+    return
+  }
+  const session = state.model.session
+  if (session.searchId === null || session.ranks !== null) {
+    return
+  }
+  runCommand({
+    tag: 'ink',
+    cmd: {
+      tag: 'search',
+      requestId: session.searchId,
+      fens: inkSearchTargets(session.match).fens,
+    },
+  })
+}
+
+function pendingJoinCode(): string | null {
+  const search: string | undefined = window.location.search
+  if (search === undefined || search.length === 0) {
+    return null
+  }
+  const code = (new URLSearchParams(search).get('join') ?? '')
+    .replace(/\D/g, '')
+    .slice(0, 6)
+  return code.length === 6 ? code : null
+}
+
+function bootRoute(): void {
+  if (pendingJoinCode() !== null) {
+    if (state.tag !== 'centurion-match') {
+      dispatch({ tag: 'navigate', route: 'play', seed: newSeed() })
+    }
+    autoJoinFromUrl()
+    return
+  }
+  navigate(pathnameToAppRoute(window.location.pathname), false)
+  tryRestorePersistedSession()
+  kickInkSearch()
+}
+
 function render(): void {
   setScreenVisibility(state.tag)
 
@@ -1364,6 +1720,10 @@ function render(): void {
     renderCenturion(state.model)
     return
   }
+
+  if (state.tag === 'ink-match') {
+    renderInkScreen(state.model)
+  }
 }
 
 function bindEvents(): void {
@@ -1374,8 +1734,7 @@ function bindEvents(): void {
     dispatch({ tag: 'open-command-lab' })
   })
   button('labs-menu-open-centurion').addEventListener('click', () => {
-    navigate('game')
-    tryRestorePersistedSession()
+    navigate('play')
   })
   button('labs-menu-back-btn').addEventListener('click', () => {
     navigate('game')
@@ -1452,6 +1811,10 @@ function bindEvents(): void {
 
   centurionBackButton.addEventListener('click', () => {
     if (state.tag !== 'centurion-match') {
+      return
+    }
+    if (state.model.tag === 'lobby') {
+      navigate('game')
       return
     }
     if (!confirmReturnToLobby(state.model)) {
@@ -1574,6 +1937,102 @@ function bindEvents(): void {
     })
   }
 
+  inkNewButton.addEventListener('click', () => {
+    resetInkAnimation()
+    dispatchInk({
+      tag: 'restart',
+      seed: newSeed(),
+      difficulty:
+        state.tag === 'ink-match'
+          ? state.model.session.match.difficulty
+          : 'fair',
+    })
+  })
+  inkFriendButton.addEventListener('click', () => {
+    navigate('play')
+  })
+  inkLabsButton.addEventListener('click', () => {
+    navigate('labs')
+  })
+  inkHardButton.addEventListener('click', () => {
+    if (state.tag !== 'ink-match') {
+      return
+    }
+    resetInkAnimation()
+    dispatchInk({
+      tag: 'restart',
+      seed: newSeed(),
+      difficulty:
+        state.model.session.match.difficulty === 'hard' ? 'fair' : 'hard',
+    })
+  })
+  inkPassButton.addEventListener('click', () => {
+    dispatchInk({ tag: 'pass' })
+  })
+  inkUndoButton.addEventListener('click', () => {
+    dispatchInk({ tag: 'undo' })
+  })
+  inkClearButton.addEventListener('click', () => {
+    dispatchInk({ tag: 'clear' })
+  })
+  inkRecordCopy.addEventListener('click', () => {
+    const json = strokeExportJson()
+    if (typeof navigator.clipboard?.writeText === 'function') {
+      void navigator.clipboard.writeText(json).then(
+        () => {
+          inkRecordCount.textContent = 'Copied JSON'
+        },
+        () => {
+          inkRecordCount.textContent = 'Copy failed'
+        },
+      )
+      return
+    }
+    inkRecordCount.textContent = 'Copy failed'
+  })
+  inkRecordDownload.addEventListener('click', () => {
+    const blob = new Blob([strokeExportJson()], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'centurion-strokes.json'
+    link.click()
+    URL.revokeObjectURL(url)
+  })
+  if (pendingJoinCode() === null) {
+    const search = window.location.search
+    if (
+      search !== undefined &&
+      new URLSearchParams(search).get('record') === '1'
+    ) {
+      inkRecordToggle.checked = true
+    }
+  }
+  inkStatsContent.addEventListener('click', (event) => {
+    if (centurionStatsTouchTips !== null && !centurionStatsTouchTips.matches) {
+      return
+    }
+    const target = event.target
+    if (!(target instanceof Element)) {
+      return
+    }
+    const card = target.closest('.centurion-stat-card')
+    if (!(card instanceof HTMLButtonElement)) {
+      return
+    }
+    event.stopPropagation()
+    if (inkStatsTipCard === card) {
+      card.classList.remove('centurion-stat-card--tip-visible')
+      inkStatsTipCard = null
+      return
+    }
+    if (inkStatsTipCard !== null) {
+      inkStatsTipCard.classList.remove('centurion-stat-card--tip-visible')
+    }
+    card.classList.add('centurion-stat-card--tip-visible')
+    inkStatsTipCard = card
+  })
+
   window.addEventListener('popstate', () => {
     navigate(pathnameToAppRoute(window.location.pathname), false)
   })
@@ -1584,7 +2043,7 @@ function bindEvents(): void {
 }
 
 function tryRestorePersistedSession(): void {
-  if (pathnameToAppRoute(window.location.pathname) === 'labs') {
+  if (pathnameToAppRoute(window.location.pathname) !== 'play') {
     return
   }
   // A broken saved session must never take down the app: if anything
@@ -1644,6 +2103,4 @@ logConnection(`Loaded at ${window.location.href}`)
 logConnection(
   `Multiplayer build ${__MULTIPLAYER_BUILD_ID__}: match state syncs through Firebase Realtime Database. Hard-refresh both devices if this build id looks stale.`,
 )
-navigate(pathnameToAppRoute(window.location.pathname), false)
-tryRestorePersistedSession()
-autoJoinFromUrl()
+bootRoute()

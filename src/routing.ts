@@ -1,4 +1,6 @@
-export type AppRoute = 'game' | 'labs'
+export type AppRoute = 'game' | 'labs' | 'ink' | 'play'
+
+const ROUTE_SUFFIXES = ['/labs', '/ink', '/play'] as const
 
 export function normalizePathname(pathname: string): string {
   let path = pathname
@@ -14,11 +16,13 @@ export function normalizePathname(pathname: string): string {
 /** Deployment prefix before app routes, e.g. '' or '/centurion'. */
 export function getBasePath(pathname: string): string {
   const path = normalizePathname(pathname)
-  if (path === '/' || path === '/labs') {
+  if (path === '/' || path === '/labs' || path === '/ink' || path === '/play') {
     return ''
   }
-  if (path.endsWith('/labs')) {
-    return path.slice(0, -'/labs'.length) || ''
+  for (const suffix of ROUTE_SUFFIXES) {
+    if (path.endsWith(suffix)) {
+      return path.slice(0, -suffix.length) || ''
+    }
   }
   return path
 }
@@ -27,7 +31,16 @@ export function pathnameToAppRoute(pathname: string): AppRoute {
   const path = normalizePathname(pathname)
   const base = getBasePath(pathname)
   const suffix = path.slice(base.length) || '/'
-  return suffix === '/labs' ? 'labs' : 'game'
+  if (suffix === '/labs') {
+    return 'labs'
+  }
+  if (suffix === '/ink') {
+    return 'ink'
+  }
+  if (suffix === '/play') {
+    return 'play'
+  }
+  return 'game'
 }
 
 export function urlPathForRoute(
@@ -37,7 +50,14 @@ export function urlPathForRoute(
     : '/',
 ): string {
   const base = getBasePath(pathname)
-  const suffix = route === 'labs' ? '/labs' : '/'
+  const suffix =
+    route === 'labs'
+      ? '/labs'
+      : route === 'ink'
+        ? '/ink'
+        : route === 'play'
+          ? '/play'
+          : '/'
   if (base === '') {
     return suffix
   }
