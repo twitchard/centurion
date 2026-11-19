@@ -7,10 +7,60 @@ import type {
   SuperpositionRenderModel,
 } from '../../core/superposition/types'
 
-const BOARD_DARK = '#2a2017'
-const BOARD_LIGHT = '#3a2d20'
-const GRID_LINE = 'rgba(236, 217, 160, 0.06)'
-const LABEL_COLOR = '#a38c61'
+/**
+ * Board colors. ROMAN_BOARD is the legion palette, kept so the theme can
+ * be restored by assigning BOARD = ROMAN_BOARD. The live palette is plain.
+ */
+export const ROMAN_BOARD = {
+  dark: '#2a2017',
+  light: '#3a2d20',
+  grid: 'rgba(236, 217, 160, 0.06)',
+  label: '#a38c61',
+  whiteFill: '#f3ecdd',
+  whiteOutline: 'rgba(18, 14, 9, 0.9)',
+  blackFill: '#16130f',
+  blackOutline: 'rgba(243, 236, 221, 0.9)',
+  countP1: '#ffd97d',
+  countP2: '#f59c8d',
+  countNeutral: '#ffd97d',
+  chipP1: 'rgba(224, 185, 79, 0.85)',
+  chipP2: 'rgba(214, 92, 76, 0.95)',
+  highlightFill: 'rgba(224, 185, 79, 0.22)',
+  highlightStroke: 'rgba(224, 185, 79, 0.85)',
+  slideGlow: 'rgba(224, 185, 79, 0.9)',
+  arrowP1: '224, 185, 79',
+  arrowP2: '199, 62, 50',
+  arrowNeutral: '143, 174, 87',
+} as const
+
+const PLAIN_BOARD = {
+  dark: '#b58863',
+  light: '#f0d9b5',
+  grid: 'rgba(0, 0, 0, 0.05)',
+  label: 'rgba(0, 0, 0, 0.45)',
+  whiteFill: '#fffdf8',
+  whiteOutline: '#2a2118',
+  blackFill: '#1c1917',
+  blackOutline: '#f5f0e6',
+  countP1: '#1d4ed8',
+  countP2: '#b91c1c',
+  countNeutral: '#1c1917',
+  chipP1: 'rgba(29, 78, 216, 0.85)',
+  chipP2: 'rgba(185, 28, 28, 0.9)',
+  highlightFill: 'rgba(29, 78, 216, 0.16)',
+  highlightStroke: 'rgba(29, 78, 216, 0.8)',
+  slideGlow: 'rgba(29, 78, 216, 0.55)',
+  arrowP1: '29, 78, 216',
+  arrowP2: '185, 28, 28',
+  arrowNeutral: '87, 83, 78',
+} as const
+
+const BOARD = PLAIN_BOARD
+
+const BOARD_DARK = BOARD.dark
+const BOARD_LIGHT = BOARD.light
+const GRID_LINE = BOARD.grid
+const LABEL_COLOR = BOARD.label
 
 const WHITE_CHIP_BG = '#efe9dd'
 const WHITE_CHIP_FG = '#1c1a17'
@@ -22,10 +72,10 @@ const BLACK_CHIP_BORDER = 'rgba(255, 255, 255, 0.35)'
 // Black pieces are darker than the board itself, so their light rim is
 // what carries the silhouette; keep it strong or the two sides blur
 // together at small tile sizes.
-const WHITE_GLYPH_FILL = '#f3ecdd'
-const WHITE_GLYPH_OUTLINE = 'rgba(18, 14, 9, 0.9)'
-const BLACK_GLYPH_FILL = '#16130f'
-const BLACK_GLYPH_OUTLINE = 'rgba(243, 236, 221, 0.9)'
+const WHITE_GLYPH_FILL = BOARD.whiteFill
+const WHITE_GLYPH_OUTLINE = BOARD.whiteOutline
+const BLACK_GLYPH_FILL = BOARD.blackFill
+const BLACK_GLYPH_OUTLINE = BOARD.blackOutline
 
 const CHIP_FONT_FAMILY =
   'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
@@ -79,14 +129,14 @@ function formatCount(count: number): string {
 // player 1 is gold, player 2 crimson. Count badges and chip borders
 // pick these up when the board knows which player the viewer is.
 const PLAYER_COUNT_FILL: Record<1 | 2, string> = {
-  1: '#ffd97d',
-  2: '#f59c8d',
+  1: BOARD.countP1,
+  2: BOARD.countP2,
 }
 const PLAYER_CHIP_BORDER: Record<1 | 2, string> = {
-  1: 'rgba(224, 185, 79, 0.85)',
-  2: 'rgba(214, 92, 76, 0.95)',
+  1: BOARD.chipP1,
+  2: BOARD.chipP2,
 }
-const NEUTRAL_COUNT_FILL = '#ffd97d'
+const NEUTRAL_COUNT_FILL = BOARD.countNeutral
 
 interface Chip {
   readonly text: string
@@ -248,9 +298,9 @@ export class SuperpositionRenderer {
     const square = this.squareSize
     const x = col * square
     const y = (7 - row) * square
-    ctx.fillStyle = 'rgba(224, 185, 79, 0.22)'
+    ctx.fillStyle = BOARD.highlightFill
     ctx.fillRect(x, y, square, square)
-    ctx.strokeStyle = 'rgba(224, 185, 79, 0.85)'
+    ctx.strokeStyle = BOARD.highlightStroke
     ctx.lineWidth = Math.max(2, square * 0.04)
     ctx.strokeRect(x + 1, y + 1, square - 2, square - 2)
   }
@@ -506,7 +556,7 @@ export class SuperpositionRenderer {
       ctx.lineWidth = Math.max(1.2, fontSize * 0.06)
       ctx.lineJoin = 'round'
       if (overlay.kind === 'slide') {
-        ctx.shadowColor = 'rgba(224, 185, 79, 0.9)'
+        ctx.shadowColor = BOARD.slideGlow
         ctx.shadowBlur = square * 0.3
       }
       ctx.fillStyle = white ? WHITE_GLYPH_FILL : BLACK_GLYPH_FILL
@@ -536,12 +586,12 @@ export class SuperpositionRenderer {
   // the arrow-history entry colors in the side panel.
   private arrowColor(owner: 1 | 2 | undefined, alpha: number): string {
     if (owner === 1) {
-      return `rgba(224, 185, 79, ${alpha})`
+      return `rgba(${BOARD.arrowP1}, ${alpha})`
     }
     if (owner === 2) {
-      return `rgba(199, 62, 50, ${alpha})`
+      return `rgba(${BOARD.arrowP2}, ${alpha})`
     }
-    return `rgba(143, 174, 87, ${alpha})`
+    return `rgba(${BOARD.arrowNeutral}, ${alpha})`
   }
 
   private drawArrow(arrow: ArrowSegment, alpha: number): void {

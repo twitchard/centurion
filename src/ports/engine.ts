@@ -10,5 +10,6 @@ export interface EnginePort {
   rankedMoves(
     fens: readonly string[],
     depth: number,
+    multiPv?: number,
   ): Promise<readonly (readonly RankedMove[])[]>
 }

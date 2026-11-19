@@ -39,12 +39,22 @@ describe('updateApp', () => {
     expect(commands).toEqual([{ tag: 'centurion', cmd: { tag: 'room-leave' } }])
   })
 
-  it('navigates from labs back to the game route', () => {
-    const [state] = updateApp(
+  it('navigates from labs back to a solo drawing match', () => {
+    const [state, commands] = updateApp(
       { tag: 'labs-menu' },
-      { tag: 'navigate', route: 'game' },
+      { tag: 'navigate', route: 'game', seed: 4 },
+    )
+    expect(state.tag).toBe('ink-match')
+    expect(commands.some((command) => command.tag === 'ink')).toBe(true)
+  })
+
+  it('opens the friend lobby on the play route', () => {
+    const [state, commands] = updateApp(
+      { tag: 'labs-menu' },
+      { tag: 'navigate', route: 'play' },
     )
     expect(state.tag).toBe('centurion-match')
+    expect(commands).toEqual([])
   })
 
   it('ignores centurion messages outside the centurion match state', () => {

@@ -4,9 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Centurion Chess</title>
+  <!-- Roman theme font. Restore with src/theme-roman.css:
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
+  -->
 </head>
 <body>
   <section id="screen-labs-menu" class="screen screen-menu">
@@ -102,11 +104,10 @@
         <p class="centurion-tagline">A hundred games of chess<em>&mdash; at once</em></p>
         <p class="centurion-tagline-sub">Command a hundred imperfect engines with plain words</p>
       </div>
+      <p class="centurion-friend-lead">Play a friend on this device, or with a match code.</p>
       <p id="centurion-status-copy"></p>
       <div class="centurion-controls">
-        <button class="btn btn-primary" id="centurion-solo-btn">Solo (command white)</button>
-        <button class="btn btn-secondary" id="centurion-practice-btn">Practice (1 game)</button>
-        <button class="btn btn-secondary" id="centurion-pass-and-play-btn">Pass &amp; Play (one device)</button>
+        <button class="btn btn-primary" id="centurion-pass-and-play-btn">Pass &amp; Play (one device)</button>
         <button class="btn btn-secondary" id="centurion-new-match-btn">New Multiplayer Match</button>
         <div class="centurion-join-row">
           <input
@@ -123,6 +124,9 @@
           <button class="btn btn-secondary" id="centurion-copy-link-btn">Copy link</button>
         </div>
         <button class="btn btn-outline" id="centurion-cancel-btn">Cancel</button>
+        <p class="centurion-classic-label">Classic typed orders</p>
+        <button class="btn btn-secondary" id="centurion-solo-btn">Solo (command white)</button>
+        <button class="btn btn-secondary" id="centurion-practice-btn">Practice (1 game)</button>
       </div>
       <section class="centurion-rules" aria-labelledby="centurion-rules-heading">
         <h3 id="centurion-rules-heading" class="centurion-rules-heading">Rules of Engagement</h3>
@@ -231,6 +235,70 @@
         <button type="button" class="btn btn-outline" id="centurion-connection-log-clear">Clear log</button>
       </div>
     </details>
+  </section>
+
+  <section id="screen-ink-match" class="screen screen-feature">
+    <header class="feature-header">
+      <button class="text-btn" id="ink-new-btn" type="button">New game</button>
+      <h2 id="ink-turn-label">Your move</h2>
+      <button class="text-btn" id="ink-friend-btn" type="button">Play a friend</button>
+    </header>
+    <div class="feature-layout ink-layout">
+      <div class="ink-board-area">
+        <div id="ink-bar-top" class="centurion-player-bar">
+          <span id="ink-score-top" class="centurion-player-score">0</span>
+          <span id="ink-status-top" class="centurion-player-status">Computer</span>
+        </div>
+        <div class="panel board-panel" id="ink-board-panel">
+          <div class="ink-board-stack">
+            <canvas id="ink-canvas"></canvas>
+            <canvas id="ink-draw-canvas" aria-label="Draw emphasis on the board"></canvas>
+          </div>
+        </div>
+        <div id="ink-bar-bottom" class="centurion-player-bar">
+          <span id="ink-score-bottom" class="centurion-player-score">0</span>
+          <span id="ink-status-bottom" class="centurion-player-status">You</span>
+          <div id="ink-micro-pawn-eval" class="centurion-micro-pawn-eval">
+            <span id="ink-micro-pawn-avg" class="centurion-micro-pawn-avg"></span>
+            <div
+              id="ink-micro-pawn-histogram"
+              class="centurion-micro-pawn-histogram"
+              role="img"
+            ></div>
+          </div>
+        </div>
+        <p id="ink-baseline" class="ink-baseline">Versus unled 0.00</p>
+        <p id="ink-board-hint" class="centurion-board-hint"></p>
+      </div>
+      <div class="panel controls-panel ink-controls">
+        <p id="ink-result" class="ink-result" hidden></p>
+        <p id="ink-preview" class="ink-preview" aria-live="polite"></p>
+        <div class="ink-budget">
+          <span id="ink-budget-label">Ink 8.0 / 8</span>
+          <div class="ink-budget-track"><div id="ink-budget-fill"></div></div>
+        </div>
+        <ul id="ink-mark-list" class="ink-mark-list"></ul>
+        <div class="ink-actions">
+          <button class="btn btn-primary" id="ink-commit-btn" type="button">Commit ink</button>
+          <button class="btn btn-outline" id="ink-pass-btn" type="button">Let them play</button>
+        </div>
+        <div class="ink-actions">
+          <button class="btn btn-outline" id="ink-undo-btn" type="button">Undo</button>
+          <button class="btn btn-outline" id="ink-clear-btn" type="button">Clear</button>
+        </div>
+        <div id="ink-temperaments" class="ink-temperaments"></div>
+        <p id="ink-family" class="ink-family"></p>
+        <details id="ink-stats-panel" class="centurion-stats-panel">
+          <summary>Position stats</summary>
+          <div id="ink-stats-content" class="centurion-stats-grid" role="list"></div>
+        </details>
+        <p id="ink-notice" class="ink-notice"></p>
+        <div class="ink-secondary">
+          <button class="text-btn" id="ink-hard-btn" type="button">Hard opponent</button>
+          <button class="text-btn" id="ink-labs-btn" type="button">Labs</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <script type="module" src="./src/main.ts"></script>
