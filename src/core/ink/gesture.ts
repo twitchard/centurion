@@ -25,10 +25,9 @@ export type InkMark =
 
 /**
  * After the last stroke, wait this long with no new stroke, then send
- * the drawing. Long enough to add a head or hit undo, short enough that
- * the turn still feels immediate.
+ * the drawing. Two seconds leaves room to add a head or hit undo.
  */
-export const COMMIT_IDLE_MS = 800
+export const COMMIT_IDLE_MS = 2000
 
 /**
  * Below this $P score the cloud is not a confident arrow or circle,
