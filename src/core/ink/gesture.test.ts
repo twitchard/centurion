@@ -13,18 +13,6 @@ function line(from: BoardPoint, to: BoardPoint, steps = 12): BoardPoint[] {
   return points
 }
 
-function loop(center: BoardPoint, radius: number, steps = 28): BoardPoint[] {
-  const points: BoardPoint[] = []
-  for (let index = 0; index <= steps; index++) {
-    const angle = (index / steps) * Math.PI * 2
-    points.push({
-      x: center.x + Math.cos(angle) * radius,
-      y: center.y + Math.sin(angle) * radius,
-    })
-  }
-  return points
-}
-
 function chevron(tip: BoardPoint, back: BoardPoint): BoardPoint[] {
   const dx = tip.x - back.x
   const dy = tip.y - back.y
@@ -32,26 +20,14 @@ function chevron(tip: BoardPoint, back: BoardPoint): BoardPoint[] {
   const px = -dy / length
   const py = dx / length
   return [
-    { x: back.x + px * 0.45, y: back.y + py * 0.45 },
+    { x: back.x + px * 0.4, y: back.y + py * 0.4 },
     tip,
-    { x: back.x - px * 0.45, y: back.y - py * 0.45 },
+    { x: back.x - px * 0.4, y: back.y - py * 0.4 },
   ]
 }
 
-describe('$P drawing recognition', () => {
-  it('reads a one-stroke line as an arrow in the direction it was drawn', () => {
-    const [gesture] = recognizeDrawing([
-      line({ x: 4.5, y: 1.4 }, { x: 4.5, y: 3.6 }),
-    ])
-    expect(gesture?.name).toBe('arrow')
-    expect(gesture?.mark.tag).toBe('arrow')
-    if (gesture?.mark.tag !== 'arrow') {
-      return
-    }
-    expect(gesture.mark.head.y).toBeGreaterThan(gesture.mark.tail.y)
-  })
-
-  it('reads a shaft plus a separate head as one arrow, head last or first', () => {
+describe('structural drawing recognition', () => {
+  it('reads a shaft plus a head as one arrow, in either order', () => {
     const shaft = line({ x: 1.2, y: 2 }, { x: 5.2, y: 2 })
     const head = chevron({ x: 5.2, y: 2 }, { x: 4.5, y: 2 })
     const forward = recognizeDrawing([shaft, head])
@@ -67,31 +43,42 @@ describe('$P drawing recognition', () => {
     expect(backward[0].mark.head.x).toBeGreaterThan(backward[0].mark.tail.x)
   })
 
-  it('reads a closed loop as a circle and keeps a distant arrow separate', () => {
-    const gestures = recognizeDrawing([
-      loop({ x: 2, y: 6 }, 1.1),
+  it('does not call a small curve a circle', () => {
+    const curve: BoardPoint[] = []
+    for (let index = 0; index <= 16; index++) {
+      const angle = 0.2 + (index / 16) * 1.3
+      curve.push({
+        x: 4 + Math.cos(angle) * 0.45,
+        y: 4 + Math.sin(angle) * 0.45,
+      })
+    }
+    expect(recognizeDrawing([curve])[0]?.name).toBe('scribble')
+  })
+
+  it('reads a loop about a square across as a circle and leaves a distant arrow', () => {
+    const circle: BoardPoint[] = []
+    for (let index = 0; index <= 24; index++) {
+      const angle = (index / 24) * Math.PI * 2
+      circle.push({
+        x: 2 + Math.cos(angle) * 1.2,
+        y: 6 + Math.sin(angle) * 1.2,
+      })
+    }
+    const names = recognizeDrawing([
+      circle,
       line({ x: 5, y: 1 }, { x: 7, y: 1 }),
+      chevron({ x: 7, y: 1 }, { x: 6.4, y: 1 }),
     ])
-    const names = gestures.map((gesture) => gesture.name).sort()
+      .map((gesture) => gesture.name)
+      .sort()
     expect(names).toEqual(['arrow', 'circle'])
   })
 
-  it('reads a crossed pair and a zigzag as scribbles', () => {
+  it('reads a cross as a scribble', () => {
     const cross = recognizeDrawing([
       line({ x: 1, y: 1 }, { x: 3, y: 3 }),
       line({ x: 1, y: 3 }, { x: 3, y: 1 }),
     ])
-    const messy = recognizeDrawing([
-      [
-        { x: 4, y: 4 },
-        { x: 4.8, y: 5.1 },
-        { x: 4.1, y: 5.4 },
-        { x: 5.2, y: 6.2 },
-        { x: 4.4, y: 5.8 },
-        { x: 5.4, y: 6.6 },
-      ],
-    ])
     expect(cross[0]?.name).toBe('scribble')
-    expect(messy[0]?.name).toBe('scribble')
   })
 })

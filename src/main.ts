@@ -38,7 +38,7 @@ import {
   commandLogOutcomeFromCompile,
 } from './core/command-log/model'
 import { describeCommandPredicate } from './core/command/describe'
-import { COMMIT_IDLE_MS } from './core/ink/gesture'
+import { COMMIT_IDLE_MS, REVEAL_MS } from './core/ink/gesture'
 import { type InkMatch, inkSearchTargets } from './core/ink/match'
 import { inkToMatchState } from './core/ink/project'
 import { TOP_MOVE_COUNT } from './core/ink/temperament'
@@ -261,6 +261,10 @@ const inkUndoButton = button('ink-undo-btn')
 const inkClearButton = button('ink-clear-btn')
 const inkHardButton = button('ink-hard-btn')
 const inkLabsButton = button('ink-labs-btn')
+const inkRecordToggle = input('ink-record-toggle')
+const inkRecordCopy = button('ink-record-copy')
+const inkRecordDownload = button('ink-record-download')
+const inkRecordCount = element('ink-record-count')
 const inkTemperaments = element('ink-temperaments')
 const inkFamily = element('ink-family')
 const inkNotice = element('ink-notice')
@@ -425,15 +429,26 @@ function dispatch(msg: AppMsg): void {
 }
 
 let inkCommitTimer: ReturnType<typeof setTimeout> | null = null
+let inkRevealTimer: ReturnType<typeof setTimeout> | null = null
 let inkCommitFrame: number | null = null
 let inkCommitStarted = 0
 let inkWatchedStrokes = -1
 let inkCommitPending = false
+const inkRecordings: {
+  id: string
+  author: 'owner'
+  expect: null
+  strokes: readonly (readonly { x: number; y: number }[])[]
+}[] = []
 
 function clearInkCommitClock(): void {
   if (inkCommitTimer !== null) {
     clearTimeout(inkCommitTimer)
     inkCommitTimer = null
+  }
+  if (inkRevealTimer !== null) {
+    clearTimeout(inkRevealTimer)
+    inkRevealTimer = null
   }
   if (inkCommitFrame !== null && typeof cancelAnimationFrame === 'function') {
     cancelAnimationFrame(inkCommitFrame)
@@ -447,7 +462,7 @@ function syncInkCommit(model: InkModel): void {
     model.session.match.phase.tag === 'active' &&
     model.session.searchSide !== 'computer' &&
     count > 0 &&
-    model.session.marks.length > 0
+    model.session.marks.length === 0
   if (count === inkWatchedStrokes) {
     return
   }
@@ -458,12 +473,17 @@ function syncInkCommit(model: InkModel): void {
     return
   }
   inkCommitStarted = typeof performance !== 'undefined' ? performance.now() : 0
-  inkCommitLabel.textContent = 'Sending the drawing'
+  inkCommitLabel.textContent = 'Pause to send'
   paintInkCommitMeter()
   inkCommitTimer = setTimeout(() => {
     inkCommitTimer = null
     inkCommitPending = true
-    tryCommitDrawing()
+    inkRevealTimer = setTimeout(() => {
+      inkRevealTimer = null
+      tryCommitDrawing()
+    }, REVEAL_MS)
+    dispatchInk({ tag: 'recognize' })
+    inkCommitLabel.textContent = 'Sending the drawing'
   }, COMMIT_IDLE_MS)
 }
 
@@ -480,8 +500,33 @@ function paintInkCommitMeter(): void {
   })
 }
 
+function rememberRecording(): void {
+  if (!inkRecordToggle.checked || state.tag !== 'ink-match') {
+    return
+  }
+  const strokes = state.model.session.strokes
+  if (strokes.length === 0) {
+    return
+  }
+  inkRecordings.push({
+    id: `recording-${inkRecordings.length + 1}`,
+    author: 'owner',
+    expect: null,
+    strokes: strokes.map((stroke) => stroke.map((point) => ({ ...point }))),
+  })
+  inkRecordCount.textContent = `${inkRecordings.length} recording${inkRecordings.length === 1 ? '' : 's'}`
+}
+
+function strokeExportJson(): string {
+  return JSON.stringify({ recordings: inkRecordings }, null, 2)
+}
+
 function tryCommitDrawing(): void {
-  if (!inkCommitPending || state.tag !== 'ink-match') {
+  if (
+    !inkCommitPending ||
+    inkRevealTimer !== null ||
+    state.tag !== 'ink-match'
+  ) {
     return
   }
   const session = state.model.session
@@ -498,6 +543,7 @@ function tryCommitDrawing(): void {
     inkCommitLabel.textContent = 'Reading the board, then sending'
     return
   }
+  rememberRecording()
   inkCommitPending = false
   clearInkCommitClock()
   dispatchInk({ tag: 'commit' })
@@ -1929,6 +1975,39 @@ function bindEvents(): void {
   inkClearButton.addEventListener('click', () => {
     dispatchInk({ tag: 'clear' })
   })
+  inkRecordCopy.addEventListener('click', () => {
+    const json = strokeExportJson()
+    if (typeof navigator.clipboard?.writeText === 'function') {
+      void navigator.clipboard.writeText(json).then(
+        () => {
+          inkRecordCount.textContent = 'Copied JSON'
+        },
+        () => {
+          inkRecordCount.textContent = 'Copy failed'
+        },
+      )
+      return
+    }
+    inkRecordCount.textContent = 'Copy failed'
+  })
+  inkRecordDownload.addEventListener('click', () => {
+    const blob = new Blob([strokeExportJson()], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'centurion-strokes.json'
+    link.click()
+    URL.revokeObjectURL(url)
+  })
+  if (pendingJoinCode() === null) {
+    const search = window.location.search
+    if (
+      search !== undefined &&
+      new URLSearchParams(search).get('record') === '1'
+    ) {
+      inkRecordToggle.checked = true
+    }
+  }
   inkStatsContent.addEventListener('click', (event) => {
     if (centurionStatsTouchTips !== null && !centurionStatsTouchTips.matches) {
       return

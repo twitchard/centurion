@@ -296,6 +296,18 @@
           <button class="text-btn" id="ink-hard-btn" type="button">Hard opponent</button>
           <button class="text-btn" id="ink-labs-btn" type="button">Labs</button>
         </div>
+        <details id="ink-debug" class="ink-debug">
+          <summary>Debug</summary>
+          <label class="ink-record-label" for="ink-record-toggle">
+            <input id="ink-record-toggle" type="checkbox">
+            Record strokes
+          </label>
+          <p id="ink-record-count" class="ink-record-count">No recordings yet.</p>
+          <div class="ink-actions">
+            <button class="btn btn-outline" id="ink-record-copy" type="button">Copy JSON</button>
+            <button class="btn btn-outline" id="ink-record-download" type="button">Download</button>
+          </div>
+        </details>
       </div>
     </div>
   </section>

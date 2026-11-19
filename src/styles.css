@@ -1300,6 +1300,22 @@ canvas {
   gap: 12px;
 }
 
+.ink-debug {
+  font-size: 0.82rem;
+  color: var(--ink-dim);
+}
+
+.ink-record-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.ink-record-count {
+  margin: 0 0 8px;
+}
+
 .centurion-friend-lead,
 .centurion-classic-label {
   margin: 0;

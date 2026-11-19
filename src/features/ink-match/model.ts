@@ -39,6 +39,7 @@ export type InkMsg =
   | { readonly tag: 'stroke'; readonly points: readonly BoardPoint[] }
   | { readonly tag: 'undo' }
   | { readonly tag: 'clear' }
+  | { readonly tag: 'recognize' }
   | { readonly tag: 'commit' }
   | { readonly tag: 'pass' }
   | {
@@ -101,8 +102,15 @@ export function updateInk(
       return [undoMarks(model), []]
     case 'clear':
       return [clearMarks(model), []]
-    case 'commit':
-      return commit(model, model.session.marks)
+    case 'recognize':
+      return [recognizeStrokes(model), []]
+    case 'commit': {
+      const marks =
+        model.session.marks.length > 0
+          ? model.session.marks
+          : interpretDrawing(model.session.strokes)
+      return commit(model, marks)
+    }
     case 'pass':
       return commit(model, [])
     case 'ranks':
@@ -139,8 +147,17 @@ function withStrokes(
 ): InkModel {
   return setSession(model, {
     strokes,
-    marks: interpretDrawing(strokes),
+    marks: [],
     notice: null,
+  })
+}
+
+function recognizeStrokes(model: InkModel): InkModel {
+  if (!canDraw(model) || model.session.strokes.length === 0) {
+    return model
+  }
+  return setSession(model, {
+    marks: interpretDrawing(model.session.strokes),
   })
 }
 

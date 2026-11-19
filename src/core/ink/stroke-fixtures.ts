@@ -1,343 +1,220 @@
 import type { BoardPoint } from './gesture'
 
-export type StrokeSource = 'synthetic' | 'mouse' | 'touch'
+export type StrokeAuthor = 'agent' | 'owner'
 export type StrokeLabel = 'arrow' | 'circle' | 'scribble'
 
 export interface StrokeRecording {
   readonly id: string
-  readonly source: StrokeSource
-  readonly expect: StrokeLabel
+  readonly author: StrokeAuthor
+  readonly expect: StrokeLabel | null
   readonly strokes: readonly (readonly BoardPoint[])[]
 }
 
-/** Pointer paths captured from Chrome while drawing on the live board. */
-export const RECORDED_STROKES: readonly StrokeRecording[] = [
-  {
-    id: 'mouse-arrow-up',
-    source: 'mouse',
-    expect: 'arrow',
-    strokes: [
-      [
-        { x: 4.379, y: 1.29 },
-        { x: 4.415, y: 1.524 },
-        { x: 4.393, y: 1.704 },
-        { x: 4.465, y: 1.926 },
-        { x: 4.418, y: 2.14 },
-        { x: 4.451, y: 2.33 },
-        { x: 4.493, y: 2.57 },
-        { x: 4.479, y: 2.788 },
-        { x: 4.543, y: 2.943 },
-        { x: 4.543, y: 3.167 },
-        { x: 4.52, y: 3.34 },
-        { x: 4.523, y: 3.564 },
-        { x: 4.542, y: 3.802 },
-        { x: 4.592, y: 3.983 },
-        { x: 4.581, y: 4.22 },
-      ],
-    ],
-  },
-  {
-    id: 'mouse-arrow-diag',
-    source: 'mouse',
-    expect: 'arrow',
-    strokes: [
-      [
-        { x: 1.168, y: 1.095 },
-        { x: 1.388, y: 1.273 },
-        { x: 1.676, y: 1.342 },
-        { x: 1.84, y: 1.528 },
-        { x: 2.103, y: 1.699 },
-        { x: 2.35, y: 1.772 },
-        { x: 2.558, y: 1.997 },
-        { x: 2.771, y: 2.1 },
-        { x: 2.942, y: 2.231 },
-        { x: 3.283, y: 2.384 },
-        { x: 3.499, y: 2.558 },
-        { x: 3.704, y: 2.668 },
-        { x: 3.87, y: 2.783 },
-        { x: 4.087, y: 2.926 },
-        { x: 4.299, y: 3.097 },
-        { x: 4.577, y: 3.236 },
-        { x: 4.776, y: 3.411 },
-      ],
-    ],
-  },
-  {
-    id: 'mouse-arrow-two',
-    source: 'mouse',
-    expect: 'arrow',
-    strokes: [
-      [
-        { x: 1.484, y: 5.003 },
-        { x: 1.847, y: 5.025 },
-        { x: 2.143, y: 5.039 },
-        { x: 2.483, y: 5.018 },
-        { x: 2.772, y: 5.049 },
-        { x: 3.104, y: 5.059 },
-        { x: 3.453, y: 5.064 },
-        { x: 3.787, y: 5.083 },
-        { x: 4.08, y: 5.058 },
-        { x: 4.412, y: 5.063 },
-        { x: 4.756, y: 5.067 },
-        { x: 5.07, y: 5.089 },
-        { x: 5.392, y: 5.105 },
-      ],
-      [
-        { x: 4.672, y: 5.449 },
-        { x: 5.4, y: 5.1 },
-        { x: 4.728, y: 4.651 },
-      ],
-    ],
-  },
-  {
-    id: 'mouse-arrow-head-first',
-    source: 'mouse',
-    expect: 'arrow',
-    strokes: [
-      [
-        { x: 2.8, y: 5.8 },
-        { x: 3.2, y: 6.5 },
-        { x: 3.6, y: 5.8 },
-      ],
-      [
-        { x: 3.187, y: 2.207 },
-        { x: 3.203, y: 2.574 },
-        { x: 3.177, y: 2.922 },
-        { x: 3.178, y: 3.265 },
-        { x: 3.202, y: 3.649 },
-        { x: 3.206, y: 3.991 },
-        { x: 3.201, y: 4.36 },
-        { x: 3.221, y: 4.702 },
-        { x: 3.191, y: 5.06 },
-        { x: 3.204, y: 5.41 },
-        { x: 3.189, y: 5.798 },
-        { x: 3.179, y: 6.143 },
-        { x: 3.199, y: 6.477 },
-      ],
-    ],
-  },
-  {
-    id: 'mouse-circle',
-    source: 'mouse',
-    expect: 'circle',
-    strokes: [
-      [
-        { x: 4.273, y: 3 },
-        { x: 4.248, y: 3.267 },
-        { x: 4.217, y: 3.503 },
-        { x: 4.07, y: 3.721 },
-        { x: 3.869, y: 3.964 },
-        { x: 3.672, y: 4.068 },
-        { x: 3.463, y: 4.229 },
-        { x: 3.205, y: 4.318 },
-        { x: 2.951, y: 4.287 },
-        { x: 2.683, y: 4.221 },
-        { x: 2.425, y: 4.163 },
-        { x: 2.207, y: 4.051 },
-        { x: 2.023, y: 3.864 },
-        { x: 1.834, y: 3.652 },
-        { x: 1.769, y: 3.408 },
-        { x: 1.733, y: 3.167 },
-        { x: 1.736, y: 2.903 },
-        { x: 1.702, y: 2.653 },
-        { x: 1.809, y: 2.413 },
-        { x: 1.991, y: 2.197 },
-        { x: 2.146, y: 1.996 },
-        { x: 2.393, y: 1.844 },
-        { x: 2.641, y: 1.788 },
-        { x: 2.89, y: 1.742 },
-        { x: 3.15, y: 1.73 },
-        { x: 3.389, y: 1.768 },
-        { x: 3.623, y: 1.882 },
-        { x: 3.82, y: 2.006 },
-        { x: 4.011, y: 2.222 },
-        { x: 4.176, y: 2.422 },
-        { x: 4.249, y: 2.673 },
-      ],
-    ],
-  },
-  {
-    id: 'mouse-circle-open',
-    source: 'mouse',
-    expect: 'circle',
-    strokes: [
-      [
-        { x: 6.523, y: 5.5 },
-        { x: 6.573, y: 5.715 },
-        { x: 6.457, y: 5.889 },
-        { x: 6.407, y: 6.067 },
-        { x: 6.241, y: 6.28 },
-        { x: 6.077, y: 6.409 },
-        { x: 5.89, y: 6.484 },
-        { x: 5.689, y: 6.513 },
-        { x: 5.485, y: 6.54 },
-        { x: 5.286, y: 6.574 },
-        { x: 5.073, y: 6.503 },
-        { x: 4.904, y: 6.377 },
-        { x: 4.725, y: 6.256 },
-        { x: 4.606, y: 6.047 },
-        { x: 4.538, y: 5.89 },
-        { x: 4.427, y: 5.685 },
-        { x: 4.487, y: 5.471 },
-        { x: 4.49, y: 5.272 },
-        { x: 4.52, y: 5.084 },
-        { x: 4.659, y: 4.89 },
-        { x: 4.776, y: 4.737 },
-        { x: 4.925, y: 4.636 },
-        { x: 5.13, y: 4.548 },
-        { x: 5.339, y: 4.423 },
-        { x: 5.544, y: 4.436 },
-        { x: 5.746, y: 4.499 },
-        { x: 5.934, y: 4.584 },
-      ],
-    ],
-  },
-  {
-    id: 'mouse-scribble',
-    source: 'mouse',
-    expect: 'scribble',
-    strokes: [
-      [
-        { x: 0.987, y: 1.021 },
-        { x: 1.206, y: 1.234 },
-        { x: 1.377, y: 1.441 },
-        { x: 1.593, y: 1.615 },
-        { x: 1.778, y: 1.874 },
-        { x: 2.024, y: 2.064 },
-        { x: 2.198, y: 2.277 },
-        { x: 2.405, y: 2.501 },
-        { x: 2.614, y: 2.696 },
-      ],
-      [
-        { x: 1.087, y: 2.575 },
-        { x: 1.29, y: 2.423 },
-        { x: 1.511, y: 2.205 },
-        { x: 1.715, y: 2.023 },
-        { x: 1.904, y: 1.777 },
-        { x: 2.096, y: 1.586 },
-        { x: 2.296, y: 1.4 },
-        { x: 2.517, y: 1.187 },
-        { x: 2.722, y: 0.997 },
-      ],
-    ],
-  },
-  {
-    id: 'mouse-scribble-short',
-    source: 'mouse',
-    expect: 'scribble',
-    strokes: [
-      [
-        { x: 6.1, y: 1.2 },
-        { x: 6.7, y: 1.8 },
-        { x: 6.2, y: 2 },
-        { x: 6.9, y: 2.5 },
-        { x: 6.3, y: 2.3 },
-        { x: 7, y: 2.9 },
-      ],
-    ],
-  },
-  {
-    id: 'touch-arrow-right',
-    source: 'touch',
-    expect: 'arrow',
-    strokes: [
-      [
-        { x: 1.361, y: 2.139 },
-        { x: 1.706, y: 2.136 },
-        { x: 1.849, y: 2.2 },
-        { x: 2.058, y: 2.291 },
-        { x: 2.271, y: 2.184 },
-        { x: 2.624, y: 2.316 },
-        { x: 2.786, y: 2.259 },
-        { x: 2.968, y: 2.309 },
-        { x: 3.205, y: 2.281 },
-        { x: 3.436, y: 2.319 },
-        { x: 3.77, y: 2.327 },
-        { x: 3.957, y: 2.381 },
-        { x: 4.135, y: 2.295 },
-        { x: 4.415, y: 2.347 },
-        { x: 4.703, y: 2.384 },
-        { x: 4.92, y: 2.354 },
-        { x: 5.064, y: 2.428 },
-        { x: 5.377, y: 2.453 },
-        { x: 5.573, y: 2.411 },
-      ],
-    ],
-  },
-  {
-    id: 'touch-arrow-two',
-    source: 'touch',
-    expect: 'arrow',
-    strokes: [
-      [
-        { x: 1.974, y: 6.169 },
-        { x: 2.317, y: 5.954 },
-        { x: 2.555, y: 5.76 },
-        { x: 2.915, y: 5.63 },
-        { x: 3.209, y: 5.366 },
-        { x: 3.483, y: 5.209 },
-        { x: 3.788, y: 4.99 },
-        { x: 4.079, y: 4.768 },
-        { x: 4.374, y: 4.596 },
-        { x: 4.687, y: 4.401 },
-        { x: 4.994, y: 4.167 },
-        { x: 5.26, y: 4.046 },
-        { x: 5.569, y: 3.818 },
-        { x: 5.948, y: 3.578 },
-        { x: 6.205, y: 3.381 },
-      ],
-      [
-        { x: 5.732, y: 4.225 },
-        { x: 6.2, y: 3.4 },
-        { x: 5.268, y: 3.575 },
-      ],
-    ],
-  },
-  {
-    id: 'touch-circle',
-    source: 'touch',
-    expect: 'circle',
-    strokes: [
-      [
-        { x: 5.438, y: 4 },
-        { x: 5.414, y: 4.363 },
-        { x: 5.342, y: 4.794 },
-        { x: 4.987, y: 5.101 },
-        { x: 4.698, y: 5.242 },
-        { x: 4.399, y: 5.397 },
-        { x: 3.992, y: 5.465 },
-        { x: 3.601, y: 5.479 },
-        { x: 3.253, y: 5.289 },
-        { x: 2.901, y: 5.035 },
-        { x: 2.772, y: 4.765 },
-        { x: 2.484, y: 4.345 },
-        { x: 2.547, y: 3.984 },
-        { x: 2.538, y: 3.623 },
-        { x: 2.74, y: 3.181 },
-        { x: 2.903, y: 2.885 },
-        { x: 3.215, y: 2.785 },
-        { x: 3.643, y: 2.481 },
-        { x: 4.024, y: 2.569 },
-        { x: 4.438, y: 2.633 },
-        { x: 4.748, y: 2.639 },
-        { x: 5.125, y: 2.888 },
-        { x: 5.362, y: 3.317 },
-      ],
-    ],
-  },
-  {
-    id: 'touch-scribble',
-    source: 'touch',
-    expect: 'scribble',
-    strokes: [
-      [
-        { x: 1.2, y: 4.2 },
-        { x: 2.4, y: 4.5 },
-        { x: 1.4, y: 4.9 },
-        { x: 2.6, y: 5.2 },
-        { x: 1.5, y: 5.6 },
-        { x: 2.5, y: 5.9 },
-      ],
-    ],
-  },
+/**
+ * Recordings made while building the structural reader. None of these
+ * were drawn by the owner; his exports are the acceptance set once he
+ * drops them in beside these.
+ */
+export const AGENT_RECORDINGS: readonly StrokeRecording[] = [
+  recording('agent-shaft-then-v', 'arrow', [
+    wobble(line(1.4, 2, 5.2, 2.15), 3),
+    vHead(5.2, 2.15, 4.55, 2.05),
+  ]),
+  recording('agent-v-then-shaft', 'arrow', [
+    vHead(3.1, 6.4, 3.05, 5.7),
+    wobble(line(3.05, 2.2, 3.1, 6.4), 5),
+  ]),
+  recording('agent-single-line-head', 'arrow', [
+    wobble(line(1.2, 5.1, 4.8, 5.3), 7),
+    line(4.75, 5.25, 4.15, 5.7),
+  ]),
+  recording('agent-curved-shaft', 'arrow', [
+    bow(1.3, 1.2, 4.6, 1.5, 0.35),
+    vHead(4.6, 1.5, 4.05, 1.35),
+  ]),
+  recording('agent-short-arrow', 'arrow', [
+    line(2, 3, 3.15, 3.15),
+    vHead(3.15, 3.15, 2.7, 3.05),
+  ]),
+  recording('agent-two-square-arrow', 'arrow', [
+    wobble(line(4, 4, 6.1, 4.2), 9),
+    line(6.05, 4.15, 5.45, 4.65),
+  ]),
+  recording('agent-hooked-shaft', 'arrow', [hooked(1.5, 4, 4.4, 4.2)]),
+  recording('agent-real-circle', 'circle', [loop(4, 4, 1.35, 0, Math.PI * 2)]),
+  recording('agent-two-semicircles', 'circle', [
+    loop(4.2, 3.8, 1.2, 0.15, Math.PI),
+    loop(4.2, 3.8, 1.2, Math.PI, Math.PI * 2.05),
+  ]),
+  recording('agent-small-curve', 'scribble', [loop(2, 6, 0.45, 0.2, 1.5)]),
+  recording('agent-tiny-loop', 'scribble', [loop(6, 2, 0.35, 0, Math.PI * 2)]),
+  recording('agent-cross', 'scribble', [
+    line(1, 1, 2.4, 2.5),
+    line(1.1, 2.4, 2.5, 1),
+  ]),
 ]
+
+/** Owner exports belong here once he records them. None yet. */
+export const OWNER_RECORDINGS: readonly StrokeRecording[] = []
+
+export function parseStrokeExport(raw: string): readonly StrokeRecording[] {
+  const parsed: unknown = JSON.parse(raw)
+  const wrapped = prop(parsed, 'recordings')
+  const rows = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(wrapped)
+      ? wrapped
+      : null
+  if (rows === null) {
+    throw new Error('Stroke export must be an array or { recordings: [] }')
+  }
+  return rows.map((row, index) => recordingFromUnknown(row, index))
+}
+
+function recording(
+  id: string,
+  expect: StrokeLabel,
+  strokes: readonly (readonly BoardPoint[])[],
+): StrokeRecording {
+  return { id, author: 'agent', expect, strokes }
+}
+
+function recordingFromUnknown(row: unknown, index: number): StrokeRecording {
+  const strokesRaw = prop(row, 'strokes')
+  if (!Array.isArray(strokesRaw)) {
+    throw new Error(`Recording ${index} is missing strokes`)
+  }
+  const authorValue = prop(row, 'author')
+  const author = authorValue === 'owner' ? 'owner' : 'agent'
+  const expectValue = prop(row, 'expect')
+  const expect = isLabel(expectValue) ? expectValue : null
+  const idValue = prop(row, 'id')
+  const id = typeof idValue === 'string' ? idValue : `recording-${index + 1}`
+  const strokes = strokesRaw.map((stroke, strokeIndex) => {
+    if (!Array.isArray(stroke)) {
+      throw new Error(`Recording ${id} stroke ${strokeIndex} is not a list`)
+    }
+    return stroke.map((point) => {
+      const x = prop(point, 'x')
+      const y = prop(point, 'y')
+      if (typeof x !== 'number' || typeof y !== 'number') {
+        throw new Error(`Recording ${id} has a point that is not {x, y}`)
+      }
+      return { x, y }
+    })
+  })
+  return { id, author, expect, strokes }
+}
+
+function prop(value: unknown, key: string): unknown {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  return (value as { readonly [key: string]: unknown })[key]
+}
+
+function isLabel(value: unknown): value is StrokeLabel {
+  return value === 'arrow' || value === 'circle' || value === 'scribble'
+}
+
+function line(x0: number, y0: number, x1: number, y1: number): BoardPoint[] {
+  const points: BoardPoint[] = []
+  const steps = 14
+  for (let step = 0; step <= steps; step++) {
+    const t = step / steps
+    points.push({ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t })
+  }
+  return points
+}
+
+function wobble(points: readonly BoardPoint[], seed: number): BoardPoint[] {
+  let state = seed
+  return points.map((point, index) => {
+    if (index === 0 || index === points.length - 1) {
+      return point
+    }
+    state = (state * 1664525 + 1013904223) >>> 0
+    const jx = (state / 0x100000000 - 0.5) * 0.12
+    state = (state * 1664525 + 1013904223) >>> 0
+    const jy = (state / 0x100000000 - 0.5) * 0.12
+    return { x: point.x + jx, y: point.y + jy }
+  })
+}
+
+function bow(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  amount: number,
+): BoardPoint[] {
+  const points = line(x0, y0, x1, y1)
+  const dx = y0 - y1
+  const dy = x1 - x0
+  const length = Math.hypot(dx, dy) || 1
+  return points.map((point, index) => {
+    const t = index / (points.length - 1)
+    const lift = Math.sin(t * Math.PI) * amount
+    return {
+      x: point.x + (dx / length) * lift,
+      y: point.y + (dy / length) * lift,
+    }
+  })
+}
+
+function vHead(
+  tipX: number,
+  tipY: number,
+  backX: number,
+  backY: number,
+): BoardPoint[] {
+  const dx = tipX - backX
+  const dy = tipY - backY
+  const length = Math.hypot(dx, dy) || 1
+  const px = -dy / length
+  const py = dx / length
+  return [
+    { x: backX + px * 0.42, y: backY + py * 0.42 },
+    { x: tipX, y: tipY },
+    { x: backX - px * 0.38, y: backY - py * 0.38 },
+  ]
+}
+
+function hooked(x0: number, y0: number, x1: number, y1: number): BoardPoint[] {
+  const shaft = line(x0, y0, x1, y1)
+  const dx = x1 - x0
+  const dy = y1 - y0
+  const length = Math.hypot(dx, dy) || 1
+  const px = -dy / length
+  const py = dx / length
+  return [
+    ...shaft,
+    {
+      x: x1 - (dx / length) * 0.15 + px * 0.28,
+      y: y1 - (dy / length) * 0.15 + py * 0.28,
+    },
+    {
+      x: x1 - (dx / length) * 0.45 + px * 0.55,
+      y: y1 - (dy / length) * 0.45 + py * 0.55,
+    },
+  ]
+}
+
+function loop(
+  cx: number,
+  cy: number,
+  radius: number,
+  start: number,
+  end: number,
+): BoardPoint[] {
+  const points: BoardPoint[] = []
+  const steps = 22
+  for (let step = 0; step <= steps; step++) {
+    const angle = start + ((end - start) * step) / steps
+    points.push({
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius,
+    })
+  }
+  return points
+}

@@ -10,6 +10,7 @@ export class InkDrawLayer {
   private drawing = false
   private pointerId: number | null = null
   private draft: BoardPoint[] = []
+  private strokes: readonly (readonly BoardPoint[])[] = []
   private marks: readonly InkMark[] = []
   private boardWidth = 0
 
@@ -47,7 +48,11 @@ export class InkDrawLayer {
     context?.setTransform(ratio, 0, 0, ratio, 0, 0)
   }
 
-  render(marks: readonly InkMark[]): void {
+  render(
+    strokes: readonly (readonly BoardPoint[])[],
+    marks: readonly InkMark[],
+  ): void {
+    this.strokes = strokes
     this.marks = marks
     this.paint()
   }
@@ -136,8 +141,14 @@ export class InkDrawLayer {
       return
     }
     context.clearRect(0, 0, this.boardWidth, this.boardWidth)
-    for (const mark of this.marks) {
-      this.paintMark(context, mark)
+    if (this.marks.length > 0) {
+      for (const mark of this.marks) {
+        this.paintMark(context, mark)
+      }
+    } else {
+      for (const stroke of this.strokes) {
+        this.stroke(context, stroke, '#1d4ed8', 3, false)
+      }
     }
     if (this.draft.length > 1) {
       this.stroke(context, this.draft, '#1d4ed8', 3, false)

@@ -121,9 +121,9 @@ export function renderInk(
   view.hint.textContent =
     hint ??
     (session.strokes.length > 0 && drawing
-      ? 'Pause sends this drawing. Undo or clear before the bar empties.'
+      ? 'Ink stays as drawn. Pause two seconds to send it.'
       : drawing
-        ? 'Draw an arrow, a circle, or a scribble. A short pause sends it.'
+        ? 'Draw on the board. A two-second pause sends the drawing.'
         : computerThinking
           ? 'Watch the reply, then draw again.'
           : '')
@@ -134,9 +134,9 @@ export function renderInk(
     options.renderer.resize(size)
     options.draw.resize(size)
     options.renderer.render(matchRenderModel(inkToMatchState(match), 1))
-    options.draw.render(session.marks)
+    options.draw.render(session.strokes, session.marks)
   } else {
-    options.draw.render(session.marks)
+    options.draw.render(session.strokes, session.marks)
   }
 }
 
@@ -196,6 +196,10 @@ function renderHistogram(
 }
 
 function renderPreview(view: InkView, model: InkModel, reading: boolean): void {
+  if (model.session.strokes.length > 0 && model.session.marks.length === 0) {
+    view.preview.textContent = 'Ink stays as drawn until you pause.'
+    return
+  }
   if (reading) {
     view.preview.textContent = 'Reading the positions…'
     return

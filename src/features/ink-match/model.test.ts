@@ -17,15 +17,18 @@ describe('ink session', () => {
       tag: 'stroke',
       points: line(),
     })
-    expect(drawing.session.marks).toHaveLength(1)
+    expect(drawing.session.strokes).toHaveLength(1)
+    expect(drawing.session.marks).toHaveLength(0)
     expect(sessionPreview(drawing)).toBeNull()
+    const [read] = updateInk(drawing, { tag: 'recognize' })
+    expect(read.session.marks.length).toBeGreaterThan(0)
 
     const opening = [
       { uci: 'e2e4', cp: 30 },
       { uci: 'd2d4', cp: 20 },
       { uci: 'g1f3', cp: 10 },
     ]
-    const [ready] = updateInk(drawing, {
+    const [ready] = updateInk(read, {
       tag: 'ranks',
       requestId,
       ranked: [opening, opening],

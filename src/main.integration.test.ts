@@ -716,7 +716,7 @@ function setupDom(pathname = '/labs'): TestDom {
 
   const inkIds: readonly (readonly [
     string,
-    'element' | 'button' | 'canvas',
+    'element' | 'button' | 'canvas' | 'input',
   ])[] = [
     ['screen-ink-match', 'element'],
     ['ink-turn-label', 'element'],
@@ -740,6 +740,10 @@ function setupDom(pathname = '/labs'): TestDom {
     ['ink-clear-btn', 'button'],
     ['ink-hard-btn', 'button'],
     ['ink-labs-btn', 'button'],
+    ['ink-record-toggle', 'input'],
+    ['ink-record-copy', 'button'],
+    ['ink-record-download', 'button'],
+    ['ink-record-count', 'element'],
     ['ink-temperaments', 'element'],
     ['ink-family', 'element'],
     ['ink-notice', 'element'],
@@ -756,6 +760,12 @@ function setupDom(pathname = '/labs'): TestDom {
         documentRef,
         id,
         (elementId, owner) => new FakeButtonElement(elementId, owner),
+      )
+    } else if (kind === 'input') {
+      registerById(
+        documentRef,
+        id,
+        (elementId, owner) => new FakeInputElement(elementId, owner),
       )
     } else {
       registerById(
