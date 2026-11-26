@@ -35,6 +35,20 @@ Every natural-language command sent to the compiler — from a match or the Comm
 - The log goes to the same database as multiplayer (`VITE_FIREBASE_DATABASE_URL` or the built-in default). Set the build variable `VITE_COMMAND_LOG=off` to disable logging without touching multiplayer; disabling multiplayer disables the log too.
 - Like the match rooms, the log node is world-readable and world-writable, so entries read back are untrusted and pass through a validating codec. Commands are at most 40 characters of chess orders; nothing else is captured — no identifiers, no positions, no device data.
 
+## Drawing collection
+
+Every drawing committed in the solo game — the strokes of one pause, read together — is appended to the same Firebase database under `__trystero__/centurion-drawings`. The record is the fixture shape (`id` is the database key, `author`, `expect`, `strokes` in board squares) plus what the recognizer said (`recognized` shape names and `readings`), a server timestamp, the build id (`GITHUB_SHA` or `dev-YYYY-MM-DD`), and `corrected`. `expect` is absent until a fix-it tap. Uncorrected drawings are implicitly confirmed: the export fills `expect` from `recognized`.
+
+After the clean shapes are sent, their names stay as small buttons under the preview. Tapping one opens Arrow, Circle, X, Scribble, or Nothing. The choice is written back onto that record and does not replay the move; the soldiers have already drawn.
+
+No rules change and no new environment variable. A root path such as `drawings/` is not writable (the rules only open `__trystero__`). Disabling the database (`VITE_FIREBASE_DATABASE_URL=off`) disables this log too. The `?record=1` toggle still copies strokes locally and is separate.
+
+- `bun run drawings:export` — print `{ recordings: [...] }` to stdout (a short count goes to stderr).
+- `bun run drawings:export --out drawings.json` — write that file.
+- `DRAWING_LOG_DATABASE_URL` overrides the database. Read access uses the same public rules as the command log; there is no key.
+
+A recording whose `expect` includes `ignore` (Nothing) is left unlabeled by the fixture parser, so it is not asserted.
+
 ## Multiplayer
 
 Multiplayer syncs match state through **Firebase Realtime Database** — no WebRTC, no NAT traversal, no peer-to-peer connection. A match room is a small database record: the match seed, a presence flag per player, and the latest match snapshot. The host creates a room and shares the 6-digit code; when the guest joins, the host publishes the initial snapshot, and from then on whoever resolves a turn publishes the new state while the other player's client mirrors it. Because the room always holds the full authoritative snapshot, the two clients cannot diverge, and either player can reload or reconnect mid-match and pick up exactly where the room says the match is.

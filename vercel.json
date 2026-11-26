@@ -1,3 +1,7 @@
 {
-  "rewrites": [{ "source": "/labs", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/labs", "destination": "/index.html" },
+    { "source": "/ink", "destination": "/index.html" },
+    { "source": "/play", "destination": "/index.html" }
+  ]
 }

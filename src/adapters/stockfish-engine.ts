@@ -96,10 +96,12 @@ export class StockfishEngineAdapter implements EnginePort {
   rankedMoves(
     fens: readonly string[],
     depth: number,
+    multiPv: number = MULTIPV_ALL,
   ): Promise<readonly (readonly RankedMove[])[]> {
+    const lines = Math.max(1, Math.min(MULTIPV_ALL, Math.floor(multiPv)))
     const run = this.chain.then(async () => {
       const worker = await this.initWorker()
-      worker.postMessage(`setoption name MultiPV value ${MULTIPV_ALL}`)
+      worker.postMessage(`setoption name MultiPV value ${lines}`)
       const plan = planSearches(fens)
       const uniqueLists: (readonly RankedMove[])[] = []
       for (const fen of plan.unique) {

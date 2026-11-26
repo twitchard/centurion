@@ -16,6 +16,18 @@ vi.mock('./adapters/firebase-command-log', () => {
   return { FirebaseCommandLogAdapter: MockCommandLogAdapter }
 })
 
+vi.mock('./adapters/firebase-drawing-log', () => {
+  class MockDrawingLogAdapter {
+    save(): Promise<string> {
+      return Promise.resolve('drawing-test')
+    }
+    correct(): Promise<boolean> {
+      return Promise.resolve(true)
+    }
+  }
+  return { FirebaseDrawingLogAdapter: MockDrawingLogAdapter }
+})
+
 vi.mock('./adapters/firebase-match-room', () => {
   interface MockRoomCallbacks {
     readonly onOpened: () => void
@@ -714,6 +726,85 @@ function setupDom(pathname = '/labs'): TestDom {
     (id, owner) => new FakeCanvasElement(id, owner),
   )
 
+  const inkIds: readonly (readonly [
+    string,
+    'element' | 'button' | 'canvas' | 'input',
+  ])[] = [
+    ['screen-ink-match', 'element'],
+    ['ink-turn-label', 'element'],
+    ['ink-new-btn', 'button'],
+    ['ink-friend-btn', 'button'],
+    ['ink-score-top', 'element'],
+    ['ink-score-bottom', 'element'],
+    ['ink-status-top', 'element'],
+    ['ink-status-bottom', 'element'],
+    ['ink-bar-top', 'element'],
+    ['ink-bar-bottom', 'element'],
+    ['ink-baseline', 'element'],
+    ['ink-board-hint', 'element'],
+    ['ink-preview', 'element'],
+    ['ink-commit-meter', 'element'],
+    ['ink-commit-fill', 'element'],
+    ['ink-commit-label', 'element'],
+    ['ink-mark-list', 'element'],
+    ['ink-fixit', 'element'],
+    ['ink-pass-btn', 'button'],
+    ['ink-undo-btn', 'button'],
+    ['ink-clear-btn', 'button'],
+    ['ink-hard-btn', 'button'],
+    ['ink-labs-btn', 'button'],
+    ['ink-record-toggle', 'input'],
+    ['ink-record-copy', 'button'],
+    ['ink-record-download', 'button'],
+    ['ink-record-count', 'element'],
+    ['ink-temperaments', 'element'],
+    ['ink-family', 'element'],
+    ['ink-notice', 'element'],
+    ['ink-stats-panel', 'element'],
+    ['ink-stats-content', 'element'],
+    ['ink-micro-pawn-histogram', 'element'],
+    ['ink-micro-pawn-avg', 'element'],
+    ['ink-micro-pawn-eval', 'element'],
+    ['ink-result', 'element'],
+  ]
+  for (const [id, kind] of inkIds) {
+    if (kind === 'button') {
+      registerById(
+        documentRef,
+        id,
+        (elementId, owner) => new FakeButtonElement(elementId, owner),
+      )
+    } else if (kind === 'input') {
+      registerById(
+        documentRef,
+        id,
+        (elementId, owner) => new FakeInputElement(elementId, owner),
+      )
+    } else {
+      registerById(
+        documentRef,
+        id,
+        (elementId, owner) => new FakeHTMLElement(elementId, owner),
+      )
+    }
+  }
+  registerById(documentRef, 'ink-board-panel', (id, owner) => {
+    const panel = new FakeHTMLElement(id, owner)
+    panel.clientWidth = 400
+    panel.clientHeight = 400
+    return panel
+  })
+  registerById(
+    documentRef,
+    'ink-canvas',
+    (id, owner) => new FakeCanvasElement(id, owner),
+  )
+  registerById(
+    documentRef,
+    'ink-draw-canvas',
+    (id, owner) => new FakeCanvasElement(id, owner),
+  )
+
   vi.stubGlobal('document', documentRef as unknown as Document)
   vi.stubGlobal('window', windowRef as unknown as Window)
   vi.stubGlobal('confirm', () => true)
@@ -835,31 +926,30 @@ describe('main app wiring', () => {
     expect(statusCopy.textContent).toContain('Waiting for the host')
   })
 
-  it('mounts the centurion lobby on initial root route', async () => {
+  it('opens a solo drawing match on the root route', async () => {
     vi.resetModules()
     const { documentRef } = setupDom('/')
 
     await import('./main')
 
-    const labsMenu = documentRef.getElementById(
-      'screen-labs-menu',
+    const ink = documentRef.getElementById(
+      'screen-ink-match',
     ) as FakeHTMLElement
     const centurion = documentRef.getElementById(
       'screen-centurion-match',
     ) as FakeHTMLElement
-    const statusCopy = documentRef.getElementById(
-      'centurion-status-copy',
-    ) as FakeHTMLElement
-    const newMatchButton = documentRef.getElementById(
-      'centurion-new-match-btn',
-    ) as FakeButtonElement
+    const preview = documentRef.getElementById('ink-preview') as FakeHTMLElement
+    const pass = documentRef.getElementById('ink-pass-btn') as FakeButtonElement
 
-    expect(labsMenu.style.display).toBe('none')
-    expect(centurion.style.display).toBe('flex')
-    expect(statusCopy.textContent).toBe('')
+    expect(ink.style.display).toBe('flex')
+    expect(centurion.style.display).toBe('none')
+    expect(preview.textContent).toContain('Reading')
+    expect(pass.disabled).toBe(true)
 
-    newMatchButton.click()
-    expect(statusCopy.textContent).toContain('Share code')
+    await vi.waitFor(() => {
+      expect(preview.textContent).toContain('No ink yet')
+    })
+    expect(pass.disabled).toBe(false)
   })
 
   it('routes and navigates under a GitHub Pages project subpath', async () => {
@@ -884,12 +974,16 @@ describe('main app wiring', () => {
     backToGame.click()
     expect(windowRef.location.pathname).toBe('/centurion/')
     expect(labsMenu.style.display).toBe('none')
-    expect(centurion.style.display).toBe('flex')
+    const ink = documentRef.getElementById(
+      'screen-ink-match',
+    ) as FakeHTMLElement
+    expect(ink.style.display).toBe('flex')
+    expect(centurion.style.display).toBe('none')
   })
 
   it('plays a pass-and-play turn end to end', async () => {
     vi.resetModules()
-    const { documentRef } = setupDom('/')
+    const { documentRef } = setupDom('/play')
 
     await import('./main')
 
@@ -990,7 +1084,7 @@ describe('main app wiring', () => {
 
   it('plays e4 from the board in solo practice mode', async () => {
     vi.resetModules()
-    const { documentRef } = setupDom('/')
+    const { documentRef } = setupDom('/play')
 
     await import('./main')
 
