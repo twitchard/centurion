@@ -5,6 +5,7 @@ import 'chessground/assets/chessground.cburnett.css'
 import './styles.css'
 
 import { FirebaseCommandLogAdapter } from './adapters/firebase-command-log'
+import { FirebaseDrawingLogAdapter } from './adapters/firebase-drawing-log'
 import {
   FirebaseMatchRoomAdapter,
   generateRoomCode,
@@ -38,7 +39,11 @@ import {
   commandLogOutcomeFromCompile,
 } from './core/command-log/model'
 import { describeCommandPredicate } from './core/command/describe'
-import { COMMIT_IDLE_MS, REVEAL_MS } from './core/ink/gesture'
+import {
+  type DrawingCorrection,
+  correctionExpect,
+} from './core/ink/drawing-log'
+import { COMMIT_IDLE_MS, REVEAL_MS, describeMark } from './core/ink/gesture'
 import { type InkMatch, inkSearchTargets } from './core/ink/match'
 import { inkToMatchState } from './core/ink/project'
 import { TOP_MOVE_COUNT } from './core/ink/temperament'
@@ -100,6 +105,7 @@ import {
   commandLabMatches,
 } from './features/command-lab/model'
 import { InkDrawLayer } from './features/ink-match/draw-layer'
+import { renderFixIt } from './features/ink-match/fixit'
 import type { InkModel } from './features/ink-match/model'
 import type { InkCmd, InkMsg } from './features/ink-match/model'
 import { renderInk } from './features/ink-match/view'
@@ -256,6 +262,7 @@ const inkCommitMeter = element('ink-commit-meter')
 const inkCommitFill = element('ink-commit-fill')
 const inkCommitLabel = element('ink-commit-label')
 const inkMarkList = element('ink-mark-list')
+const inkFixIt = element('ink-fixit')
 const inkPassButton = button('ink-pass-btn')
 const inkUndoButton = button('ink-undo-btn')
 const inkClearButton = button('ink-clear-btn')
@@ -339,6 +346,7 @@ const centurionRoom = new FirebaseMatchRoomAdapter()
 const centurionEngine = new StockfishEngineAdapter()
 const commandCompiler = new HttpCommandCompilerAdapter()
 const commandLog = new FirebaseCommandLogAdapter()
+const drawingLog = new FirebaseDrawingLogAdapter()
 
 /**
  * Every natural-language compile — match or lab, success or failure —
@@ -521,6 +529,111 @@ function strokeExportJson(): string {
   return JSON.stringify({ recordings: inkRecordings }, null, 2)
 }
 
+interface FixItReceipt {
+  key: string | null
+  failed: boolean
+  recognized: readonly ('arrow' | 'circle' | 'scribble' | 'x')[]
+  readings: readonly string[]
+  choices: (DrawingCorrection | null)[]
+  openIndex: number | null
+  tail: Promise<void>
+}
+
+let fixIt: FixItReceipt | null = null
+
+function publishCommittedDrawing(): void {
+  if (state.tag !== 'ink-match') {
+    return
+  }
+  const session = state.model.session
+  if (session.strokes.length === 0 || session.marks.length === 0) {
+    return
+  }
+  const receipt: FixItReceipt = {
+    key: null,
+    failed: false,
+    recognized: session.marks.map((mark) => mark.tag),
+    readings: session.marks.map((mark) => describeMark(mark)),
+    choices: session.marks.map((): DrawingCorrection | null => null),
+    openIndex: null,
+    tail: Promise.resolve(),
+  }
+  fixIt = receipt
+  renderFixItStrip()
+  void drawingLog
+    .save({
+      author: 'owner',
+      strokes: session.strokes.map((stroke) =>
+        stroke.map((point) => ({ x: point.x, y: point.y })),
+      ),
+      recognized: receipt.recognized,
+      readings: receipt.readings,
+      build: __MULTIPLAYER_BUILD_ID__,
+    })
+    .then((key) => {
+      receipt.key = key
+      receipt.failed = key === null
+      flushFix(receipt)
+      if (fixIt === receipt) {
+        renderFixItStrip()
+      }
+    })
+}
+
+function flushFix(receipt: FixItReceipt): void {
+  receipt.tail = receipt.tail.then(async () => {
+    if (receipt.key === null) {
+      return
+    }
+    const expect = correctionExpect(receipt.recognized, receipt.choices)
+    if (expect === null) {
+      return
+    }
+    const saved = await drawingLog.correct(receipt.key, expect)
+    receipt.failed = !saved
+    if (fixIt === receipt) {
+      renderFixItStrip()
+    }
+  })
+}
+
+function renderFixItStrip(): void {
+  renderFixIt(
+    inkFixIt,
+    fixIt === null
+      ? null
+      : {
+          readings: fixIt.readings,
+          choices: fixIt.choices,
+          openIndex: fixIt.openIndex,
+          failed: fixIt.failed,
+        },
+    (index) => {
+      if (fixIt === null) {
+        return
+      }
+      fixIt.openIndex = fixIt.openIndex === index ? null : index
+      renderFixItStrip()
+    },
+    (index, choice) => {
+      if (fixIt === null) {
+        return
+      }
+      const choices = fixIt.choices.slice()
+      choices[index] = choice
+      fixIt.choices = choices
+      fixIt.openIndex = null
+      flushFix(fixIt)
+      renderFixItStrip()
+    },
+  )
+}
+
+function clearFixIt(): void {
+  fixIt = null
+  renderFixItStrip()
+}
+
 function tryCommitDrawing(): void {
   if (
     !inkCommitPending ||
@@ -544,6 +657,7 @@ function tryCommitDrawing(): void {
     return
   }
   rememberRecording()
+  publishCommittedDrawing()
   inkCommitPending = false
   clearInkCommitClock()
   dispatchInk({ tag: 'commit' })
@@ -1939,6 +2053,7 @@ function bindEvents(): void {
 
   inkNewButton.addEventListener('click', () => {
     resetInkAnimation()
+    clearFixIt()
     dispatchInk({
       tag: 'restart',
       seed: newSeed(),
@@ -1959,6 +2074,7 @@ function bindEvents(): void {
       return
     }
     resetInkAnimation()
+    clearFixIt()
     dispatchInk({
       tag: 'restart',
       seed: newSeed(),

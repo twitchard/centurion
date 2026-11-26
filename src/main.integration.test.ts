@@ -16,6 +16,18 @@ vi.mock('./adapters/firebase-command-log', () => {
   return { FirebaseCommandLogAdapter: MockCommandLogAdapter }
 })
 
+vi.mock('./adapters/firebase-drawing-log', () => {
+  class MockDrawingLogAdapter {
+    save(): Promise<string> {
+      return Promise.resolve('drawing-test')
+    }
+    correct(): Promise<boolean> {
+      return Promise.resolve(true)
+    }
+  }
+  return { FirebaseDrawingLogAdapter: MockDrawingLogAdapter }
+})
+
 vi.mock('./adapters/firebase-match-room', () => {
   interface MockRoomCallbacks {
     readonly onOpened: () => void
@@ -735,6 +747,7 @@ function setupDom(pathname = '/labs'): TestDom {
     ['ink-commit-fill', 'element'],
     ['ink-commit-label', 'element'],
     ['ink-mark-list', 'element'],
+    ['ink-fixit', 'element'],
     ['ink-pass-btn', 'button'],
     ['ink-undo-btn', 'button'],
     ['ink-clear-btn', 'button'],
